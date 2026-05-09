@@ -1,0 +1,43 @@
+{
+  "name": "secret-lair-tracker",
+  "version": "0.1.0",
+  "description": "MTG Secret Lair & collection tracker — desktop edition",
+  "main": "src/main/main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "build": "electron-builder",
+    "rebuild": "electron-rebuild -f -w better-sqlite3"
+  },
+  "author": "Akapl",
+  "license": "ISC",
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.0.0",
+    "@electron/rebuild": "^3.7.0"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.5.0"
+  },
+  "build": {
+    "appId": "com.akapl.secretlairtracker",
+    "productName": "Secret Lair Tracker",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        { "target": "nsis", "arch": ["x64"] }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "perMachine": false
+    }
+  }
+}
