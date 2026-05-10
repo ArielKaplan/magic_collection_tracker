@@ -44,6 +44,81 @@ let ui = {
   refreshProgress: 0
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// ACTIVITY LOGGER — circular buffer feeds the slide-in panel in the status bar
+// ─────────────────────────────────────────────────────────────────────────────
+const LOG_BUFFER_SIZE = 500;
+const logBuffer = [];
+let logsPanelOpen = false;
+let logsUnread = 0;
+
+function logEntry(level, category, message, details) {
+  const entry = { t: new Date(), level, category, message, details: details ?? null };
+  logBuffer.push(entry);
+  if (logBuffer.length > LOG_BUFFER_SIZE) logBuffer.shift();
+  if (!logsPanelOpen) logsUnread++;
+  updateLogsButton();
+  if (logsPanelOpen) renderLogPanel();
+  // Mirror to devtools console for power users
+  const fn = level === 'error' ? 'error' : level === 'warn' ? 'warn' : 'log';
+  console[fn](`[${category}] ${message}`, details ?? '');
+}
+
+window.logger = {
+  info:    (cat, msg, det) => logEntry('info', cat, msg, det),
+  success: (cat, msg, det) => logEntry('success', cat, msg, det),
+  warn:    (cat, msg, det) => logEntry('warn', cat, msg, det),
+  error:   (cat, msg, det) => logEntry('error', cat, msg, det),
+  debug:   (cat, msg, det) => logEntry('debug', cat, msg, det),
+  clear:   () => { logBuffer.length = 0; logsUnread = 0; updateLogsButton(); renderLogPanel(); },
+  all:     () => logBuffer.slice(),
+};
+
+function updateLogsButton() {
+  const el = document.getElementById('sb-logs-count');
+  if (!el) return;
+  el.textContent = logsUnread > 0 ? logsUnread > 99 ? '99+' : String(logsUnread) : '';
+  el.style.display = logsUnread > 0 ? '' : 'none';
+}
+
+function toggleLogPanel() {
+  logsPanelOpen = !logsPanelOpen;
+  const panel = document.getElementById('logs-panel');
+  if (!panel) return;
+  panel.classList.toggle('open', logsPanelOpen);
+  if (logsPanelOpen) {
+    logsUnread = 0;
+    updateLogsButton();
+    renderLogPanel();
+    // Auto-scroll to newest after render
+    setTimeout(() => {
+      const body = document.getElementById('logs-body');
+      if (body) body.scrollTop = body.scrollHeight;
+    }, 30);
+  }
+}
+
+function renderLogPanel() {
+  const body = document.getElementById('logs-body');
+  if (!body) return;
+  if (logBuffer.length === 0) {
+    body.innerHTML = `<div class="logs-empty">No activity logged yet. Run a price refresh, CSV import, or Secret Lair refresh and progress will appear here.</div>`;
+    return;
+  }
+  body.innerHTML = logBuffer.map(e => {
+    const t = e.t.toLocaleTimeString([], { hour12: false });
+    const detailHtml = e.details
+      ? `<div class="log-det">${esc(typeof e.details === 'string' ? e.details : JSON.stringify(e.details))}</div>`
+      : '';
+    return `<div class="log-entry log-${e.level}">
+      <span class="log-t">${t}</span>
+      <span class="log-cat">${esc(e.category)}</span>
+      <span class="log-msg">${esc(e.message)}</span>
+      ${detailHtml}
+    </div>`;
+  }).join('');
+}
+
 function makeCollection() {
   return {
     version: 3,
@@ -201,6 +276,7 @@ async function autoSave() {
     }
   } catch (err) {
     console.warn('Auto-save failed:', err);
+    window.logger?.error('Save', `autoSave failed: ${err.message}`);
   }
 }
 
@@ -319,9 +395,11 @@ async function loadCollectionFile() {
 
     await autoSave();
     toast(`Merged: +${cardsAdded} new, ~${cardsUpdated} updated cards · +${sealedAdded} new sealed`, 'success');
+    window.logger?.success('Import', `JSON merged: +${cardsAdded} new + ~${cardsUpdated} updated cards · +${sealedAdded} new sealed (${result.path?.split(/[\\/]/).pop() || 'file'})`);
     render();
   } catch (err) {
     toast('Failed to parse collection file: ' + err.message, 'error');
+    window.logger?.error('Import', `JSON load failed: ${err.message}`);
   }
 }
 
@@ -344,6 +422,7 @@ async function importCsvFile() {
   }
 
   toast(`CSV imported — ${added} added, ${updated} updated`, 'success');
+  window.logger?.success('Import', `CSV: ${added} new + ${updated} updated cards from ${result.path?.split(/[\\/]/).pop() || 'file'}`);
   render();
   await autoSave();
 }
@@ -443,12 +522,17 @@ async function fetchScryfallBatch(ids) {
           refreshEl.textContent = `↻ Rate limited — waiting ${wait / 1000}s…`;
           refreshEl.style.color = 'var(--accent2)';
         }
+        window.logger?.warn('Price', `Rate limited (429) — backing off ${wait / 1000}s before retry ${attempt + 1}/${DELAYS.length}`);
         await sleep(wait);
         continue;
       }
+      window.logger?.error('Price', 'Rate limit retries exhausted; giving up on this batch');
       throw new Error('Rate limited (429) — still failing after retries');
     }
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    if (!resp.ok) {
+      window.logger?.error('Price', `HTTP ${resp.status} from Scryfall`);
+      throw new Error(`HTTP ${resp.status}`);
+    }
     return resp.json();
   }
 }
@@ -467,7 +551,7 @@ async function refreshPrices() {
   }
   const pairs = Array.from(pairMap.values());
   const uniqueIds = [...new Set(pairs.map(p => p.scryfallId))];
-  console.log(`[PriceRefresh] ${collection.cards.length} cards → ${uniqueIds.length} unique IDs, ${pairs.length} (id,foil) pairs`);
+  window.logger?.info('Price', `Starting refresh: ${collection.cards.length.toLocaleString()} cards → ${uniqueIds.length.toLocaleString()} unique IDs, ${pairs.length.toLocaleString()} (id,foil) pairs`);
 
   ui.refreshing = true;
   ui.refreshProgress = 0;
@@ -484,13 +568,20 @@ async function refreshPrices() {
 
   if (!collection.cardMetadata) collection.cardMetadata = {};
 
+  let batchIdx = 0;
   for (const chunk of chunks) {
+    batchIdx++;
+    window.logger?.debug('Price', `Batch ${batchIdx}/${chunks.length} → ${chunk.length} IDs`);
     try {
       const data = await fetchScryfallBatch(chunk);
+      const found = (data.data || []).length;
+      const missing = (data.not_found || []).length;
       for (const card of (data.data || [])) scryfallCache.set(card.id.toLowerCase(), card);
       for (const nf of (data.not_found || [])) if (nf.id) notFoundIds.add(nf.id.toLowerCase());
+      window.logger?.debug('Price', `Batch ${batchIdx}/${chunks.length} ✓ ${found} found · ${missing} not found`);
     } catch (err) {
       toast(`Scryfall batch failed: ${err.message}`, 'error');
+      window.logger?.error('Price', `Batch ${batchIdx}/${chunks.length} failed: ${err.message}`);
       for (const id of chunk) batchFailedIds.add(id);
     }
     done += chunk.length;
@@ -602,7 +693,10 @@ async function refreshPrices() {
   collection.failedLookups = failedLookups;
   if (!collection.cardMetadata) collection.cardMetadata = {};
 
-  console.log(`[PriceRefresh] ${pairs.length} pairs | priced=${pricedCount} scryfall_hit=${scryfallCache.size} not_found=${notFoundIds.size} batch_err=${batchFailedIds.size} | failed=${failedLookups.length}`);
+  const summary = `Refresh complete: ${pricedCount}/${pairs.length} priced · ${notFoundIds.size} not found · ${batchFailedIds.size} batch errors · ${failedLookups.length} total issues`;
+  if (failedLookups.length === 0) window.logger?.success('Price', summary);
+  else if (batchFailedIds.size > 0) window.logger?.warn('Price', summary);
+  else window.logger?.info('Price', summary);
 
   collection.lastPriceRefresh = new Date().toISOString();
   ui.refreshing = false;
@@ -1075,9 +1169,22 @@ function renderBottom10ValueCards() {
 // ─────────────────────────────────────────────────────────────────────────────
 function render() {
   const content = document.getElementById('content');
+
+  // Tear down any active Svelte component when leaving the dashboard tab
+  if (ui.activeTab !== 'dashboard' && window.svelteApp) window.svelteApp.unmountDashboard();
+
   try {
     switch (ui.activeTab) {
-      case 'dashboard': content.innerHTML = renderDashboard();         break;
+      case 'dashboard':
+        content.innerHTML = '<div id="svelte-dashboard-mount" style="height:100%"></div>';
+        if (window.svelteApp) {
+          window.svelteApp.mountDashboard(document.getElementById('svelte-dashboard-mount'));
+          window.svelteApp.notifyDataChanged();
+        } else {
+          // Svelte bundle hasn't loaded yet — fall back to legacy renderer
+          content.innerHTML = renderDashboard();
+        }
+        break;
       case 'cards':     content.innerHTML = renderCards();             break;
       case 'sealed':    content.innerHTML = renderSealed();            break;
       case 'gallery':   content.innerHTML = renderGallery();           break;
@@ -1092,6 +1199,9 @@ function render() {
   updateRefreshUI();
   updateFailedBadge();
   updateStatusBar();
+
+  // Notify Svelte that the underlying data may have changed (no-op if not on dashboard)
+  if (window.svelteApp) window.svelteApp.notifyDataChanged();
 }
 
 function updateFailedBadge() {
@@ -1850,33 +1960,50 @@ async function refreshSlData() {
 
   try {
     toast('Fetching Secret Lair data from MTGJSON… (may take a moment)', 'info', 10000);
+    window.logger?.info('SL', 'Fetching MTGJSON SLD.json…');
     const SLD_URL = 'https://mtgjson.com/api/v5/SLD.json';
     const candidates = [
-      SLD_URL,                                                                   // direct (MTGJSON supports CORS)
-      `https://api.allorigins.win/raw?url=${encodeURIComponent(SLD_URL)}`,      // allorigins proxy
-      `https://corsproxy.io/?url=${encodeURIComponent(SLD_URL)}`,               // corsproxy fallback
+      { label: 'direct',     url: SLD_URL },
+      { label: 'allorigins', url: `https://api.allorigins.win/raw?url=${encodeURIComponent(SLD_URL)}` },
+      { label: 'corsproxy',  url: `https://corsproxy.io/?url=${encodeURIComponent(SLD_URL)}` },
     ];
 
     let json = null;
     let lastErr = '';
-    for (const url of candidates) {
+    for (const { label, url } of candidates) {
       try {
+        window.logger?.debug('SL', `Trying ${label} fetch…`);
         const resp = await fetch(url);
-        if (!resp.ok) { lastErr = `HTTP ${resp.status} from ${url}`; continue; }
+        if (!resp.ok) {
+          lastErr = `HTTP ${resp.status} from ${label}`;
+          window.logger?.warn('SL', `${label} returned HTTP ${resp.status}`);
+          continue;
+        }
         json = await resp.json();
+        window.logger?.success('SL', `Fetched via ${label}`);
         break;
-      } catch (e) { lastErr = e.message; }
+      } catch (e) {
+        lastErr = e.message;
+        window.logger?.warn('SL', `${label} threw: ${e.message}`);
+      }
     }
     if (!json) throw new Error(lastErr || 'All sources failed');
-    const cards = Object.values(json.data || {});
-    if (!cards.length) throw new Error('Empty response from MTGJSON');
+    // MTGJSON v5 set files are shaped as { data: { code, name, cards: [...], tokens: [...], ... } }
+    // — the actual card list lives at data.cards, NOT Object.values(data).
+    const cards = (json.data && Array.isArray(json.data.cards)) ? json.data.cards : [];
+    if (!cards.length) throw new Error('No cards in MTGJSON response (data.cards was empty or missing)');
+    window.logger?.info('SL', `Parsed ${cards.length.toLocaleString()} cards from MTGJSON`);
 
     const newDropCards = {};
     const newScryfallToDrops = {};
+    const newScryfallToName = {};
+
+    // Pass 1: trust MTGJSON's `subsets` field where present.
     for (const card of cards) {
-      const sid  = card.identifiers?.scryfallId;
+      const sid  = (card.identifiers?.scryfallId || '').toLowerCase();
       const name = card.name;
       const subs = card.subsets || [];
+      if (sid && name) newScryfallToName[sid] = name;
       if (sid && subs.length) newScryfallToDrops[sid] = subs;
       for (const drop of subs) {
         if (!newDropCards[drop]) newDropCards[drop] = [];
@@ -1884,13 +2011,43 @@ async function refreshSlData() {
       }
     }
 
-    applySlDataUpdate(newDropCards, newScryfallToDrops);
-    await saveSlDataToCache(newDropCards, newScryfallToDrops);
+    // Pass 2: foil/star backfill — base collector number → drops. Foil printings
+    // (collector "1485★") inherit the drop tag of the regular printing ("1485")
+    // when MTGJSON failed to tag them in `subsets` directly.
+    const baseKeyToDrops = {};
+    for (const card of cards) {
+      const num  = (card.number || '').replace(/[★*]/g, '').trim();
+      const subs = card.subsets || [];
+      if (!num || !subs.length) continue;
+      const key = `${num}|${card.name}`;
+      if (!baseKeyToDrops[key]) baseKeyToDrops[key] = new Set();
+      for (const d of subs) baseKeyToDrops[key].add(d);
+    }
+    let backfilled = 0;
+    for (const card of cards) {
+      const sid = (card.identifiers?.scryfallId || '').toLowerCase();
+      if (!sid) continue;
+      // Only backfill cards that don't already have any drop tags
+      if (newScryfallToDrops[sid] && newScryfallToDrops[sid].length) continue;
+      const num = (card.number || '').replace(/[★*]/g, '').trim();
+      const key = `${num}|${card.name}`;
+      const drops = baseKeyToDrops[key];
+      if (drops && drops.size > 0) {
+        newScryfallToDrops[sid] = [...drops];
+        backfilled++;
+      }
+    }
+    if (backfilled > 0) window.logger?.info('SL', `Backfilled ${backfilled} foil/variant printings via base collector number`);
+
+    applySlDataUpdate(newDropCards, newScryfallToDrops, newScryfallToName);
+    await saveSlDataToCache(newDropCards, newScryfallToDrops, newScryfallToName);
 
     const drops = Object.keys(newDropCards).length;
     toast(`SL data updated — ${drops} drops, ${cards.length} cards`, 'success');
+    window.logger?.success('SL', `Updated: ${drops} drops · ${cards.length.toLocaleString()} cards · ${Object.keys(newScryfallToDrops).length.toLocaleString()} mapped printings`);
   } catch (e) {
     toast(`Failed to refresh SL data: ${e.message}`, 'error');
+    window.logger?.error('SL', `Refresh failed: ${e.message}`);
   }
 
   ui.slRefreshing = false;
@@ -1908,6 +2065,42 @@ function renderSlViewer() {
   if (!hasSl) return `<div style="padding:40px;text-align:center;color:var(--text-muted)">Secret Lair data not loaded.</div>`;
 
   const ownedIds = new Set(collection.cards.map(c => c.scryfallId).filter(Boolean));
+  // SLD-set names the user owns somewhere — only used as a *drop count* fallback
+  // for the rare case where a drop's card list contains a name that has no
+  // scryfallIds tagged to it at all (MTGJSON data gap).
+  const ownedSldNames = new Set(
+    collection.cards
+      .filter(c => (c.setCode || '').toUpperCase() === 'SLD' && c.name)
+      .map(c => c.name)
+  );
+
+  // Drop-specific count: a name in the drop is "owned" if either
+  //   (a) user has a direct scryfallId match on any tile of that name in this drop, OR
+  //   (b) no tile of that name exists in the drop's ID list AND user has the name in SLD.
+  // Crucially: owning the same card name in a *different* drop does NOT credit this drop.
+  const dropOwnedNameStats = (drop) => {
+    const names = SL_DROP_CARDS[drop] || [];
+    const idsInDrop = SL_DROP_TO_SCRYFALL_IDS[drop] || [];
+
+    // Names with at least one tile that the user owns by direct ID match
+    const directMatchedNames = new Set();
+    // Names that have any tile in this drop (so we can detect data-gap cases)
+    const namesWithTiles = new Set();
+    for (const id of idsInDrop) {
+      const n = SL_SCRYFALL_TO_NAME?.[id];
+      if (!n) continue;
+      namesWithTiles.add(n);
+      if (ownedIds.has(id)) directMatchedNames.add(n);
+    }
+
+    let owned = 0;
+    for (const name of names) {
+      if (directMatchedNames.has(name)) { owned++; continue; }
+      // Data-gap fallback: drop says this card belongs but no tile maps to it
+      if (!namesWithTiles.has(name) && ownedSldNames.has(name)) owned++;
+    }
+    return { owned, total: names.length };
+  };
   const superdrops = SL_SUPERDROPS.map(sd => sd.superdrop);
 
   const cacheInfo = typeof getSlCacheInfo === 'function' ? getSlCacheInfo() : null;
@@ -1940,12 +2133,12 @@ function renderSlViewer() {
   // Drop selected — show card grid for that drop
   if (sv.drop) {
     const cardIds = SL_DROP_TO_SCRYFALL_IDS[sv.drop] || [];
-    const ownedCount = cardIds.filter(id => ownedIds.has(id)).length;
+    const stats = dropOwnedNameStats(sv.drop);
     const PAGE_SIZE = 100;
     const shown = cardIds.slice(0, (sv.page + 1) * PAGE_SIZE);
     const hasMore = cardIds.length > shown.length;
     const drops = getDropsForSuperdrop(sv.superdrop);
-    const pct = cardIds.length ? Math.round(ownedCount / cardIds.length * 100) : 0;
+    const pct = stats.total ? Math.round(stats.owned / stats.total * 100) : 0;
 
     return refreshBtn + `
       <div class="gallery-filters">
@@ -1953,8 +2146,8 @@ function renderSlViewer() {
           ${sdSelect()}
           ${drops.length ? dropSelect(drops) : ''}
           <button class="btn btn-ghost" style="font-size:12px" onclick="ui.slViewer.drop='';ui.slViewer.page=0;render()">← Back to Superdrop</button>
-          <span style="margin-left:auto;font-size:13px;font-weight:700;color:${ownedCount===cardIds.length?'var(--green)':'var(--text-muted)'}">
-            ${ownedCount} / ${cardIds.length} owned (${pct}%)
+          <span style="margin-left:auto;font-size:13px;font-weight:700;color:${stats.owned===stats.total&&stats.total>0?'var(--green)':'var(--text-muted)'}">
+            ${stats.owned} / ${stats.total} cards owned (${pct}%)
           </span>
         </div>
       </div>
@@ -1962,10 +2155,13 @@ function renderSlViewer() {
         ${shown.map(scryfallId => {
           const id = scryfallId.toLowerCase();
           const img = `https://cards.scryfall.io/normal/front/${id[0]}/${id[1]}/${id}.jpg`;
-          const owned = ownedIds.has(scryfallId);
+          // Strict per-printing ownership: only credit if the user's collection
+          // has this exact scryfallId. Different printings of the same card name
+          // are separate tiles and tracked separately.
           const ownedCards = collection.cards.filter(c => c.scryfallId === scryfallId);
+          const owned = ownedCards.length > 0;
           const totalQty = ownedCards.reduce((s, c) => s + (c.quantity || 1), 0);
-          const val = ownedCards.length ? cardCurrentValue(ownedCards[0]) : null;
+          const val = owned ? cardCurrentValue(ownedCards[0]) : null;
           return `
             <div class="gallery-card${owned ? ' sl-card-owned' : ' sl-card-missing'}"
               onclick="showSlViewerModal('${esc(scryfallId)}')" title="${owned ? `Owned (qty: ${totalQty})` : 'Not in collection'}">
@@ -1997,15 +2193,14 @@ function renderSlViewer() {
       </div>
       <div class="sl-superdrop-grid">
         ${drops.map(drop => {
-          const ids = SL_DROP_TO_SCRYFALL_IDS[drop] || [];
-          const owned = ids.filter(id => ownedIds.has(id)).length;
-          const pct = ids.length ? Math.round(owned / ids.length * 100) : 0;
+          const stats = dropOwnedNameStats(drop);
+          const pct = stats.total ? Math.round(stats.owned / stats.total * 100) : 0;
           return `
             <div class="sl-superdrop-card" onclick="ui.slViewer.drop='${escJs(drop)}';ui.slViewer.page=0;render()">
               <div class="sl-superdrop-name">${esc(drop)}</div>
-              <div class="sl-superdrop-meta">${ids.length} card${ids.length !== 1 ? 's' : ''}</div>
+              <div class="sl-superdrop-meta">${stats.total} card${stats.total !== 1 ? 's' : ''}</div>
               <div class="sl-progress-bar"><div class="sl-progress-fill" style="width:${pct}%"></div></div>
-              <div class="sl-superdrop-count" style="color:${owned===ids.length&&ids.length>0?'var(--green)':'var(--text-muted)'}">${owned} / ${ids.length} owned</div>
+              <div class="sl-superdrop-count" style="color:${stats.owned===stats.total&&stats.total>0?'var(--green)':'var(--text-muted)'}">${stats.owned} / ${stats.total} owned</div>
             </div>`;
         }).join('')}
       </div>`;
@@ -2020,24 +2215,30 @@ function renderSlViewer() {
     </div>
     <div class="sl-superdrop-grid">
       ${SL_SUPERDROPS.map(sd => {
-        const allIds = [...new Set(sd.drops.flatMap(d => SL_DROP_TO_SCRYFALL_IDS[d] || []))];
-        const owned = allIds.filter(id => ownedIds.has(id)).length;
-        const pct = allIds.length ? Math.round(owned / allIds.length * 100) : 0;
+        // Sum per-drop name stats so superdrop totals match drop totals.
+        let owned = 0, total = 0;
+        for (const d of sd.drops) {
+          const s = dropOwnedNameStats(d);
+          owned += s.owned;
+          total += s.total;
+        }
+        const pct = total ? Math.round(owned / total * 100) : 0;
         return `
           <div class="sl-superdrop-card" onclick="ui.slViewer.superdrop='${escJs(sd.superdrop)}';ui.slViewer.drop='';render()">
             <div class="sl-superdrop-name">${esc(sd.superdrop)}</div>
             <div class="sl-superdrop-meta">${sd.date} · ${sd.drops.length} drop${sd.drops.length !== 1 ? 's' : ''}</div>
             <div class="sl-progress-bar"><div class="sl-progress-fill" style="width:${pct}%"></div></div>
-            <div class="sl-superdrop-count" style="color:${owned===allIds.length&&allIds.length>0?'var(--green)':'var(--text-muted)'}">${owned} / ${allIds.length} owned</div>
+            <div class="sl-superdrop-count" style="color:${owned===total&&total>0?'var(--green)':'var(--text-muted)'}">${owned} / ${total} owned</div>
           </div>`;
       }).join('')}
     </div>`;
 }
 
 async function showSlViewerModal(scryfallId) {
+  // Strict per-printing ownership — only direct scryfallId match counts. If
+  // user owns a different printing of the same card name, that's not "this
+  // card" and the modal should show Scryfall details + "Not owned".
   const ownedCards = collection.cards.filter(c => c.scryfallId === scryfallId);
-
-  // If owned, delegate to the existing gallery modal
   if (ownedCards.length > 0) {
     showGalleryModal(ownedCards[0].id);
     return;
@@ -2873,6 +3074,21 @@ async function init() {
   const sbs = document.getElementById('sidebarSettings');
   if (sbs) sbs.addEventListener('click', showSettings);
 
+  // Activity log panel — status-bar button + close + clear
+  const sbLogs = document.getElementById('sb-logs');
+  if (sbLogs) sbLogs.addEventListener('click', toggleLogPanel);
+  const logsClose = document.getElementById('logs-close');
+  if (logsClose) logsClose.addEventListener('click', () => { logsPanelOpen = true; toggleLogPanel(); });
+  const logsClear = document.getElementById('logs-clear');
+  if (logsClear) logsClear.addEventListener('click', () => window.logger.clear());
+  // Ctrl+L global toggle
+  document.addEventListener('keydown', e => {
+    if (e.key === 'l' && (e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey) {
+      e.preventDefault();
+      toggleLogPanel();
+    }
+  });
+
   // Native menu bar — actions arrive over IPC from main process
   if (window.api && window.api.onMenuAction) {
     window.api.onMenuAction(action => {
@@ -2892,6 +3108,7 @@ async function init() {
         case 'settings:open':    showSettings(); break;
         case 'settings:reset':   showSettings(); break; // user clicks Reset Database button inside
         case 'about:show':       showAbout(); break;
+        case 'logs:toggle':      toggleLogPanel(); break;
       }
     });
   }
@@ -2905,7 +3122,32 @@ async function init() {
   // Load cached SL data from SQLite (from a previous Refresh SL Data click)
   if (typeof loadSlDataFromCache === 'function') await loadSlDataFromCache();
 
+  // Expose helpers/state to the Svelte renderer (window.app + window.collection)
+  window.collection = collection;
+  window.app = {
+    fmt, fmtPct, esc, FOIL_LABEL,
+    cardCurrentValue, totalCardsValue, totalSealedValue,
+    binderValueMap, topMovers,
+    valueByColor: analyzeByColor,
+    valueByType: analyzeByType,
+    valueByMana: analyzeByManaValue,
+    refreshPrices,
+    renderCardOfTheDay,
+    rerollCotd: () => { ui.cotdOffset = (ui.cotdOffset || 0) + 1; render(); },
+    // Legacy panel renderers — Svelte wrappers @html them in.
+    renderColorPanel,
+    renderTypePanel,
+    renderManaValuePanel,
+    renderRarityPanel,
+    renderStatsPanel,
+    renderCardCountBySet,
+    renderValueBySet,
+    renderCardCountByYear,
+    renderTop10ValueCards,
+  };
+
   // Auto-load from SQLite on startup
+  window.logger?.info('App', 'Starting up — loading collection from SQLite…');
   const loaded = await autoLoad();
   if (loaded) {
     const el = document.getElementById('autosave-status');
@@ -2917,6 +3159,9 @@ async function init() {
       el.style.opacity = '1';
       el._fadeTimer = setTimeout(() => { el.style.opacity = '0.4'; }, 5000);
     }
+    window.logger?.success('App', `Loaded ${collection.cards.length.toLocaleString()} cards · ${(collection.sealed || []).length} sealed · ${Object.keys(collection.priceHistory || {}).length.toLocaleString()} price-history series`);
+  } else {
+    window.logger?.info('App', 'No prior collection found — starting fresh');
   }
 
   render();

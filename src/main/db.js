@@ -233,7 +233,7 @@ function getAllSettings() {
 }
 
 // ── SL drop data ─────────────────────────────────────────────────────────────
-function replaceSlData(dropCards, scryfallToDrops) {
+function replaceSlData(dropCards, scryfallToDrops, scryfallToName) {
   const tx = db.transaction(() => {
     db.prepare('DELETE FROM sl_drop_cards').run();
     db.prepare('DELETE FROM sl_scryfall_drops').run();
@@ -243,6 +243,8 @@ function replaceSlData(dropCards, scryfallToDrops) {
     const sd = db.prepare('INSERT OR IGNORE INTO sl_scryfall_drops (scryfall_id, drop_name) VALUES (?, ?)');
     for (const [id, drops] of Object.entries(scryfallToDrops || {}))
       for (const d of drops) sd.run(id, d);
+    // Name map persisted as a settings JSON blob — small (~120kB) and read in one shot.
+    if (scryfallToName) setSetting('sl_scryfall_to_name', JSON.stringify(scryfallToName));
     setSetting('sl_data_updated_at', new Date().toISOString());
   });
   tx();
@@ -259,7 +261,12 @@ function getSlData() {
     if (!scryfallToDrops[r.scryfall_id]) scryfallToDrops[r.scryfall_id] = [];
     scryfallToDrops[r.scryfall_id].push(r.drop_name);
   }
-  return { dropCards, scryfallToDrops, updatedAt: getSetting('sl_data_updated_at') };
+  let scryfallToName = {};
+  try {
+    const raw = getSetting('sl_scryfall_to_name');
+    if (raw) scryfallToName = JSON.parse(raw);
+  } catch { /* ignore — empty map is fine */ }
+  return { dropCards, scryfallToDrops, scryfallToName, updatedAt: getSetting('sl_data_updated_at') };
 }
 
 // ── Clear / reset ────────────────────────────────────────────────────────────

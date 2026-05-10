@@ -2391,13 +2391,19 @@ for (const [id, drops] of Object.entries(SL_SCRYFALL_TO_DROPS)) {
 // ── Runtime update / cache (SQLite via window.api in desktop build) ─────────
 let SL_CACHE_INFO_CACHED = null; // populated at startup, kept fresh on save
 
+// scryfallId → card name. Empty until the user runs Refresh SL Data, which
+// populates it from MTGJSON. Used for name-based ownership fallback in the
+// SL Explorer when a card's foil/variant printing isn't in SL_SCRYFALL_TO_DROPS.
+const SL_SCRYFALL_TO_NAME = {};
+
 // Merge fetched data into all live globals and recompute derived maps.
 // newDropCards: { dropName: [cardName, ...] }
 // newScryfallToDrops: { scryfallId: [dropName, ...] }
-function applySlDataUpdate(newDropCards, newScryfallToDrops) {
+function applySlDataUpdate(newDropCards, newScryfallToDrops, newScryfallToName) {
   // Merge into primary maps
   Object.assign(SL_DROP_CARDS, newDropCards);
   Object.assign(SL_SCRYFALL_TO_DROPS, newScryfallToDrops);
+  if (newScryfallToName) Object.assign(SL_SCRYFALL_TO_NAME, newScryfallToName);
 
   // Add any new drops not yet in a superdrop to a "Recent Additions" bucket
   const known = new Set(SL_SUPERDROPS.flatMap(sd => sd.drops));
@@ -2433,9 +2439,9 @@ function applySlDataUpdate(newDropCards, newScryfallToDrops) {
   }
 }
 
-async function saveSlDataToCache(dropCards, scryfallToDrops) {
+async function saveSlDataToCache(dropCards, scryfallToDrops, scryfallToName) {
   try {
-    await window.api.sl.replace(dropCards, scryfallToDrops);
+    await window.api.sl.replace(dropCards, scryfallToDrops, scryfallToName || {});
     SL_CACHE_INFO_CACHED = { updatedAt: new Date().toISOString() };
   } catch (e) {
     console.warn('SL cache save failed:', e);
@@ -2444,9 +2450,9 @@ async function saveSlDataToCache(dropCards, scryfallToDrops) {
 
 async function loadSlDataFromCache() {
   try {
-    const { dropCards, scryfallToDrops, updatedAt } = await window.api.sl.get();
+    const { dropCards, scryfallToDrops, scryfallToName, updatedAt } = await window.api.sl.get();
     if (dropCards && Object.keys(dropCards).length && scryfallToDrops && Object.keys(scryfallToDrops).length) {
-      applySlDataUpdate(dropCards, scryfallToDrops);
+      applySlDataUpdate(dropCards, scryfallToDrops, scryfallToName);
       SL_CACHE_INFO_CACHED = updatedAt ? { updatedAt } : null;
       return updatedAt || null;
     }
