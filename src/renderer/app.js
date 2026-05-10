@@ -37,7 +37,7 @@ let ui = {
   },
   sealed: { search: '', type: 'all', status: 'all' },
   gallery: { binder: '', set: '', cmc: '', search: '', sortField: 'name', sortDir: 'asc', page: 0 },
-  slViewer: { superdrop: '', drop: '', page: 0 },
+  slViewer: { superdrop: '', drop: '', page: 0, sort: 'date_desc', search: '' },
   slRefreshing: false,
   failures: { filter: 'all', retrying: false },
   refreshing: false,
@@ -2130,6 +2130,79 @@ function renderSlViewer() {
     </select>`;
   }
 
+  // Breadcrumb shown above the toolbar — clickable segments walk back up the
+  // hierarchy. Last segment is the current page (not clickable, accent color).
+  function breadcrumb() {
+    const root = `<a class="bc-link" onclick="ui.slViewer.superdrop='';ui.slViewer.drop='';ui.slViewer.page=0;render()">Secret Lair Explorer</a>`;
+    const sep = `<span class="bc-sep">›</span>`;
+    if (sv.drop) {
+      const sdSeg = sv.superdrop
+        ? `<a class="bc-link" onclick="ui.slViewer.drop='';ui.slViewer.page=0;render()">${esc(sv.superdrop)}</a>`
+        : '';
+      return `<nav class="sl-breadcrumb">${root}${sv.superdrop ? sep + sdSeg : ''}${sep}<span class="bc-current">${esc(sv.drop)}</span></nav>`;
+    }
+    if (sv.superdrop) {
+      return `<nav class="sl-breadcrumb">${root}${sep}<span class="bc-current">${esc(sv.superdrop)}</span></nav>`;
+    }
+    return `<nav class="sl-breadcrumb"><span class="bc-current">Secret Lair Explorer</span></nav>`;
+  }
+
+  // Sort + search bar shown above the grid on landing & superdrop views
+  function sortSearchBar() {
+    const opts = [
+      ['date_desc', 'Date ↓ (newest first)'],
+      ['date_asc',  'Date ↑ (oldest first)'],
+      ['name_asc',  'Name A→Z'],
+      ['name_desc', 'Name Z→A'],
+    ];
+    return `
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:14px;padding:8px 12px;background:var(--surface);border:1px solid var(--border);border-radius:8px">
+        <input type="text" id="slSearchInput" placeholder="Search by drop, superdrop, or card name…"
+          value="${esc(sv.search || '')}"
+          oninput="ui.slViewer.search=this.value;ui.slViewer.page=0;render();setTimeout(()=>{const el=document.getElementById('slSearchInput');if(el){el.focus();el.setSelectionRange(el.value.length,el.value.length)}},0)"
+          style="flex:1;min-width:200px;padding:6px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px;font-family:inherit">
+        ${sv.search ? `<button class="btn btn-ghost" style="font-size:12px;padding:4px 10px" onclick="ui.slViewer.search='';render()">✕</button>` : ''}
+        <span style="color:var(--text-muted);font-size:11px;white-space:nowrap">Sort:</span>
+        <select onchange="ui.slViewer.sort=this.value;render()" style="font-size:12px">
+          ${opts.map(([v, label]) => `<option value="${v}"${sv.sort===v?' selected':''}>${label}</option>`).join('')}
+        </select>
+      </div>`;
+  }
+
+  // Helpers for sorting + searching
+  function sortSuperdrops(list) {
+    const arr = [...list];
+    const dir = sv.sort.endsWith('_desc') ? -1 : 1;
+    if (sv.sort.startsWith('date')) {
+      arr.sort((a, b) => (a.date || '').localeCompare(b.date || '') * dir);
+    } else {
+      arr.sort((a, b) => a.superdrop.localeCompare(b.superdrop) * dir);
+    }
+    return arr;
+  }
+  function sortDrops(list) {
+    const arr = [...list];
+    const dir = sv.sort.endsWith('_desc') ? -1 : 1;
+    // Drops don't have their own dates — sort alphabetically when "by date" is chosen too
+    arr.sort((a, b) => a.localeCompare(b) * dir);
+    return arr;
+  }
+  // Returns true if a drop matches the current search query (by drop name or
+  // any of its card names).
+  function dropMatchesSearch(drop, query) {
+    if (!query) return true;
+    const q = query.toLowerCase();
+    if (drop.toLowerCase().includes(q)) return true;
+    const cards = SL_DROP_CARDS[drop] || [];
+    return cards.some(c => c.toLowerCase().includes(q));
+  }
+  function superdropMatchesSearch(sd, query) {
+    if (!query) return true;
+    const q = query.toLowerCase();
+    if (sd.superdrop.toLowerCase().includes(q)) return true;
+    return (sd.drops || []).some(d => dropMatchesSearch(d, q));
+  }
+
   // Drop selected — show card grid for that drop
   if (sv.drop) {
     const cardIds = SL_DROP_TO_SCRYFALL_IDS[sv.drop] || [];
@@ -2140,7 +2213,7 @@ function renderSlViewer() {
     const drops = getDropsForSuperdrop(sv.superdrop);
     const pct = stats.total ? Math.round(stats.owned / stats.total * 100) : 0;
 
-    return refreshBtn + `
+    return refreshBtn + breadcrumb() + `
       <div class="gallery-filters">
         <div class="gallery-filter-row">
           ${sdSelect()}
@@ -2183,15 +2256,18 @@ function renderSlViewer() {
   // Superdrop selected (no specific drop) — show drop list within it
   if (sv.superdrop) {
     const sdObj = SL_SUPERDROPS.find(s => s.superdrop === sv.superdrop);
-    const drops = sdObj ? [...sdObj.drops].sort() : [];
-    return refreshBtn + `
+    const allDrops = sdObj ? [...sdObj.drops] : [];
+    const drops = sortDrops(allDrops.filter(d => dropMatchesSearch(d, sv.search)));
+    return refreshBtn + breadcrumb() + sortSearchBar() + `
       <div class="gallery-filters">
         <div class="gallery-filter-row">
           ${sdSelect()}
-          ${dropSelect(drops)}
+          ${dropSelect(allDrops.sort())}
         </div>
       </div>
-      <div class="sl-superdrop-grid">
+      ${drops.length === 0
+        ? `<div style="padding:30px;text-align:center;color:var(--text-muted);font-size:13px">No drops match "${esc(sv.search)}".</div>`
+        : `<div class="sl-superdrop-grid">
         ${drops.map(drop => {
           const stats = dropOwnedNameStats(drop);
           const pct = stats.total ? Math.round(stats.owned / stats.total * 100) : 0;
@@ -2203,18 +2279,16 @@ function renderSlViewer() {
               <div class="sl-superdrop-count" style="color:${stats.owned===stats.total&&stats.total>0?'var(--green)':'var(--text-muted)'}">${stats.owned} / ${stats.total} owned</div>
             </div>`;
         }).join('')}
-      </div>`;
+      </div>`}`;
   }
 
   // Landing — show all superdrops as completion cards
-  return refreshBtn + `
-    <div class="gallery-filters">
-      <div class="gallery-filter-row">
-        ${sdSelect()}
-      </div>
-    </div>
-    <div class="sl-superdrop-grid">
-      ${SL_SUPERDROPS.map(sd => {
+  const visibleSuperdrops = sortSuperdrops(SL_SUPERDROPS.filter(sd => superdropMatchesSearch(sd, sv.search)));
+  return refreshBtn + sortSearchBar() + `
+    ${visibleSuperdrops.length === 0
+      ? `<div style="padding:30px;text-align:center;color:var(--text-muted);font-size:13px">No superdrops match "${esc(sv.search)}".</div>`
+      : `<div class="sl-superdrop-grid">
+      ${visibleSuperdrops.map(sd => {
         // Sum per-drop name stats so superdrop totals match drop totals.
         let owned = 0, total = 0;
         for (const d of sd.drops) {
@@ -2226,12 +2300,12 @@ function renderSlViewer() {
         return `
           <div class="sl-superdrop-card" onclick="ui.slViewer.superdrop='${escJs(sd.superdrop)}';ui.slViewer.drop='';render()">
             <div class="sl-superdrop-name">${esc(sd.superdrop)}</div>
-            <div class="sl-superdrop-meta">${sd.date} · ${sd.drops.length} drop${sd.drops.length !== 1 ? 's' : ''}</div>
+            <div class="sl-superdrop-meta">${sd.date || '—'} · ${sd.drops.length} drop${sd.drops.length !== 1 ? 's' : ''}</div>
             <div class="sl-progress-bar"><div class="sl-progress-fill" style="width:${pct}%"></div></div>
             <div class="sl-superdrop-count" style="color:${owned===total&&total>0?'var(--green)':'var(--text-muted)'}">${owned} / ${total} owned</div>
           </div>`;
       }).join('')}
-    </div>`;
+    </div>`}`;
 }
 
 async function showSlViewerModal(scryfallId) {

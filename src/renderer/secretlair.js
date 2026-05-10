@@ -138,15 +138,32 @@ const SL_SUPERDROPS = [
   { superdrop: "Showcase: Duskmourn", date: "2024-09", drops: [
     "Showcase: Duskmourn"
   ]},
-  { superdrop: "Back to School Superdrop", date: "2026-04", drops: [
-    "Everyone's Invited!","Garden Buds","Omens of Chaos","Squishful Thinking - Extra Life 2025"
-  ]},
-  { superdrop: "Roll for Initiative Superdrop", date: "2026-02", drops: [
+
+  // ── 2025 superdrops ──────────────────────────────────────────────────────
+  // Best-guess release dates and drop assignments based on Wizards announcements
+  // through ~Aug 2025. After clicking "Refresh SL Data", any drops not listed
+  // here will appear under "Recent Additions" — use Settings → Edit Secret
+  // Lair Superdrops (coming soon) to reassign them to the right superdrop.
+  { superdrop: "Lunar Lair (Year of the Snake)", date: "2025-01", drops: [] },
+  { superdrop: "Aetherdrift Superdrop", date: "2025-02", drops: [] },
+  { superdrop: "Roll for Initiative Superdrop", date: "2025-03", drops: [
     "Dungeons & Dragons: Astarion's Thirst","Dungeons & Dragons: Death is in the Eyes of the Beholder I",
     "Dungeons & Dragons: Death is in the Eyes of the Beholder II",
     "Dungeons & Dragons: Gale's Ambition","Dungeons & Dragons: Karlach's Rage",
     "Dungeons & Dragons: Shadowheart's Devotion","Dungeons & Dragons: Strahd's Descent"
   ]},
+  { superdrop: "Tarkir: Dragonstorm Superdrop", date: "2025-04", drops: [] },
+  { superdrop: "Spring Superdrop 2025", date: "2025-05", drops: [] },
+  { superdrop: "Final Fantasy Superdrop", date: "2025-06", drops: [] },
+  { superdrop: "Edge of Eternities Superdrop", date: "2025-08", drops: [] },
+  { superdrop: "Back to School Superdrop", date: "2025-09", drops: [
+    "Everyone's Invited!","Garden Buds","Omens of Chaos","Squishful Thinking - Extra Life 2025"
+  ]},
+  { superdrop: "Spider-Man Superdrop", date: "2025-10", drops: [] },
+  { superdrop: "Secretversary Superdrop 2025", date: "2025-11", drops: [] },
+
+  // ── 2026 superdrops ──────────────────────────────────────────────────────
+  { superdrop: "Winter Superdrop 2026", date: "2026-01", drops: [] },
 ];
 
 // ── Drop → cards mapping (MTGJSON SLD v5.3) ──────────────────────────────────
