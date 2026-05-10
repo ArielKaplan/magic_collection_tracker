@@ -46,12 +46,14 @@ function buildMenu() {
     {
       label: '&View',
       submenu: [
-        tabItem('Dashboard',       'dashboard',  'CmdOrCtrl+1'),
-        tabItem('Cards',           'cards',      'CmdOrCtrl+2'),
-        tabItem('Sealed Product',  'sealed',     'CmdOrCtrl+3'),
-        tabItem('Gallery',         'gallery',    'CmdOrCtrl+4'),
-        tabItem('Secret Lair',     'slviewer',   'CmdOrCtrl+5'),
-        tabItem('Failed Lookups',  'failures',   'CmdOrCtrl+6'),
+        tabItem('Dashboard',                'dashboard',  'CmdOrCtrl+1'),
+        tabItem('My Collection',            'cards',      'CmdOrCtrl+2'),
+        tabItem('Sealed Collection',        'sealed',     'CmdOrCtrl+3'),
+        tabItem('Gallery',                  'gallery',    'CmdOrCtrl+4'),
+        tabItem('Secret Lair Explorer',     'slviewer',   'CmdOrCtrl+5'),
+        tabItem('Failed Lookups',           'failures',   'CmdOrCtrl+6'),
+        { type: 'separator' },
+        { label: 'Toggle Activity Log', accelerator: 'CmdOrCtrl+L', click: () => sendMenu('logs:toggle') },
         { type: 'separator' },
         { role: 'reload',           accelerator: 'CmdOrCtrl+R' },
         { role: 'togglefullscreen' },
@@ -140,7 +142,7 @@ function registerIpc() {
   ipcMain.handle('settings:all',        ()             => db.getAllSettings());
 
   // SL data
-  ipcMain.handle('sl:replace',          (_e, dc, std)  => db.replaceSlData(dc, std));
+  ipcMain.handle('sl:replace',          (_e, dc, std, stn) => db.replaceSlData(dc, std, stn));
   ipcMain.handle('sl:get',              ()             => db.getSlData());
 
   // File dialogs

@@ -4,9 +4,11 @@
   "description": "MTG Secret Lair & collection tracker — desktop edition",
   "main": "src/main/main.js",
   "scripts": {
-    "start": "electron .",
-    "dev": "electron . --dev",
-    "build": "electron-builder",
+    "start": "npm run build:renderer && electron .",
+    "dev": "npm run build:renderer && electron . --dev",
+    "build:renderer": "vite build",
+    "build:renderer:watch": "vite build --watch",
+    "build": "npm run build:renderer && electron-builder",
     "rebuild": "electron-rebuild -f -w better-sqlite3"
   },
   "author": "Akapl",
@@ -14,10 +16,14 @@
   "devDependencies": {
     "electron": "^33.0.0",
     "electron-builder": "^25.0.0",
-    "@electron/rebuild": "^3.7.0"
+    "@electron/rebuild": "^3.7.0",
+    "svelte": "^4.2.19",
+    "vite": "^5.4.0",
+    "@sveltejs/vite-plugin-svelte": "^3.1.2"
   },
   "dependencies": {
-    "better-sqlite3": "^11.5.0"
+    "better-sqlite3": "^11.5.0",
+    "interactjs": "^1.10.27"
   },
   "build": {
     "appId": "com.akapl.secretlairtracker",

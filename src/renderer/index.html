@@ -6,36 +6,23 @@
   <title>Secret Lair Tracker</title>
   <link rel="icon" type="image/png" href="favicon.png?v=2">
   <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="dist/svelte-app.css">
 </head>
 <body class="app-shell">
-  <aside class="sidebar">
-    <div class="sidebar-brand" title="Secret Lair Tracker">🃏</div>
-    <nav class="sidebar-nav">
-      <button class="tab-btn active" data-tab="dashboard" title="Dashboard (Ctrl+1)">
-        <span class="tab-icon">📊</span><span class="tab-label">Dashboard</span>
-      </button>
-      <button class="tab-btn" data-tab="cards" title="Cards (Ctrl+2)">
-        <span class="tab-icon">🃏</span><span class="tab-label">Cards</span>
-      </button>
-      <button class="tab-btn" data-tab="sealed" title="Sealed Product (Ctrl+3)">
-        <span class="tab-icon">📦</span><span class="tab-label">Sealed</span>
-      </button>
-      <button class="tab-btn" data-tab="gallery" title="Gallery (Ctrl+4)">
-        <span class="tab-icon">🖼️</span><span class="tab-label">Gallery</span>
-      </button>
-      <button class="tab-btn" data-tab="slviewer" title="Secret Lair (Ctrl+5)">
-        <span class="tab-icon">✨</span><span class="tab-label">Lair</span>
-      </button>
-      <button class="tab-btn" data-tab="failures" id="failuresTab" title="Failed Lookups (Ctrl+6)">
-        <span class="tab-icon">⚠</span><span class="tab-label">Issues</span>
-      </button>
+  <header class="topbar">
+    <div class="topbar-brand" title="Secret Lair Tracker">🃏</div>
+    <nav class="topbar-nav">
+      <button class="tab-btn active" data-tab="dashboard" title="Dashboard (Ctrl+1)">Dashboard</button>
+      <button class="tab-btn" data-tab="cards" title="My Collection (Ctrl+2)">My Collection</button>
+      <button class="tab-btn" data-tab="sealed" title="Sealed Collection (Ctrl+3)">Sealed Collection</button>
+      <button class="tab-btn" data-tab="gallery" title="Gallery (Ctrl+4)">Gallery</button>
+      <button class="tab-btn" data-tab="slviewer" title="Secret Lair Explorer (Ctrl+5)">Secret Lair Explorer</button>
+      <button class="tab-btn" data-tab="failures" id="failuresTab" title="Failed Lookups (Ctrl+6)">Failed Lookups</button>
     </nav>
-    <div class="sidebar-footer">
-      <button class="tab-btn" id="sidebarSettings" title="Settings (Ctrl+,)">
-        <span class="tab-icon">⚙</span><span class="tab-label">Settings</span>
-      </button>
+    <div class="topbar-actions">
+      <button class="topbar-btn" id="sidebarSettings" title="Settings (Ctrl+,)">⚙</button>
     </div>
-  </aside>
+  </header>
 
   <main id="content"></main>
 
@@ -48,8 +35,21 @@
     <span class="sb-section sb-spacer"></span>
     <span class="sb-section" id="sb-issues" style="display:none"></span>
     <span class="sb-divider"></span>
+    <span class="sb-section sb-logs" id="sb-logs" title="Activity Log (Ctrl+L)">
+      ⓘ Logs <span class="sb-logs-count" id="sb-logs-count" style="display:none"></span>
+    </span>
+    <span class="sb-divider"></span>
     <span class="sb-section sb-status" id="autosave-status"></span>
   </footer>
+
+  <aside id="logs-panel" class="logs-panel">
+    <header class="logs-head">
+      <span class="logs-title">Activity Log</span>
+      <button class="logs-btn-sm" id="logs-clear" title="Clear all entries">Clear</button>
+      <button class="logs-btn-sm" id="logs-close" title="Close (Ctrl+L)">✕</button>
+    </header>
+    <div class="logs-body" id="logs-body"></div>
+  </aside>
 
   <div id="modal-overlay" class="modal-overlay hidden">
     <div class="modal">
@@ -62,5 +62,6 @@
 
   <script src="secretlair.js"></script>
   <script src="app.js"></script>
+  <script type="module" src="dist/svelte-app.js"></script>
 </body>
 </html>
