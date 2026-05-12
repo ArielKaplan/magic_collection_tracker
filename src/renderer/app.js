@@ -30,10 +30,18 @@ let collection = makeCollection();
 let ui = {
   activeTab: 'dashboard',
   cards: {
-    binder: 'all', search: '', foil: 'all', rarity: 'all',
+    binder: { include: [], exclude: [] },
+    search: '', foil: 'all', rarity: 'all',
     condition: 'all', language: 'all',
     sortField: 'name', sortDir: 'asc',
-    page: 1, perPage: 50
+    page: 1, perPage: 50,
+    columns: {
+      setCode: true, foil: true, rarity: true, condition: true,
+      language: true, quantity: true, purchasePrice: true,
+      currentPrice: true, priceDelta: true, trend: true, flags: true,
+      setName: false, binderName: false
+    },
+    colPickerOpen: false,
   },
   sealed: { search: '', type: 'all', status: 'all' },
   gallery: { binder: '', set: '', cmc: '', search: '', sortField: 'name', sortDir: 'asc', page: 0 },
@@ -1594,7 +1602,28 @@ function renderCards() {
   const filteredQty   = filtered.reduce((s, c) => s + c.quantity, 0);
 
   const s = ui.cards;
+  const cols = s.columns;
   const th = (field, label) => `<th data-sort="${field}" class="${s.sortField === field ? 'sort-' + s.sortDir : ''}">${label}</th>`;
+  const cth = (key, field, label) => cols[key] === false ? '' : th(field, label);
+  const cthn = (key, label) => cols[key] === false ? '' : `<th>${label}</th>`;
+
+  // Column picker definitions
+  const COL_DEFS = [
+    { key: 'setCode',       label: 'Set' },
+    { key: 'setName',       label: 'Set Name' },
+    { key: 'foil',          label: 'Foil' },
+    { key: 'rarity',        label: 'Rarity' },
+    { key: 'condition',     label: 'Cond' },
+    { key: 'language',      label: 'Lang' },
+    { key: 'quantity',      label: 'Qty' },
+    { key: 'purchasePrice', label: 'Cost' },
+    { key: 'currentPrice',  label: 'Market' },
+    { key: 'priceDelta',    label: 'Δ Price' },
+    { key: 'trend',         label: 'Trend' },
+    { key: 'flags',         label: 'Flags' },
+    { key: 'binderName',    label: 'Binder' },
+  ];
+  const activeColCount = COL_DEFS.filter(d => cols[d.key] !== false).length;
 
   return `
     <div class="cards-layout">
@@ -1606,9 +1635,16 @@ function renderCards() {
             : collection.cards.filter(c => c.binderName === val).reduce((s, c) => s + c.quantity, 0);
           const dotColors = ['#c89b3c','#5b9cf6','#3dba6f','#9b7bfa','#f08030','#e05555','#f5c842','#60c8c8','#e87ca0','#7bc85b'];
           const dot = val === 'all' ? '#7a7692' : dotColors[(i - 1) % dotColors.length];
-          return `<div class="binder-item ${s.binder === val ? 'active' : ''}" data-binder="${esc(val)}">
+          const binderState = val === 'all'
+            ? (s.binder.include.length === 0 && s.binder.exclude.length === 0 ? 'all-active' : '')
+            : s.binder.include.includes(val) ? 'include' : s.binder.exclude.includes(val) ? 'exclude' : '';
+          const stateIcon = binderState === 'include' ? '<span class="b-state-icon b-inc">✓</span>'
+            : binderState === 'exclude' ? '<span class="b-state-icon b-exc">✗</span>' : '';
+          const itemClass = `binder-item${binderState === 'all-active' ? ' active' : binderState === 'include' ? ' b-include' : binderState === 'exclude' ? ' b-exclude' : ''}`;
+          return `<div class="${itemClass}" data-binder="${esc(val)}">
             <div class="b-dot" style="background:${dot}"></div>
             <span class="b-name" title="${esc(label)}">${esc(label)}</span>
+            ${stateIcon}
             <span class="b-count">${qty}</span>
           </div>`;
         }).join('')}
@@ -1620,6 +1656,15 @@ function renderCards() {
             <input type="text" id="cardSearch" placeholder="Search name, set, type, or oracle text… (Enter to search)" value="${esc(s.search)}" style="flex:1;min-width:200px">
             <button class="btn" id="cardSearchBtn" style="padding:7px 14px;font-size:13px">Search</button>
             ${s.search ? `<button class="btn btn-ghost" id="cardSearchClear" style="padding:7px 10px;font-size:13px" title="Clear search">✕</button>` : ''}
+            <div class="col-picker-wrap" style="position:relative">
+              <button class="btn${s.colPickerOpen ? ' btn-primary' : ''}" id="colPickerBtn" style="padding:7px 12px;font-size:12px;white-space:nowrap">⊞ Columns${activeColCount < COL_DEFS.length ? ` (${activeColCount})` : ''}</button>
+              ${s.colPickerOpen ? `<div class="col-picker-dropdown" id="colPickerDropdown">
+                <div class="col-picker-title">Visible Columns</div>
+                <div class="col-picker-chips">
+                  ${COL_DEFS.map(d => `<button class="col-chip${cols[d.key] !== false ? ' col-chip-on' : ''}" data-col="${esc(d.key)}">${cols[d.key] !== false ? '✓ ' : ''}${esc(d.label)}</button>`).join('')}
+                </div>
+              </div>` : ''}
+            </div>
           </div>
           <select id="foilFilter">
             <option value="all" ${s.foil === 'all' ? 'selected' : ''}>All Foil Types</option>
@@ -1655,17 +1700,19 @@ function renderCards() {
             <thead><tr>
               <th></th>
               ${th('name', 'Name')}
-              ${th('setCode', 'Set')}
-              <th>Foil</th>
-              ${th('rarity', 'Rarity')}
-              ${th('condition', 'Cond')}
-              <th>Lang</th>
-              ${th('quantity', 'Qty')}
-              ${th('purchasePrice', 'Cost')}
-              ${th('currentPrice', 'Market')}
-              <th>Δ Price</th>
-              <th>Trend</th>
-              <th>Flags</th>
+              ${cth('setCode', 'setCode', 'Set')}
+              ${cthn('setName', 'Set Name')}
+              ${cthn('foil', 'Foil')}
+              ${cth('rarity', 'rarity', 'Rarity')}
+              ${cth('condition', 'condition', 'Cond')}
+              ${cthn('language', 'Lang')}
+              ${cth('quantity', 'quantity', 'Qty')}
+              ${cth('purchasePrice', 'purchasePrice', 'Cost')}
+              ${cth('currentPrice', 'currentPrice', 'Market')}
+              ${cthn('priceDelta', 'Δ Price')}
+              ${cthn('trend', 'Trend')}
+              ${cthn('flags', 'Flags')}
+              ${cthn('binderName', 'Binder')}
             </tr></thead>
             <tbody>
               ${pageSlice.length
@@ -1694,20 +1741,24 @@ function renderCardRow(card) {
   const changeHtml = change
     ? `<span class="${change.pct >= 0 ? 'price-up' : 'price-down'}">${fmtPct(change.pct)}</span>`
     : '<span style="color:var(--text-dim)">—</span>';
+  const cols = ui.cards.columns;
+  const col = (key, html) => cols[key] === false ? '' : html;
   return `<tr data-card-id="${esc(card.id)}" class="card-row-hover">
     <td style="padding:0 4px 0 8px"><button class="btn-row-edit" data-card-id="${esc(card.id)}" title="Edit Scryfall ID">✎</button></td>
     <td style="font-weight:500;max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${esc(card.name)}">${esc(card.name)}</td>
-    <td style="color:var(--text-dim);white-space:nowrap">${esc(card.setCode)} <span style="font-size:11px">#${esc(card.collectorNumber)}</span></td>
-    <td>${foilBadge || '<span style="color:var(--text-dim)">—</span>'}</td>
-    <td><span class="badge badge-${card.rarity}">${card.rarity}</span></td>
-    <td style="font-weight:500">${cond}</td>
-    <td style="color:var(--text-dim);font-size:12px">${card.language.toUpperCase()}</td>
-    <td style="text-align:center">${card.quantity}</td>
-    <td>${fmt(card.purchasePrice)}</td>
-    <td style="font-weight:600">${curPrice != null ? fmt(curPrice) : '<span style="color:var(--text-dim)">—</span>'}</td>
-    <td>${changeHtml}</td>
-    <td>${sparkline(hist)}</td>
-    <td>${flags}</td>
+    ${col('setCode', `<td style="color:var(--text-dim);white-space:nowrap">${esc(card.setCode)} <span style="font-size:11px">#${esc(card.collectorNumber)}</span></td>`)}
+    ${col('setName', `<td style="color:var(--text-dim);white-space:nowrap;font-size:11.5px">${esc(card.setName || '—')}</td>`)}
+    ${col('foil', `<td>${foilBadge || '<span style="color:var(--text-dim)">—</span>'}</td>`)}
+    ${col('rarity', `<td><span class="badge badge-${card.rarity}">${card.rarity}</span></td>`)}
+    ${col('condition', `<td style="font-weight:500">${cond}</td>`)}
+    ${col('language', `<td style="color:var(--text-dim);font-size:12px">${card.language.toUpperCase()}</td>`)}
+    ${col('quantity', `<td style="text-align:center">${card.quantity}</td>`)}
+    ${col('purchasePrice', `<td>${fmt(card.purchasePrice)}</td>`)}
+    ${col('currentPrice', `<td style="font-weight:600">${curPrice != null ? fmt(curPrice) : '<span style="color:var(--text-dim)">—</span>'}</td>`)}
+    ${col('priceDelta', `<td>${changeHtml}</td>`)}
+    ${col('trend', `<td>${sparkline(hist)}</td>`)}
+    ${col('flags', `<td>${flags}</td>`)}
+    ${col('binderName', `<td style="color:var(--text-dim);font-size:11.5px">${esc(card.binderName || '—')}</td>`)}
   </tr>`;
 }
 
@@ -2548,7 +2599,10 @@ function renderFailedLookupsTab() {
 function filteredCards() {
   const s = ui.cards;
   let cards = collection.cards;
-  if (s.binder !== 'all')    cards = cards.filter(c => c.binderName === s.binder);
+  const binderInc = new Set(s.binder.include || []);
+  const binderExc = new Set(s.binder.exclude || []);
+  if (binderInc.size > 0) cards = cards.filter(c => binderInc.has(c.binderName || ''));
+  if (binderExc.size > 0) cards = cards.filter(c => !binderExc.has(c.binderName || ''));
   if (s.search) {
     const q = s.search.toLowerCase();
     cards = cards.filter(c => {
@@ -3197,14 +3251,57 @@ function attachContentListeners() {
   // Always hide on any re-render so it doesn't get stranded mid-screen
   hideCardHoverPreview();
 
-  // Binder sidebar
+  // Binder sidebar — three-state cycle: neutral → include → exclude → neutral
   document.querySelectorAll('.binder-item').forEach(el => {
     el.addEventListener('click', () => {
-      ui.cards.binder = el.dataset.binder;
-      ui.cards.page   = 1;
+      const val = el.dataset.binder;
+      if (val === 'all') {
+        ui.cards.binder = { include: [], exclude: [] };
+      } else {
+        let { include, exclude } = ui.cards.binder;
+        if (include.includes(val)) {
+          include = include.filter(b => b !== val);
+          exclude = [...exclude, val];
+        } else if (exclude.includes(val)) {
+          exclude = exclude.filter(b => b !== val);
+        } else {
+          include = [...include, val];
+        }
+        ui.cards.binder = { include, exclude };
+      }
+      ui.cards.page = 1;
       render();
     });
   });
+
+  // Column picker toggle
+  const colPickerBtn = document.getElementById('colPickerBtn');
+  if (colPickerBtn) {
+    colPickerBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      ui.cards.colPickerOpen = !ui.cards.colPickerOpen;
+      render();
+    });
+  }
+  document.querySelectorAll('.col-chip').forEach(chip => {
+    chip.addEventListener('click', e => {
+      e.stopPropagation();
+      const key = chip.dataset.col;
+      ui.cards.columns[key] = ui.cards.columns[key] === false;
+      render();
+    });
+  });
+  // Close col picker on outside click
+  if (ui.cards.colPickerOpen) {
+    const closeColPicker = e => {
+      if (!e.target.closest('.col-picker-wrap')) {
+        ui.cards.colPickerOpen = false;
+        render();
+      }
+      document.removeEventListener('click', closeColPicker);
+    };
+    document.addEventListener('click', closeColPicker);
+  }
 
   // Card row edit buttons
   document.querySelectorAll('.btn-row-edit').forEach(btn => {
@@ -3379,6 +3476,9 @@ async function init() {
     renderValueBySet,
     renderCardCountByYear,
     renderTop10ValueCards,
+    showCardHoverPreview,
+    hideCardHoverPreview,
+    findCollectionCardById,
   };
 
   // Auto-load from SQLite on startup

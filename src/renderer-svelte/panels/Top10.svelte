@@ -17,7 +17,10 @@
     {#each rows as r, i}
       <li>
         <span class="rank">{i + 1}</span>
-        <span class="name" title={r.c.name}>{r.c.name}</span>
+        <span class="name" title={r.c.name}
+          on:mouseenter={e => window.app?.showCardHoverPreview?.(e.currentTarget, r.c)}
+          on:mouseleave={() => window.app?.hideCardHoverPreview?.()}
+        >{r.c.name}</span>
         {#if r.c.foil !== 'normal'}<span class="foil">{window.app?.FOIL_LABEL?.[r.c.foil] || r.c.foil}</span>{/if}
         <span class="set">{r.c.setCode}</span>
         <span class="val">{window.app?.fmt(r.v)}</span>

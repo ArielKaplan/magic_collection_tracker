@@ -1,0 +1,120 @@
+/* ============================================================
+   Secret Lair Tracker — Direction A patch
+   Drop-in override for src/renderer/styles.css. Place AFTER the
+   existing :root block (or @import at the very bottom). It
+   re-tones the app toward "pro instrument" — restrained gold,
+   8px button radius, no gold gradients on text, raised body
+   contrast, single sans family.
+
+   Apply with:
+     <link rel="stylesheet" href="styles.css">
+     <link rel="stylesheet" href="styles.direction-a.css">
+   ============================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+:root {
+  /* Raised text contrast + neutral surfaces (kills the indigo cast) */
+  --text:      #ececef;
+  --text-dim:  #a3a1aa;
+  --text-muted:#6f6d76;
+
+  --bg:        #0e0e10;
+  --surface:   #16161a;
+  --surface2:  #1d1d22;
+  --surface3:  #25252c;
+  --border:    #2a2a31;
+  --border2:   #3a3a44;
+
+  /* Tight radii for a data-dense pro tool */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+}
+
+/* Single family — kill any Cinzel/serif references */
+body { font-family: 'Inter', 'Segoe UI', system-ui, sans-serif; }
+code, .mono, pre, .log-entry, .log-t, .log-cat, .log-msg, .log-det {
+  font-family: 'JetBrains Mono', 'Cascadia Code', ui-monospace, monospace;
+}
+
+/* ── Buttons: 8px radius, no gradient on primary ─────────── */
+.btn        { border-radius: 8px; }
+.btn-sm     { border-radius: 6px; padding: 5px 10px; }
+.btn-primary{
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #0d0d1a;
+  font-weight: 600;
+  box-shadow: none;
+}
+.btn-primary:hover{
+  background: var(--accent2);
+  border-color: var(--accent2);
+  box-shadow: none;
+}
+.btn:hover  { transform: none; box-shadow: none; }
+
+/* ── Badges: 6px corners, restrained tone ────────────────── */
+.badge { border-radius: 6px; text-transform: uppercase; letter-spacing: .02em; }
+
+/* ── Page buttons: 6px ───────────────────────────────────── */
+.page-btn { border-radius: 6px; }
+
+/* ── Modal header: no gold gradient on text ──────────────── */
+.modal h2 {
+  background: none;
+  -webkit-background-clip: initial;
+  -webkit-text-fill-color: var(--text);
+  color: var(--text);
+}
+
+/* ── KPI value: not gold, just text. Tabular nums everywhere. ─ */
+.s-value, .kpi-value, .sp-value {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+td, .stat-value, .price-history-row { font-variant-numeric: tabular-nums; }
+
+/* ── Strip decorative gradient hairline on summary cards ─── */
+.summary-card::before { display: none; }
+.summary-card { border-radius: 10px; }
+
+/* ── Top-bar brand: keep gold square, but flatter ────────── */
+.topbar-brand {
+  background: var(--accent);
+  box-shadow: none;
+  border-radius: 6px;
+}
+
+/* ── Tab underline: thinner, no gold gradient text ───────── */
+.tab-btn.active { color: var(--text); border-bottom-color: var(--accent); }
+
+/* ── Focus ring: visible on keyboard nav ─────────────────── */
+:focus-visible { outline: none; box-shadow: 0 0 0 2px rgba(232,184,75,.35); }
+
+/* ── Toast: simple left-stripe variant ───────────────────── */
+.toast {
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  border-left-width: 3px;
+  border-radius: 8px;
+  box-shadow: var(--shadow-md);
+}
+.toast.success { border-left-color: var(--green); }
+.toast.error   { border-left-color: var(--red); }
+.toast.info    { border-left-color: var(--accent); }
+.toast::before { font-weight: 600; font-size: 13px; }
+
+/* ── Inputs: 8px radius (was 8px already, normalize) ─────── */
+.form-group input,
+.form-group select,
+.form-group textarea { border-radius: 8px; }
+.filter-bar input[type="text"],
+.filter-bar select   { border-radius: 8px; }
+
+/* ── Binder sidebar items: keep, just nudge ──────────────── */
+.binder-item { border-radius: 6px; }
+
+/* ── Logs panel header label: drop heavy tracking ────────── */
+.logs-title { letter-spacing: .06em; }

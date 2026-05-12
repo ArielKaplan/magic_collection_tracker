@@ -14,7 +14,10 @@
     <tbody>
       {#each movers as m}
         <tr>
-          <td class="name" title={m.card.name}>{m.card.name}</td>
+          <td class="name" title={m.card.name}
+            on:mouseenter={e => window.app?.showCardHoverPreview?.(e.currentTarget, m.card)}
+            on:mouseleave={() => window.app?.hideCardHoverPreview?.()}
+          >{m.card.name}</td>
           <td>{m.card.foil !== 'normal' ? (window.app?.FOIL_LABEL?.[m.card.foil] || m.card.foil) : '—'}</td>
           <td class="dim">{m.card.setCode}</td>
           <td class="dim">{window.app?.fmt(m.change.previous)}</td>
