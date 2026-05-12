@@ -44,6 +44,9 @@ export const PANELS = [
   { id: 'year-count',    title: 'Card Count by Year',   icon: '📅', component: CardCountByYear, defaultSize: { w: 720, h: 240 } },
 ];
 
+export const CUSTOM_PREFIX = 'custom-';
+export const isCustomPanel = id => typeof id === 'string' && id.startsWith(CUSTOM_PREFIX);
+
 export function panelDef(id) {
   return PANELS.find(p => p.id === id);
 }

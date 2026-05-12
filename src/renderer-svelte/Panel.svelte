@@ -15,6 +15,7 @@
   export let zIndex = 1;
   export let filter = null;             // { binders: { include: [], exclude: [] } } | null
   export let filterable = true;         // false = no filter button (e.g. Card of the Day)
+  export let deletable = false;         // true = show delete button (custom charts)
 
   const dispatch = createEventDispatcher();
   let el, popoverEl;
@@ -133,7 +134,11 @@
       <button class="panel-btn" title={collapsed ? 'Expand' : 'Collapse'} on:click={toggleCollapse} on:pointerdown|stopPropagation>
         {collapsed ? '▾' : '▴'}
       </button>
-      <button class="panel-btn" title="Hide" on:click={close} on:pointerdown|stopPropagation>×</button>
+      {#if deletable}
+        <button class="panel-btn panel-btn-delete" title="Delete chart" on:click={() => dispatch('delete')} on:pointerdown|stopPropagation>🗑</button>
+      {:else}
+        <button class="panel-btn" title="Hide" on:click={close} on:pointerdown|stopPropagation>×</button>
+      {/if}
     </span>
   </header>
 
@@ -218,6 +223,7 @@
   }
   .panel-btn:hover { background: rgba(255,255,255,0.08); color: var(--text, #ece9e1); }
   .filter-btn.filter-on { color: var(--accent2, #e8b84b); }
+  .panel-btn-delete:hover { color: #e05555 !important; background: rgba(224,85,85,0.12) !important; }
   .filter-dot {
     position: absolute;
     top: 2px; right: 2px;
