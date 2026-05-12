@@ -61,6 +61,7 @@ CREATE TABLE IF NOT EXISTS card_metadata (
   cmc             REAL,
   power           TEXT,
   toughness       TEXT,
+  oracle_text     TEXT,
   updated_at      TEXT DEFAULT (datetime('now'))
 );
 

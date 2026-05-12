@@ -13,6 +13,13 @@ function init(dbPath) {
 
   const schema = fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf-8');
   db.exec(schema);
+
+  // ── In-place migrations for older databases (idempotent) ─────────────────
+  // Add oracle_text column to card_metadata if it doesn't exist. ALTER TABLE
+  // throws "duplicate column" on already-migrated DBs — that's fine, catch it.
+  try { db.exec('ALTER TABLE card_metadata ADD COLUMN oracle_text TEXT'); }
+  catch (e) { /* column already exists */ }
+
   return db;
 }
 
@@ -148,12 +155,13 @@ function getAllPriceHistory() {
 // ── Metadata ─────────────────────────────────────────────────────────────────
 function bulkUpsertMetadata(entries) {
   const stmt = db.prepare(`
-    INSERT INTO card_metadata (scryfall_id, colors, color_identity, type_line, cmc, power, toughness)
-    VALUES (@scryfall_id, @colors, @color_identity, @type_line, @cmc, @power, @toughness)
+    INSERT INTO card_metadata (scryfall_id, colors, color_identity, type_line, cmc, power, toughness, oracle_text)
+    VALUES (@scryfall_id, @colors, @color_identity, @type_line, @cmc, @power, @toughness, @oracle_text)
     ON CONFLICT(scryfall_id) DO UPDATE SET
       colors=excluded.colors, color_identity=excluded.color_identity,
       type_line=excluded.type_line, cmc=excluded.cmc,
       power=excluded.power, toughness=excluded.toughness,
+      oracle_text=COALESCE(excluded.oracle_text, card_metadata.oracle_text),
       updated_at=datetime('now')
   `);
   const tx = db.transaction((arr) => {
@@ -165,6 +173,7 @@ function bulkUpsertMetadata(entries) {
       cmc:            e.cmc ?? null,
       power:          e.power ?? null,
       toughness:      e.toughness ?? null,
+      oracle_text:    e.oracle_text || null,
     });
   });
   tx(entries);
@@ -181,6 +190,7 @@ function getAllMetadata() {
       cmc:            r.cmc,
       power:          r.power,
       toughness:      r.toughness,
+      oracle_text:    r.oracle_text,
     };
   }
   return out;

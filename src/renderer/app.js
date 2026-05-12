@@ -677,7 +677,10 @@ async function refreshPrices() {
       }
     }
 
-    // Metadata (store once per scryfallId)
+    // Metadata — create on first sight; backfill oracle_text on every refresh
+    // so older cached metadata (which didn't capture oracle text) catches up.
+    // Double-faced cards have empty top-level oracle_text; pull from face[0].
+    const oracleText = card.oracle_text || card.card_faces?.[0]?.oracle_text || '';
     if (!collection.cardMetadata[scryfallId]) {
       collection.cardMetadata[scryfallId] = {
         colors:         card.colors         || [],
@@ -686,7 +689,10 @@ async function refreshPrices() {
         cmc:            card.cmc            ?? null,
         power:          card.power          ?? null,
         toughness:      card.toughness      ?? null,
+        oracle_text:    oracleText,
       };
+    } else if (!collection.cardMetadata[scryfallId].oracle_text && oracleText) {
+      collection.cardMetadata[scryfallId].oracle_text = oracleText;
     }
   }
 
@@ -1611,7 +1617,7 @@ function renderCards() {
       <div>
         <div class="filter-bar">
           <div style="display:flex;gap:6px;align-items:center">
-            <input type="text" id="cardSearch" placeholder="Search name, set… (Enter to search)" value="${esc(s.search)}" style="flex:1;min-width:200px">
+            <input type="text" id="cardSearch" placeholder="Search name, set, type, or oracle text… (Enter to search)" value="${esc(s.search)}" style="flex:1;min-width:200px">
             <button class="btn" id="cardSearchBtn" style="padding:7px 14px;font-size:13px">Search</button>
             ${s.search ? `<button class="btn btn-ghost" id="cardSearchClear" style="padding:7px 10px;font-size:13px" title="Clear search">✕</button>` : ''}
           </div>
@@ -1688,7 +1694,7 @@ function renderCardRow(card) {
   const changeHtml = change
     ? `<span class="${change.pct >= 0 ? 'price-up' : 'price-down'}">${fmtPct(change.pct)}</span>`
     : '<span style="color:var(--text-dim)">—</span>';
-  return `<tr>
+  return `<tr data-card-id="${esc(card.id)}" class="card-row-hover">
     <td style="padding:0 4px 0 8px"><button class="btn-row-edit" data-card-id="${esc(card.id)}" title="Edit Scryfall ID">✎</button></td>
     <td style="font-weight:500;max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${esc(card.name)}">${esc(card.name)}</td>
     <td style="color:var(--text-dim);white-space:nowrap">${esc(card.setCode)} <span style="font-size:11px">#${esc(card.collectorNumber)}</span></td>
@@ -1788,7 +1794,14 @@ function renderGallery() {
   }
   if (g.search) {
     const q = g.search.toLowerCase();
-    cards = cards.filter(c => c.name.toLowerCase().includes(q) || (c.setName || '').toLowerCase().includes(q));
+    cards = cards.filter(c => {
+      if (c.name.toLowerCase().includes(q)) return true;
+      if ((c.setName || '').toLowerCase().includes(q)) return true;
+      const meta = collection.cardMetadata?.[c.scryfallId];
+      if (meta?.type_line?.toLowerCase().includes(q)) return true;
+      if (meta?.oracle_text?.toLowerCase().includes(q)) return true;
+      return false;
+    });
   }
 
   // Sort
@@ -1843,7 +1856,7 @@ function renderGallery() {
           ${cmcVals.map(v => `<option value="${v}"${sel(String(g.cmc),String(v))}>${v === 0 ? '0 (Land/Free)' : v}</option>`).join('')}
         </select>
         <div style="display:flex;gap:6px;flex:1;min-width:180px">
-          <input type="text" id="gallerySearch" class="search-input" placeholder="Search name or set…"
+          <input type="text" id="gallerySearch" class="search-input" placeholder="Search name, set, type, or oracle text…"
             value="${esc(g.search)}"
             onkeydown="if(event.key==='Enter'){ui.gallery.search=this.value;ui.gallery.page=0;render()}"
             style="flex:1;min-width:0">
@@ -2538,11 +2551,15 @@ function filteredCards() {
   if (s.binder !== 'all')    cards = cards.filter(c => c.binderName === s.binder);
   if (s.search) {
     const q = s.search.toLowerCase();
-    cards = cards.filter(c =>
-      c.name.toLowerCase().includes(q) ||
-      c.setName.toLowerCase().includes(q) ||
-      c.setCode.toLowerCase().includes(q)
-    );
+    cards = cards.filter(c => {
+      if (c.name.toLowerCase().includes(q)) return true;
+      if ((c.setName || '').toLowerCase().includes(q)) return true;
+      if ((c.setCode || '').toLowerCase().includes(q)) return true;
+      const meta = collection.cardMetadata?.[c.scryfallId];
+      if (meta?.type_line?.toLowerCase().includes(q)) return true;
+      if (meta?.oracle_text?.toLowerCase().includes(q)) return true;
+      return false;
+    });
   }
   if (s.foil !== 'all')      cards = cards.filter(c => c.foil === s.foil);
   if (s.rarity !== 'all')    cards = cards.filter(c => c.rarity === s.rarity);
@@ -3028,6 +3045,112 @@ function showSettings() {
 // ─────────────────────────────────────────────────────────────────────────────
 // EVENT LISTENERS (re-attached after each render)
 // ─────────────────────────────────────────────────────────────────────────────
+// ── Card hover preview ─────────────────────────────────────────────────────
+let _hoverShowTimer = null;
+
+function findCollectionCardById(id) {
+  return collection.cards.find(c => c.id === id);
+}
+
+function buildCardHoverHtml(card) {
+  if (!card) return '';
+  const id = (card.scryfallId || '').toLowerCase();
+  const img = id ? `https://cards.scryfall.io/normal/front/${id[0]}/${id[1]}/${id}.jpg` : '';
+  const meta = collection.cardMetadata?.[card.scryfallId];
+  const oracle = meta?.oracle_text || '';
+  const typeLine = meta?.type_line || '';
+  const price = cardCurrentValue(card);
+  const foilBadge = card.foil && card.foil !== 'normal'
+    ? `<span class="badge badge-${card.foil}" style="font-size:9.5px;padding:1px 5px;border-radius:99px;margin-left:4px">${FOIL_LABEL[card.foil] || card.foil}</span>`
+    : '';
+
+  return `
+    ${img ? `<img class="chp-img" src="${esc(img)}" alt="${esc(card.name)}" onerror="this.style.display='none'">` : ''}
+    <div class="chp-name">${esc(card.name)}${foilBadge}</div>
+    <div class="chp-sub">${esc(card.setName || '')} · ${esc((card.setCode||'').toUpperCase())} · #${esc(card.collectorNumber || '?')}</div>
+    ${price != null ? `<div class="chp-price">${fmt(price)}</div>` : ''}
+    <div class="chp-grid">
+      ${typeLine ? `<span class="lbl">Type</span><span>${esc(typeLine)}</span>` : ''}
+      <span class="lbl">Rarity</span><span style="text-transform:capitalize">${esc(card.rarity || '—')}</span>
+      <span class="lbl">Binder</span><span>${esc(card.binderName || '—')}</span>
+      <span class="lbl">Condition</span><span>${esc((CONDITION_FULL[card.condition] || card.condition || '—'))}</span>
+      <span class="lbl">Qty</span><span>${card.quantity || 1}</span>
+    </div>
+    ${oracle ? `<div class="chp-oracle">${esc(oracle)}</div>` : ''}
+  `;
+}
+
+function showCardHoverPreview(el, card) {
+  const preview = document.getElementById('card-hover-preview');
+  if (!preview) return;
+  clearTimeout(_hoverShowTimer);
+  _hoverShowTimer = setTimeout(() => {
+    preview.innerHTML = buildCardHoverHtml(card);
+    preview.classList.add('visible');
+    positionHoverPreview(el);
+  }, 200);
+}
+
+function positionHoverPreview(anchorEl) {
+  const preview = document.getElementById('card-hover-preview');
+  if (!preview || !anchorEl) return;
+  const r = anchorEl.getBoundingClientRect();
+  const pw = preview.offsetWidth || 300;
+  const ph = preview.offsetHeight || 400;
+  const pad = 10;
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+
+  // Prefer right of anchor; flip to left if it overflows
+  let x = r.right + pad;
+  if (x + pw > vw - pad) x = r.left - pw - pad;
+  if (x < pad) x = pad;
+
+  // Vertically center on anchor, clamped to viewport
+  let y = r.top + (r.height / 2) - (ph / 2);
+  if (y + ph > vh - pad) y = vh - ph - pad;
+  if (y < pad) y = pad;
+
+  preview.style.left = `${x}px`;
+  preview.style.top  = `${y}px`;
+}
+
+function hideCardHoverPreview() {
+  clearTimeout(_hoverShowTimer);
+  const preview = document.getElementById('card-hover-preview');
+  if (preview) preview.classList.remove('visible');
+}
+
+// SL tile hover: user may or may not own the printing. If owned, show full
+// owned-card details. Otherwise build a partial preview from MTGJSON name +
+// drop info — no Scryfall fetch (would be too slow for hover).
+function showSlTileHoverPreview(el, scryfallId) {
+  const owned = collection.cards.find(c => c.scryfallId === scryfallId);
+  if (owned) { showCardHoverPreview(el, owned); return; }
+
+  const preview = document.getElementById('card-hover-preview');
+  if (!preview) return;
+  clearTimeout(_hoverShowTimer);
+  _hoverShowTimer = setTimeout(() => {
+    const id = (scryfallId || '').toLowerCase();
+    const img = id ? `https://cards.scryfall.io/normal/front/${id[0]}/${id[1]}/${id}.jpg` : '';
+    const name = (typeof SL_SCRYFALL_TO_NAME !== 'undefined' && SL_SCRYFALL_TO_NAME[scryfallId]) || 'Unknown card';
+    const slInfo = typeof getSlInfoById === 'function' ? getSlInfoById(scryfallId) : [];
+    preview.innerHTML = `
+      ${img ? `<img class="chp-img" src="${esc(img)}" alt="${esc(name)}" onerror="this.style.display='none'">` : ''}
+      <div class="chp-name">${esc(name)}</div>
+      <div class="chp-sub" style="color:#f87171">Not in your collection</div>
+      ${slInfo.length ? `<div class="chp-grid">
+        ${slInfo.map(s => `
+          <span class="lbl">SL Drop</span><span style="color:var(--accent2)">${esc(s.drop)}</span>
+          <span class="lbl">Superdrop</span><span>${esc(s.superdrop)}</span>
+        `).join('')}
+      </div>` : ''}`;
+    preview.classList.add('visible');
+    positionHoverPreview(el);
+  }, 200);
+}
+
 function attachContentListeners() {
   // Dashboard drag-and-drop reorder
   if (ui.activeTab === 'dashboard') attachDashboardDragHandlers();
@@ -3035,6 +3158,44 @@ function attachContentListeners() {
   // Empty state CSV import
   const emptyCsv = document.getElementById('emptyCsvBtn');
   if (emptyCsv) emptyCsv.addEventListener('click', () => importCsvFile().catch(console.error));
+
+  // ── Card hover previews across tabs ─────────────────────────────────────
+  // Gallery: each .gallery-card has onclick="showGalleryModal('cardId')"
+  if (ui.activeTab === 'gallery') {
+    document.querySelectorAll('.gallery-card[onclick*="showGalleryModal"]').forEach(el => {
+      const m = el.getAttribute('onclick').match(/showGalleryModal\('([^']+)'\)/);
+      const cardId = m ? m[1] : null;
+      if (!cardId) return;
+      el.addEventListener('mouseenter', () => {
+        const card = findCollectionCardById(cardId);
+        if (card) showCardHoverPreview(el, card);
+      });
+      el.addEventListener('mouseleave', hideCardHoverPreview);
+    });
+  }
+  // My Collection (Cards) tab: every row gets data-card-id; hover the row
+  if (ui.activeTab === 'cards') {
+    document.querySelectorAll('tr[data-card-id]').forEach(el => {
+      const cardId = el.dataset.cardId;
+      el.addEventListener('mouseenter', () => {
+        const card = findCollectionCardById(cardId);
+        if (card) showCardHoverPreview(el, card);
+      });
+      el.addEventListener('mouseleave', hideCardHoverPreview);
+    });
+  }
+  // Secret Lair Explorer drop view: tiles have onclick="showSlViewerModal('scryfallId')"
+  if (ui.activeTab === 'slviewer') {
+    document.querySelectorAll('.gallery-card[onclick*="showSlViewerModal"]').forEach(el => {
+      const m = el.getAttribute('onclick').match(/showSlViewerModal\('([^']+)'\)/);
+      const scryfallId = m ? m[1] : null;
+      if (!scryfallId) return;
+      el.addEventListener('mouseenter', () => showSlTileHoverPreview(el, scryfallId));
+      el.addEventListener('mouseleave', hideCardHoverPreview);
+    });
+  }
+  // Always hide on any re-render so it doesn't get stranded mid-screen
+  hideCardHoverPreview();
 
   // Binder sidebar
   document.querySelectorAll('.binder-item').forEach(el => {
