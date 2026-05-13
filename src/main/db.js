@@ -20,6 +20,9 @@ function init(dbPath) {
   try { db.exec('ALTER TABLE card_metadata ADD COLUMN oracle_text TEXT'); }
   catch (e) { /* column already exists */ }
 
+  try { db.exec('ALTER TABLE sealed ADD COLUMN price_history TEXT'); }
+  catch (e) { /* column already exists */ }
+
   return db;
 }
 
@@ -86,21 +89,28 @@ function updateCardScryfallId(id, scryfallId) {
 }
 
 // ── Sealed ───────────────────────────────────────────────────────────────────
-function listSealed() { return db.prepare('SELECT * FROM sealed').all(); }
+function listSealed() {
+  return db.prepare('SELECT * FROM sealed').all().map(r => ({
+    ...r,
+    priceHistory: r.price_history ? JSON.parse(r.price_history) : [],
+  }));
+}
 function upsertSealed(item) {
-  const cols = ['id','name','product_type','set_code','set_name','quantity','purchase_price','current_value','status','notes'];
+  const cols = ['id','name','product_type','set_code','set_name','quantity','purchase_price','current_value','status','notes','price_history'];
   db.prepare(`INSERT INTO sealed (${cols.join(',')})
     VALUES (${cols.map(c => '@' + c).join(',')})
     ON CONFLICT(id) DO UPDATE SET
       name=excluded.name, product_type=excluded.product_type, set_code=excluded.set_code,
       set_name=excluded.set_name, quantity=excluded.quantity,
       purchase_price=excluded.purchase_price, current_value=excluded.current_value,
-      status=excluded.status, notes=excluded.notes, updated_at=datetime('now')`).run({
+      status=excluded.status, notes=excluded.notes, price_history=excluded.price_history,
+      updated_at=datetime('now')`).run({
     id: item.id, name: item.name, product_type: item.productType || null,
     set_code: item.setCode || null, set_name: item.setName || null,
     quantity: item.quantity || 1, purchase_price: item.purchasePrice ?? 0,
     current_value: item.currentValue ?? null, status: item.status || 'sealed',
     notes: item.notes || null,
+    price_history: item.priceHistory?.length ? JSON.stringify(item.priceHistory) : null,
   });
 }
 function deleteSealed(id) { return db.prepare('DELETE FROM sealed WHERE id=?').run(id).changes; }

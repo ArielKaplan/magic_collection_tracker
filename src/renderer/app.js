@@ -4,8 +4,8 @@
 // CONSTANTS
 // ─────────────────────────────────────────────────────────────────────────────
 const SCRYFALL_COLLECTION = 'https://api.scryfall.com/cards/collection';
-const EBAY_TOKEN_URL  = 'https://corsproxy.io/?url=https://api.ebay.com/identity/v1/oauth2/token';
-const EBAY_SEARCH_URL = 'https://corsproxy.io/?url=https://api.ebay.com/buy/browse/v1/item_summary/search';
+const TCGCSV_GROUPS = 'https://tcgcsv.com/tcgplayer/1/groups';
+const PC_API        = 'https://www.pricecharting.com/api';
 
 const CONDITION_SHORT = {
   mint: 'M', near_mint: 'NM', lightly_played: 'LP',
@@ -27,6 +27,17 @@ const PRODUCT_TYPES = [
 // STATE
 // ─────────────────────────────────────────────────────────────────────────────
 let collection = makeCollection();
+
+// TCGCSV in-memory cache — full sealed product preload
+let tcgcsvCache = {
+  groups:         null,   // all MTG groups from TCGCSV
+  sealedProducts: [],     // flat array of all sealed products with prices
+  lastRefresh:    null,
+  syncing:        false,
+  syncDone:       0,
+  syncTotal:      0,
+};
+
 let ui = {
   activeTab: 'dashboard',
   cards: {
@@ -131,7 +142,7 @@ function makeCollection() {
   return {
     version: 3,
     lastPriceRefresh: null,
-    settings: { ebayClientId: '', ebayClientSecret: '' },
+    settings: { pricechartingKey: '' },
     cards: [],
     sealed: [],
     priceHistory: {},
@@ -330,13 +341,15 @@ async function autoLoad() {
       id: r.id, name: r.name, productType: r.product_type, setCode: r.set_code,
       setName: r.set_name, quantity: r.quantity, purchasePrice: r.purchase_price,
       currentValue: r.current_value, status: r.status, notes: r.notes,
+      priceHistory: r.priceHistory || [],
     }));
     collection.priceHistory  = prices;
     collection.cardMetadata  = metadata;
     collection.failedLookups = failures;
     collection.settings = settings.settings_blob
       ? JSON.parse(settings.settings_blob)
-      : { ebayClientId: '', ebayClientSecret: '' };
+      : { pricechartingKey: '' };
+    if (!collection.settings.pricechartingKey) collection.settings.pricechartingKey = '';
     collection.lastPriceRefresh = settings.last_price_refresh || null;
 
     return true;
@@ -401,7 +414,7 @@ async function loadCollectionFile() {
     // Merge metadata — incoming overrides on collision
     Object.assign(collection.cardMetadata, data.cardMetadata || {});
 
-    // Settings: keep current (don't overwrite eBay creds with imported values)
+    // Settings: keep current (don't overwrite API keys with imported values)
     // failedLookups: get rebuilt next refresh anyway, leave alone
     if (data.lastPriceRefresh && (!collection.lastPriceRefresh || data.lastPriceRefresh > collection.lastPriceRefresh))
       collection.lastPriceRefresh = data.lastPriceRefresh;
@@ -1043,7 +1056,7 @@ function showAbout() {
     <p style="font-size:11px;color:var(--text-muted);margin-top:18px;line-height:1.5">
       Card prices via <a href="#" onclick="window.api.app.openExternal('https://scryfall.com');return false">Scryfall</a>.
       Secret Lair drop data via <a href="#" onclick="window.api.app.openExternal('https://mtgjson.com');return false">MTGJSON</a>.
-      Sealed prices via eBay Browse API (your credentials, configured in Settings).
+      Sealed prices via TCGCSV (free) and PriceCharting (optional API key, configured in Settings).
     </p>
     <div style="display:flex;justify-content:flex-end;margin-top:18px">
       <button class="btn btn-primary" onclick="hideModal()">Close</button>
@@ -1051,50 +1064,217 @@ function showAbout() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// EBAY API
+// SEALED PRODUCT PRICING — TCGCSV (free) + PriceCharting (optional key)
 // ─────────────────────────────────────────────────────────────────────────────
-async function getEbayToken() {
-  const { ebayClientId, ebayClientSecret } = collection.settings;
-  if (!ebayClientId || !ebayClientSecret)
-    throw new Error('eBay credentials not set — open Settings to configure them');
+const SEALED_KEYWORDS = ['booster box', 'set booster box', 'collector booster', 'bundle', 'secret lair', 'commander deck', 'prerelease kit', 'starter kit'];
 
-  const creds = btoa(`${ebayClientId}:${ebayClientSecret}`);
-  const resp  = await fetch(EBAY_TOKEN_URL, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Basic ${creds}`,
-      'Content-Type': 'application/x-www-form-urlencoded'
-    },
-    body: 'grant_type=client_credentials&scope=https%3A%2F%2Fapi.ebay.com%2Foauth%2Fapi_scope'
-  });
-  if (!resp.ok) throw new Error(`eBay auth failed (${resp.status}) — check your credentials in Settings`);
-  const data = await resp.json();
-  if (!data.access_token) throw new Error('eBay returned no token — check your credentials');
-  return data.access_token;
+function updateSyncBtn() {
+  const btn = document.getElementById('tcgcsv-sync-btn');
+  const lbl = document.getElementById('tcgcsv-sync-lbl');
+  if (!btn) return;
+  if (tcgcsvCache.syncing) {
+    btn.textContent = `Syncing… ${tcgcsvCache.syncDone}/${tcgcsvCache.syncTotal}`;
+    btn.disabled = true;
+  } else {
+    btn.textContent = '↻ Sync Price Data';
+    btn.disabled = false;
+  }
+  if (lbl) {
+    if (tcgcsvCache.sealedProducts.length) {
+      const t = tcgcsvCache.lastRefresh ? new Date(tcgcsvCache.lastRefresh).toLocaleTimeString() : '?';
+      lbl.textContent = `${tcgcsvCache.sealedProducts.length} sealed products · synced ${t}`;
+    } else {
+      lbl.textContent = 'Not synced — click to load price data';
+    }
+  }
 }
 
-async function searchEbayPrice(query) {
-  const token = await getEbayToken();
-  const params = new URLSearchParams({
-    q: query,
-    filter: 'conditions:{NEW}',
-    sort: 'price',
-    limit: '10'
-  });
-  const resp = await fetch(`${EBAY_SEARCH_URL}?${params}`, {
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'X-EBAY-C-MARKETPLACE-ID': 'EBAY_US'
+async function refreshTcgcsvCache() {
+  if (tcgcsvCache.syncing) return;
+  tcgcsvCache.syncing        = true;
+  tcgcsvCache.sealedProducts = [];
+  tcgcsvCache.syncDone       = 0;
+  tcgcsvCache.syncTotal      = 0;
+  updateSyncBtn();
+  window.logger?.info('Sealed', 'TCGCSV sync started — fetching MTG group list…');
+
+  try {
+    // Step 1: fetch all groups
+    const grpResp = await fetch(TCGCSV_GROUPS);
+    if (!grpResp.ok) throw new Error(`Groups fetch failed (${grpResp.status})`);
+    const grpRaw = await grpResp.json();
+    tcgcsvCache.groups    = Array.isArray(grpRaw) ? grpRaw : (grpRaw.results || grpRaw.groups || []);
+    tcgcsvCache.syncTotal = tcgcsvCache.groups.length;
+    updateSyncBtn();
+    window.logger?.info('Sealed', `Found ${tcgcsvCache.groups.length} MTG groups — fetching products & prices…`);
+
+    // Step 2: fetch /products + /prices per group, join by productId
+    // Smaller batches + delay between batches to avoid rate limiting
+    const BATCH = 5;
+    const BATCH_DELAY_MS = 150;
+    const allSealed = [];
+    let errors = 0;
+
+    for (let i = 0; i < tcgcsvCache.groups.length; i += BATCH) {
+      const batch = tcgcsvCache.groups.slice(i, i + BATCH);
+      await Promise.all(batch.map(async g => {
+        try {
+          const [prodResp, priceResp] = await Promise.all([
+            fetch(`https://tcgcsv.com/tcgplayer/1/${g.groupId}/products`),
+            fetch(`https://tcgcsv.com/tcgplayer/1/${g.groupId}/prices`),
+          ]);
+          if (!prodResp.ok || !priceResp.ok) { errors++; return; }
+
+          const prodRaw  = await prodResp.json();
+          const priceRaw = await priceResp.json();
+          const products = Array.isArray(prodRaw)  ? prodRaw  : (prodRaw.results  || []);
+          const prices   = Array.isArray(priceRaw) ? priceRaw : (priceRaw.results || []);
+
+          // Build productId → marketPrice map
+          const priceMap = {};
+          for (const p of prices) {
+            const id = p.productId ?? p.skuId;
+            if (id != null) {
+              const price = p.marketPrice ?? p.midPrice ?? p.lowPrice;
+              // Keep the best (highest) price if there are multiple rows per productId (Normal/Foil)
+              if (price != null && (priceMap[id] == null || price > priceMap[id])) priceMap[id] = price;
+            }
+          }
+
+          for (const p of products) {
+            const name = p.name || p.cleanName || p.productName || '';
+            if (!name) continue;
+            const isSealed = SEALED_KEYWORDS.some(kw => name.toLowerCase().includes(kw));
+            if (!isSealed) continue;
+            const price = priceMap[p.productId] ?? null;
+            allSealed.push({
+              id:          `tcgcsv-${g.groupId}-${p.productId}`,
+              name,
+              consoleName: g.name,
+              marketPrice: price != null ? parseFloat(price) : null,
+              source:      'tcgcsv',
+            });
+          }
+        } catch (e) {
+          errors++;
+          window.logger?.debug('Sealed', `Group ${g.groupId} (${g.name}) failed: ${e.message}`);
+        }
+        tcgcsvCache.syncDone++;
+      }));
+      updateSyncBtn();
+      // Throttle between batches
+      if (i + BATCH < tcgcsvCache.groups.length) await new Promise(r => setTimeout(r, BATCH_DELAY_MS));
     }
-  });
-  if (!resp.ok) throw new Error(`eBay search failed (${resp.status})`);
+
+    tcgcsvCache.sealedProducts = allSealed;
+    tcgcsvCache.lastRefresh    = new Date().toISOString();
+
+    const withPrice    = allSealed.filter(p => p.marketPrice != null).length;
+    const summaryMsg   = `Loaded ${allSealed.length} sealed products (${withPrice} with prices) from ${tcgcsvCache.groups.length} groups${errors ? ` · ${errors} group errors` : ''}`;
+    toast(summaryMsg, allSealed.length > 0 ? 'success' : 'warn');
+    if (allSealed.length > 0) window.logger?.success('Sealed', summaryMsg);
+    else window.logger?.warn('Sealed', summaryMsg + ' — check network or try again');
+  } catch (err) {
+    toast('TCGCSV sync failed: ' + err.message, 'error');
+    window.logger?.error('Sealed', `TCGCSV sync failed: ${err.message}`);
+  } finally {
+    tcgcsvCache.syncing = false;
+    updateSyncBtn();
+  }
+}
+
+async function searchTcgcsv(query) {
+  const q = query.toLowerCase().trim();
+
+  // If full cache is loaded, search it locally (instant)
+  if (tcgcsvCache.sealedProducts.length) {
+    return tcgcsvCache.sealedProducts
+      .filter(p => p.name.toLowerCase().includes(q) || p.consoleName.toLowerCase().includes(q))
+      .slice(0, 30);
+  }
+
+  // Cache not loaded — do a quick live group-name search as fallback
+  if (!tcgcsvCache.groups) {
+    const resp = await fetch(TCGCSV_GROUPS);
+    if (!resp.ok) throw new Error(`TCGCSV unavailable (${resp.status})`);
+    const raw = await resp.json();
+    tcgcsvCache.groups = Array.isArray(raw) ? raw : (raw.results || raw.groups || []);
+  }
+  const matches = tcgcsvCache.groups.filter(g => g.name && g.name.toLowerCase().includes(q)).slice(0, 6);
+  if (!matches.length) return [];
+  const results = [];
+  await Promise.all(matches.map(async g => {
+    try {
+      const [prodResp, priceResp] = await Promise.all([
+        fetch(`https://tcgcsv.com/tcgplayer/1/${g.groupId}/products`),
+        fetch(`https://tcgcsv.com/tcgplayer/1/${g.groupId}/prices`),
+      ]);
+      if (!prodResp.ok || !priceResp.ok) return;
+      const products = await prodResp.json().then(r => Array.isArray(r) ? r : (r.results || []));
+      const prices   = await priceResp.json().then(r => Array.isArray(r) ? r : (r.results || []));
+      const priceMap = {};
+      prices.forEach(p => { if (p.productId != null) priceMap[p.productId] = p.marketPrice ?? p.midPrice ?? p.lowPrice; });
+      products.forEach(p => {
+        const name  = p.name || p.cleanName || p.productName || '';
+        const price = priceMap[p.productId];
+        if (name && price != null) results.push({
+          id:          `tcgcsv-${g.groupId}-${p.productId}`,
+          name,
+          consoleName: g.name,
+          marketPrice: parseFloat(price),
+          source:      'tcgcsv',
+        });
+      });
+    } catch {}
+  }));
+  return results;
+}
+
+async function searchPriceCharting(query) {
+  const key = collection.settings.pricechartingKey;
+  if (!key) throw new Error('PriceCharting API key not set — add it in Settings');
+  const target = `${PC_API}/products?q=${encodeURIComponent(query)}&status=price&format=json&key=${encodeURIComponent(key)}`;
+  const resp = await fetch(`https://corsproxy.io/?url=${encodeURIComponent(target)}`);
+  if (!resp.ok) throw new Error(`PriceCharting search failed (${resp.status})`);
   const data = await resp.json();
-  const prices = (data.itemSummaries || [])
-    .map(i => parseFloat(i.price?.value))
-    .filter(p => !isNaN(p) && p > 0)
-    .sort((a, b) => a - b);
-  if (!prices.length) return null;
-  return prices[Math.floor(prices.length / 2)]; // median
+  if (data.status !== 'success') throw new Error(data['error-message'] || 'Search failed');
+  return (data.products || [])
+    .map(p => ({
+      id:          String(p.id),
+      name:        p['product-name'] || '',
+      consoleName: p['console-name'] || '',
+      marketPrice: p['new-price'] != null ? p['new-price'] / 100
+                 : p['loose-price'] != null ? p['loose-price'] / 100 : null,
+      priceLabel:  p['new-price'] != null ? 'sealed' : 'loose',
+      source:      'pricecharting',
+    }))
+    .filter(p => p.marketPrice != null);
+}
+
+async function fetchPriceChartingById(id) {
+  const key = collection.settings.pricechartingKey;
+  if (!key) throw new Error('PriceCharting API key not set — add it in Settings');
+  const target = `${PC_API}/product?id=${encodeURIComponent(id)}&status=price&format=json&key=${encodeURIComponent(key)}`;
+  const resp = await fetch(`https://corsproxy.io/?url=${encodeURIComponent(target)}`);
+  if (!resp.ok) throw new Error(`Price fetch failed (${resp.status})`);
+  const data = await resp.json();
+  if (data.status !== 'success') throw new Error(data['error-message'] || 'Price fetch failed');
+  const sealed = data['new-price']   != null ? data['new-price']   / 100 : null;
+  const loose  = data['loose-price'] != null ? data['loose-price'] / 100 : null;
+  return sealed ?? loose;
+}
+
+async function searchSealedPrice(query) {
+  const results = [];
+  const errs = [];
+  // Always try TCGCSV (free, no key)
+  try { results.push(...await searchTcgcsv(query)); } catch (e) { errs.push('TCGCSV: ' + e.message); }
+  // Try PriceCharting if key is configured
+  if (collection.settings.pricechartingKey) {
+    try { results.push(...await searchPriceCharting(query)); } catch (e) { errs.push('PriceCharting: ' + e.message); }
+  }
+  if (!results.length && errs.length) throw new Error(errs.join(' | '));
+  return results;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2946,7 +3126,18 @@ function renderSealed() {
           ${collection.sealed.length} products · ${totalQty} items · Total value: <strong style="color:var(--text)">${fmt(totalVal)}</strong>
         </div>
       </div>
-      <button class="btn btn-primary" id="addSealedBtn">+ Add Product</button>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <div style="text-align:right">
+          <button class="btn btn-sm" id="tcgcsv-sync-btn">↻ Sync Price Data</button>
+          <div id="tcgcsv-sync-lbl" style="font-size:11px;color:var(--text-dim);margin-top:3px">
+            ${tcgcsvCache.groups ? `${tcgcsvCache.groups.length} groups · synced ${new Date(tcgcsvCache.lastRefresh).toLocaleTimeString()}` : 'Not synced — click to load price data'}
+          </div>
+        </div>
+        <div style="display:flex;gap:6px">
+          <button class="btn" id="browseSealedBtn">⊞ Browse Sets</button>
+          <button class="btn btn-primary" id="addSealedBtn">+ Add Product</button>
+        </div>
+      </div>
     </div>
 
     <div class="filter-bar">
@@ -2969,9 +3160,11 @@ function renderSealed() {
         <p>${collection.sealed.length === 0
           ? 'Track booster boxes, bundles, Secret Lairs, and other sealed products here. Add items to see their value over time.'
           : 'Try adjusting your filters.'}</p>
-        ${collection.sealed.length === 0
-          ? '<button class="btn btn-primary" id="addSealedBtn2">+ Add Your First Product</button>'
-          : ''}
+        ${collection.sealed.length === 0 ? `
+          <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
+            <button class="btn" id="browseSealedBtn2">⊞ Browse Sets</button>
+            <button class="btn btn-primary" id="addSealedBtn2">🔍 Search for a Product</button>
+          </div>` : ''}
       </div>
     ` : `<div class="sealed-list">${filtered.map(renderSealedItem).join('')}</div>`}`;
 }
@@ -3058,27 +3251,189 @@ function renderSealedItem(item) {
 // ─────────────────────────────────────────────────────────────────────────────
 // MODAL HELPERS
 // ─────────────────────────────────────────────────────────────────────────────
-function showModal(html) {
+function showModal(html, wide = false) {
   document.getElementById('modal-content').innerHTML = html;
-  document.getElementById('modal-overlay').classList.remove('hidden');
+  const overlay = document.getElementById('modal-overlay');
+  overlay.classList.remove('hidden');
+  const modal = overlay.querySelector('.modal');
+  if (modal) modal.classList.toggle('modal-wide', wide);
 }
 function hideModal() {
   document.getElementById('modal-overlay').classList.add('hidden');
+  const modal = document.querySelector('#modal-overlay .modal');
+  if (modal) modal.classList.remove('modal-wide');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BROWSE SETS MODAL
+// ─────────────────────────────────────────────────────────────────────────────
+function showBrowseModal() {
+  let browseSort   = 'name-asc';
+  let browseFilter = '';
+  let selectedGroup = null;
+  let groupProducts = [];
+
+  function groupsToShow() {
+    if (!tcgcsvCache.groups?.length) return [];
+    const q = browseFilter.trim().toLowerCase();
+    return tcgcsvCache.groups
+      .filter(g => !q || g.name.toLowerCase().includes(q))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  function sortedProducts() {
+    const arr = [...groupProducts];
+    if      (browseSort === 'name-asc')   arr.sort((a, b) => a.name.localeCompare(b.name));
+    else if (browseSort === 'name-desc')  arr.sort((a, b) => b.name.localeCompare(a.name));
+    else if (browseSort === 'price-desc') arr.sort((a, b) => (b.marketPrice ?? -1) - (a.marketPrice ?? -1));
+    else if (browseSort === 'price-asc')  arr.sort((a, b) => (a.marketPrice ?? Infinity) - (b.marketPrice ?? Infinity));
+    return arr;
+  }
+
+  function renderGroups() {
+    const panel = document.getElementById('bm-groups');
+    if (!panel) return;
+    const groups = groupsToShow();
+    if (!groups.length && !tcgcsvCache.groups?.length) {
+      panel.innerHTML = `<div class="bm-empty">No price data loaded.<br>Go to the Sealed tab and click<br><strong>↻ Sync Price Data</strong> first.</div>`;
+      return;
+    }
+    if (!groups.length) {
+      panel.innerHTML = `<div class="bm-empty">No sets match "${esc(browseFilter)}"</div>`;
+      return;
+    }
+    panel.innerHTML = groups.map(g =>
+      `<div class="bm-group-item${selectedGroup?.groupId === g.groupId ? ' selected' : ''}" data-gid="${g.groupId}">${esc(g.name)}</div>`
+    ).join('');
+    panel.querySelectorAll('.bm-group-item').forEach(el => {
+      el.addEventListener('click', () => selectGroup(el.dataset.gid, el.textContent));
+    });
+  }
+
+  function renderProducts() {
+    const panel = document.getElementById('bm-products');
+    if (!panel) return;
+    if (!selectedGroup) {
+      panel.innerHTML = `<div class="bm-empty">← Select a set to see its products</div>`;
+      return;
+    }
+    const sorted = sortedProducts();
+    if (!sorted.length) {
+      panel.innerHTML = `<div class="bm-empty">No products with prices found.</div>`;
+      return;
+    }
+    panel.innerHTML = sorted.map(p => `
+      <div class="bm-product-item" data-id="${esc(p.id)}" data-name="${esc(p.name)}" data-price="${p.marketPrice ?? ''}">
+        <div class="bm-product-name">${esc(p.name)}</div>
+        <div class="bm-product-price">${p.marketPrice != null ? fmt(p.marketPrice) : '<span style="color:var(--text-dim)">—</span>'}</div>
+      </div>`).join('');
+    panel.querySelectorAll('.bm-product-item').forEach(el => {
+      el.addEventListener('click', () => {
+        const price = el.dataset.price ? parseFloat(el.dataset.price) : NaN;
+        hideModal();
+        showAddSealedModal(null, { name: el.dataset.name, price: isNaN(price) ? null : price });
+      });
+    });
+  }
+
+  async function selectGroup(gid, gname) {
+    selectedGroup = { groupId: gid, name: gname };
+    groupProducts = [];
+    renderGroups();
+    const panel = document.getElementById('bm-products');
+    if (panel) panel.innerHTML = `<div class="bm-empty">Loading…</div>`;
+    try {
+      const [prodResp, priceResp] = await Promise.all([
+        fetch(`https://tcgcsv.com/tcgplayer/1/${gid}/products`),
+        fetch(`https://tcgcsv.com/tcgplayer/1/${gid}/prices`),
+      ]);
+      if (!prodResp.ok || !priceResp.ok) throw new Error('Fetch failed');
+      const products = await prodResp.json().then(r => Array.isArray(r) ? r : (r.results || []));
+      const prices   = await priceResp.json().then(r => Array.isArray(r) ? r : (r.results || []));
+      const priceMap = {};
+      for (const p of prices) {
+        const id = p.productId ?? p.skuId;
+        const price = p.marketPrice ?? p.midPrice ?? p.lowPrice;
+        if (id != null && price != null && (priceMap[id] == null || price > priceMap[id])) priceMap[id] = price;
+      }
+      groupProducts = products
+        .map(p => ({
+          id: `tcgcsv-${gid}-${p.productId}`,
+          name: p.name || p.cleanName || '',
+          consoleName: gname,
+          marketPrice: priceMap[p.productId] != null ? parseFloat(priceMap[p.productId]) : null,
+        }))
+        .filter(p => p.name && p.marketPrice != null);
+    } catch (err) {
+      if (panel) panel.innerHTML = `<div class="bm-empty" style="color:var(--danger)">Load failed: ${esc(err.message)}</div>`;
+      return;
+    }
+    renderProducts();
+  }
+
+  showModal(`
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+      <h2 style="margin:0">Browse Sets</h2>
+      <button class="btn" id="bm-cancel">✕ Close</button>
+    </div>
+    <div style="display:flex;gap:12px;height:480px">
+
+      <!-- Left: group list -->
+      <div style="width:220px;flex-shrink:0;display:flex;flex-direction:column;gap:8px">
+        <input type="text" id="bm-filter" placeholder="Filter sets… (type any letter)" style="width:100%;box-sizing:border-box"
+               value="${esc(browseFilter)}" autocomplete="off">
+        <div id="bm-groups" class="bm-group-list"></div>
+      </div>
+
+      <!-- Right: product list -->
+      <div style="flex:1;display:flex;flex-direction:column;gap:8px;min-width:0">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-size:12px;color:var(--text-dim)" id="bm-set-label">No set selected</span>
+          <div style="flex:1"></div>
+          <label style="font-size:12px;color:var(--text-dim)">Sort:</label>
+          <select id="bm-sort" style="font-size:12px">
+            <option value="name-asc">Name A→Z</option>
+            <option value="name-desc">Name Z→A</option>
+            <option value="price-desc">Price High→Low</option>
+            <option value="price-asc">Price Low→High</option>
+          </select>
+        </div>
+        <div id="bm-products" class="bm-product-list"></div>
+      </div>
+    </div>`, true);
+
+  document.getElementById('bm-cancel').addEventListener('click', hideModal);
+
+  const filterInput = document.getElementById('bm-filter');
+  filterInput.addEventListener('input', e => {
+    browseFilter = e.target.value;
+    renderGroups();
+  });
+  // Keyboard shortcut: typing a letter in the modal focuses the filter
+  filterInput.focus();
+
+  document.getElementById('bm-sort').addEventListener('change', e => {
+    browseSort = e.target.value;
+    renderProducts();
+  });
+
+  renderGroups();
+  renderProducts();
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ADD / EDIT SEALED MODAL
 // ─────────────────────────────────────────────────────────────────────────────
-function showAddSealedModal(editId = null) {
+function showAddSealedModal(editId = null, prefill = {}) {
   const ex = editId ? collection.sealed.find(i => i.id === editId) : null;
   const e  = ex || {};
-  const lastPrice = e.priceHistory?.length ? e.priceHistory[e.priceHistory.length - 1].price : '';
+  const lastPrice = prefill.price ?? (e.priceHistory?.length ? e.priceHistory[e.priceHistory.length - 1].price : '');
 
   showModal(`
     <h2>${ex ? 'Edit' : 'Add'} Sealed Product</h2>
     <div class="form-group">
       <label>Product Name *</label>
-      <input type="text" id="sl-name" placeholder="e.g. Secret Lair: Artist Series – Sidharth Chaturvedi" value="${esc(e.name || '')}">
+      <input type="text" id="sl-name" placeholder="e.g. Secret Lair: Artist Series – Sidharth Chaturvedi" value="${esc(prefill.name || e.name || '')}">
     </div>
     <div class="form-row">
       <div class="form-group">
@@ -3107,14 +3462,25 @@ function showAddSealedModal(editId = null) {
     </div>
     <div class="form-group">
       <label>Current Market Price (USD)</label>
-      <div class="input-with-btn">
-        <input type="number" id="sl-price" step="0.01" min="0" placeholder="Enter manually or use eBay lookup" value="${lastPrice}">
-        <button class="btn" id="sl-ebay-btn" style="white-space:nowrap">eBay Lookup</button>
-      </div>
+      <input type="number" id="sl-price" step="0.01" min="0" placeholder="Enter manually or search below" value="${lastPrice}">
     </div>
     <div class="form-group">
-      <label>eBay Search Term</label>
-      <input type="text" id="sl-ebay-query" placeholder="e.g. Secret Lair Artist Series sealed MTG" value="${esc(e.ebaySearchTerm || '')}">
+      <label>Find Market Price <span style="color:var(--text-dim);font-weight:400;font-size:11px">(TCGCSV free · PriceCharting with key)</span></label>
+      <div style="display:flex;gap:0;border:1px solid var(--border2);border-radius:var(--radius-sm);overflow:hidden;margin-bottom:8px">
+        <button class="btn" id="sl-tab-search" style="flex:1;border-radius:0;border:none;background:var(--accent);color:#fff">Search</button>
+        <button class="btn" id="sl-tab-browse" style="flex:1;border-radius:0;border:none;border-left:1px solid var(--border2)">Browse Sets</button>
+      </div>
+      <div id="sl-panel-search">
+        <div style="display:flex;gap:6px">
+          <input type="text" id="sl-tcg-query" placeholder="e.g. Secret Lair Artist Series" style="flex:1" value="${esc(e.name || '')}">
+          <button class="btn" id="sl-tcg-btn" style="white-space:nowrap">Search</button>
+        </div>
+        <div id="sl-tcg-results" class="tcg-results" style="display:none;margin-top:6px"></div>
+      </div>
+      <div id="sl-panel-browse" style="display:none">
+        <div id="sl-browse-groups" class="tcg-results" style="max-height:180px"></div>
+        <div id="sl-browse-products" class="tcg-results" style="max-height:180px;margin-top:6px;display:none"></div>
+      </div>
     </div>
     <div class="form-group">
       <label>Notes</label>
@@ -3127,24 +3493,132 @@ function showAddSealedModal(editId = null) {
 
   document.getElementById('sl-cancel').addEventListener('click', hideModal);
 
-  document.getElementById('sl-ebay-btn').addEventListener('click', async () => {
-    const query = (document.getElementById('sl-ebay-query').value || document.getElementById('sl-name').value).trim();
-    if (!query) { toast('Enter a product name or search term first', 'error'); return; }
-    if (!collection.settings.ebayClientId) { toast('Configure eBay credentials in Settings first', 'error'); return; }
-    const btn = document.getElementById('sl-ebay-btn');
+  let _addSelectedPcId = ex?.pricechartingId || null;
+
+  // ── Tab switching ──────────────────────────────────────────────────────────
+  function switchTab(tab) {
+    const isSearch = tab === 'search';
+    document.getElementById('sl-panel-search').style.display = isSearch ? '' : 'none';
+    document.getElementById('sl-panel-browse').style.display = isSearch ? 'none' : '';
+    document.getElementById('sl-tab-search').style.background = isSearch ? 'var(--accent)' : '';
+    document.getElementById('sl-tab-search').style.color      = isSearch ? '#fff' : '';
+    document.getElementById('sl-tab-browse').style.background = isSearch ? '' : 'var(--accent)';
+    document.getElementById('sl-tab-browse').style.color      = isSearch ? '' : '#fff';
+    if (!isSearch) populateBrowseGroups();
+  }
+  document.getElementById('sl-tab-search').addEventListener('click', () => switchTab('search'));
+  document.getElementById('sl-tab-browse').addEventListener('click', () => switchTab('browse'));
+
+  // ── Browse mode ────────────────────────────────────────────────────────────
+  function renderSearchResult(r) {
+    return `<div class="tcg-result-item" data-id="${esc(r.id)}" data-price="${r.marketPrice ?? ''}" data-source="${esc(r.source)}">
+      <div class="tcg-result-name">${esc(r.name)}</div>
+      <div class="tcg-result-meta">
+        <span class="tcg-result-console">${esc(r.consoleName)}</span>
+        <span class="tcg-result-price">${r.marketPrice != null ? fmt(r.marketPrice) : '<span style="color:var(--text-dim)">No price</span>'} <span class="tcg-price-label">${r.source}</span></span>
+      </div>
+    </div>`;
+  }
+
+  function attachResultClicks(container) {
+    container.querySelectorAll('.tcg-result-item').forEach(el => {
+      el.addEventListener('click', () => {
+        const price = el.dataset.price ? parseFloat(el.dataset.price) : NaN;
+        _addSelectedPcId = el.dataset.source === 'pricecharting' ? el.dataset.id : null;
+        if (!isNaN(price)) document.getElementById('sl-price').value = price.toFixed(2);
+        // Auto-fill name if empty
+        const nameEl = document.getElementById('sl-name');
+        if (!nameEl.value.trim()) nameEl.value = el.querySelector('.tcg-result-name').textContent;
+        container.querySelectorAll('.tcg-result-item').forEach(x => x.classList.remove('selected'));
+        el.classList.add('selected');
+      });
+    });
+  }
+
+  function populateBrowseGroups() {
+    const groupsEl   = document.getElementById('sl-browse-groups');
+    const productsEl = document.getElementById('sl-browse-products');
+
+    if (!tcgcsvCache.groups || !tcgcsvCache.groups.length) {
+      groupsEl.innerHTML = '<div style="padding:12px;color:var(--text-dim);font-size:12px">No groups loaded — click "↻ Sync Price Data" first, then reopen this dialog.</div>';
+      return;
+    }
+
+    const sortedGroups = [...tcgcsvCache.groups].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    groupsEl.innerHTML = sortedGroups.map(g =>
+      `<div class="tcg-result-item" data-gid="${g.groupId}" style="padding:8px 14px">
+        <div class="tcg-result-name" style="font-size:13px">${esc(g.name)}</div>
+      </div>`
+    ).join('');
+
+    groupsEl.querySelectorAll('.tcg-result-item').forEach(el => {
+      el.addEventListener('click', async () => {
+        groupsEl.querySelectorAll('.tcg-result-item').forEach(x => x.classList.remove('selected'));
+        el.classList.add('selected');
+        productsEl.style.display = 'block';
+        productsEl.innerHTML = '<div style="padding:10px;color:var(--text-dim);font-size:12px">Loading…</div>';
+
+        const gid  = el.dataset.gid;
+        const gname = el.querySelector('.tcg-result-name').textContent;
+
+        // Always do a live fetch in browse mode so we show ALL products, not just
+        // the sealed-keyword-filtered subset that was cached during preload
+
+        // Live fetch
+        try {
+          const [prodResp, priceResp] = await Promise.all([
+            fetch(`https://tcgcsv.com/tcgplayer/1/${gid}/products`),
+            fetch(`https://tcgcsv.com/tcgplayer/1/${gid}/prices`),
+          ]);
+          if (!prodResp.ok || !priceResp.ok) throw new Error('Fetch failed');
+          const products = await prodResp.json().then(r => Array.isArray(r) ? r : (r.results || []));
+          const prices   = await priceResp.json().then(r => Array.isArray(r) ? r : (r.results || []));
+          const priceMap = {};
+          for (const p of prices) {
+            const id = p.productId ?? p.skuId;
+            const price = p.marketPrice ?? p.midPrice ?? p.lowPrice;
+            if (id != null && price != null && (priceMap[id] == null || price > priceMap[id])) priceMap[id] = price;
+          }
+          // In browse mode show ALL products with a price — user chose the group intentionally
+          const sealedInGroup = products
+            .map(p => ({
+              id: `tcgcsv-${gid}-${p.productId}`,
+              name: p.name || p.cleanName || '',
+              consoleName: gname,
+              marketPrice: priceMap[p.productId] != null ? parseFloat(priceMap[p.productId]) : null,
+              source: 'tcgcsv',
+            }))
+            .filter(p => p.name && p.marketPrice != null);
+          productsEl.innerHTML = sealedInGroup.length
+            ? sealedInGroup.map(renderSearchResult).join('')
+            : '<div style="padding:10px;color:var(--text-dim);font-size:12px">No products with prices found in this set.</div>';
+          attachResultClicks(productsEl);
+        } catch (err) {
+          productsEl.innerHTML = `<div style="padding:10px;color:var(--danger);font-size:12px">Load failed: ${esc(err.message)}</div>`;
+        }
+      });
+    });
+  }
+
+  document.getElementById('sl-tcg-btn').addEventListener('click', async () => {
+    const query = (document.getElementById('sl-tcg-query').value || document.getElementById('sl-name').value).trim();
+    if (!query) { toast('Enter a product name to search', 'error'); return; }
+    const btn = document.getElementById('sl-tcg-btn');
+    const resultsEl = document.getElementById('sl-tcg-results');
     btn.textContent = 'Searching…'; btn.disabled = true;
     try {
-      const price = await searchEbayPrice(query);
-      if (price != null) {
-        document.getElementById('sl-price').value = price.toFixed(2);
-        toast(`eBay median: ${fmt(price)}`, 'success');
+      const results = await searchSealedPrice(query);
+      if (!results.length) {
+        resultsEl.innerHTML = '<div class="tcg-no-results">No results found — try a different search term.</div>';
       } else {
-        toast('No listings found for that search term', 'error');
+        resultsEl.innerHTML = results.map(renderSearchResult).join('');
+        attachResultClicks(resultsEl);
       }
+      resultsEl.style.display = 'block';
     } catch (err) {
-      toast('eBay error: ' + err.message, 'error');
+      toast('Search error: ' + err.message, 'error');
     } finally {
-      btn.textContent = 'eBay Lookup'; btn.disabled = false;
+      btn.textContent = 'Search'; btn.disabled = false;
     }
   });
 
@@ -3164,7 +3638,7 @@ function showAddSealedModal(editId = null) {
       purchasePriceCurrency: 'USD',
       dateAdded: ex?.dateAdded || t,
       notes: document.getElementById('sl-notes').value.trim(),
-      ebaySearchTerm: document.getElementById('sl-ebay-query').value.trim(),
+      pricechartingId: _addSelectedPcId,
       linkedScryfallIds: ex?.linkedScryfallIds || [],
       priceHistory: ex?.priceHistory || []
     };
@@ -3203,10 +3677,19 @@ function showUpdatePriceModal(id) {
     <div style="font-size:15px;font-weight:600;margin-bottom:16px">${esc(item.name)}</div>
     <div class="form-group">
       <label>New Market Price (USD)</label>
-      <div class="input-with-btn">
-        <input type="number" id="up-price" step="0.01" min="0" placeholder="0.00">
-        <button class="btn" id="up-ebay">eBay Lookup</button>
+      <input type="number" id="up-price" step="0.01" min="0" placeholder="0.00">
+    </div>
+    ${item.pricechartingId ? `
+    <div class="form-group">
+      <button class="btn" id="up-fetch" style="width:100%">↻ Fetch Current Market Price</button>
+    </div>` : ''}
+    <div class="form-group">
+      <label style="color:var(--text-dim)">Search to find / re-link a product</label>
+      <div style="display:flex;gap:6px">
+        <input type="text" id="up-tcg-query" placeholder="${esc(item.name)}" style="flex:1" value="">
+        <button class="btn" id="up-tcg-btn" style="white-space:nowrap">Search</button>
       </div>
+      <div id="up-tcg-results" class="tcg-results" style="display:none"></div>
     </div>
     <div style="margin-top:14px">
       <div style="font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Price History</div>
@@ -3226,17 +3709,52 @@ function showUpdatePriceModal(id) {
 
   document.getElementById('up-cancel').addEventListener('click', hideModal);
 
-  document.getElementById('up-ebay').addEventListener('click', async () => {
-    const query = item.ebaySearchTerm || item.name;
-    if (!collection.settings.ebayClientId) { toast('Configure eBay credentials in Settings', 'error'); return; }
-    const btn = document.getElementById('up-ebay');
+  let _upSelectedPcId = item.pricechartingId || null;
+
+  if (item.pricechartingId) {
+    document.getElementById('up-fetch').addEventListener('click', async () => {
+      const btn = document.getElementById('up-fetch');
+      btn.textContent = 'Fetching…'; btn.disabled = true;
+      try {
+        const price = await fetchPriceChartingById(item.pricechartingId);
+        if (price != null) { document.getElementById('up-price').value = price.toFixed(2); toast(`Market price: ${fmt(price)}`, 'success'); }
+        else toast('No price returned for this product', 'error');
+      } catch (err) { toast('Fetch error: ' + err.message, 'error'); }
+      finally { btn.textContent = '↻ Fetch Current Market Price'; btn.disabled = false; }
+    });
+  }
+
+  document.getElementById('up-tcg-btn').addEventListener('click', async () => {
+    const query = (document.getElementById('up-tcg-query').value || item.name).trim();
+    const btn = document.getElementById('up-tcg-btn');
+    const resultsEl = document.getElementById('up-tcg-results');
     btn.textContent = 'Searching…'; btn.disabled = true;
     try {
-      const price = await searchEbayPrice(query);
-      if (price != null) { document.getElementById('up-price').value = price.toFixed(2); toast(`eBay median: ${fmt(price)}`, 'success'); }
-      else toast('No listings found', 'error');
-    } catch (err) { toast('eBay error: ' + err.message, 'error'); }
-    finally { btn.textContent = 'eBay Lookup'; btn.disabled = false; }
+      const results = await searchSealedPrice(query);
+      if (!results.length) {
+        resultsEl.innerHTML = '<div class="tcg-no-results">No results found — try a different search term.</div>';
+      } else {
+        resultsEl.innerHTML = results.map(r => `
+          <div class="tcg-result-item" data-id="${esc(r.id)}" data-price="${r.marketPrice}" data-source="${esc(r.source)}">
+            <div class="tcg-result-name">${esc(r.name)}</div>
+            <div class="tcg-result-meta">
+              <span class="tcg-result-console">${esc(r.consoleName)}</span>
+              <span class="tcg-result-price">${fmt(r.marketPrice)} <span class="tcg-price-label">${r.priceLabel || r.source}</span></span>
+            </div>
+          </div>`).join('');
+        resultsEl.querySelectorAll('.tcg-result-item').forEach(el => {
+          el.addEventListener('click', () => {
+            const price = parseFloat(el.dataset.price);
+            _upSelectedPcId = el.dataset.source === 'pricecharting' ? el.dataset.id : null;
+            document.getElementById('up-price').value = price.toFixed(2);
+            resultsEl.querySelectorAll('.tcg-result-item').forEach(x => x.classList.remove('selected'));
+            el.classList.add('selected');
+          });
+        });
+      }
+      resultsEl.style.display = 'block';
+    } catch (err) { toast('Search error: ' + err.message, 'error'); }
+    finally { btn.textContent = 'Search'; btn.disabled = false; }
   });
 
   document.getElementById('up-save').addEventListener('click', () => {
@@ -3245,9 +3763,11 @@ function showUpdatePriceModal(id) {
     if (!item.priceHistory) item.priceHistory = [];
     const t = today();
     const ti = item.priceHistory.findIndex(h => h.date === t);
-    const entry = { date: t, price, source: 'manual' };
+    const source = _upSelectedPcId ? 'tcgplayer' : 'manual';
+    const entry = { date: t, price, source };
     if (ti >= 0) item.priceHistory[ti] = entry;
     else item.priceHistory.push(entry);
+    if (_upSelectedPcId) item.pricechartingId = _upSelectedPcId;
     hideModal();
     render();
     autoSave();
@@ -3262,19 +3782,15 @@ function showSettings() {
   showModal(`
     <h2>Settings</h2>
 
-    <h3>eBay API — Sealed Product Pricing</h3>
-    <p style="font-size:13px;color:var(--text-dim);margin-bottom:14px;line-height:1.55">
-      Sign up free at <a href="https://developer.ebay.com" target="_blank">developer.ebay.com</a>,
-      create an application, and paste your Production credentials below.
-      Credentials are stored only in your <code>collection.json</code> file and sent directly to eBay.
+    <h3>Sealed Product Pricing</h3>
+    <p style="font-size:13px;color:var(--text-dim);margin-bottom:10px;line-height:1.55">
+      <strong style="color:var(--text)">TCGCSV</strong> is built-in and free — no key needed. It searches TCGPlayer group data and works automatically.<br>
+      <strong style="color:var(--text)">PriceCharting</strong> adds a second source with broader coverage. Get a free key at
+      <a href="https://www.pricecharting.com/api" target="_blank">pricecharting.com/api</a> (email signup only, no approval).
     </p>
     <div class="form-group">
-      <label>App ID (Client ID)</label>
-      <input type="text" id="cfg-cid" placeholder="YourAppName-XXXX-PRD-XXXXXXXX-XXXXXXXX" value="${esc(collection.settings.ebayClientId || '')}">
-    </div>
-    <div class="form-group">
-      <label>Cert ID (Client Secret)</label>
-      <input type="password" id="cfg-csec" placeholder="PRD-XXXXXXXXXXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX" value="${esc(collection.settings.ebayClientSecret || '')}">
+      <label>PriceCharting API Key <span style="color:var(--text-dim);font-weight:400">(optional)</span></label>
+      <input type="text" id="cfg-pckey" placeholder="Paste your PriceCharting API key here" value="${esc(collection.settings.pricechartingKey || '')}">
     </div>
 
     <h3 style="margin-top:22px">Data Management</h3>
@@ -3303,8 +3819,7 @@ function showSettings() {
 
   document.getElementById('cfg-cancel').addEventListener('click', hideModal);
   document.getElementById('cfg-save').addEventListener('click', () => {
-    collection.settings.ebayClientId     = document.getElementById('cfg-cid').value.trim();
-    collection.settings.ebayClientSecret = document.getElementById('cfg-csec').value.trim();
+    collection.settings.pricechartingKey = document.getElementById('cfg-pckey').value.trim();
     hideModal();
     autoSave();
     toast('Settings saved', 'success');
@@ -3328,7 +3843,7 @@ function showSettings() {
     hideModal(); render(); toast('Price history cleared from database', 'info');
   });
   document.getElementById('cfg-reset-all').addEventListener('click', async () => {
-    if (!confirm('⚠ RESET ENTIRE DATABASE\n\nThis deletes EVERYTHING:\n• All cards\n• All sealed products\n• All price history\n• All card metadata\n• All settings (eBay credentials)\n• Cached Secret Lair data\n\nThis cannot be undone. Continue?')) return;
+    if (!confirm('⚠ RESET ENTIRE DATABASE\n\nThis deletes EVERYTHING:\n• All cards\n• All sealed products\n• All price history\n• All card metadata\n• All settings\n• Cached Secret Lair data\n\nThis cannot be undone. Continue?')) return;
     if (!confirm('Last chance — really wipe everything?')) return;
     await window.api.data.reset();
     // Reset in-memory state to a fresh collection
@@ -3337,7 +3852,7 @@ function showSettings() {
     collection.priceHistory  = {};
     collection.cardMetadata  = {};
     collection.failedLookups = [];
-    collection.settings      = { ebayClientId: '', ebayClientSecret: '' };
+    collection.settings      = { pricechartingKey: '' };
     collection.lastPriceRefresh = null;
     hideModal();
     render();
@@ -3606,10 +4121,19 @@ function attachContentListeners() {
   const sv = document.getElementById('sealedStatusFilter');
   if (sv) sv.addEventListener('change', e => { ui.sealed.status = e.target.value; render(); });
 
+  // TCGCSV sync button
+  const syncBtn = document.getElementById('tcgcsv-sync-btn');
+  if (syncBtn) syncBtn.addEventListener('click', () => refreshTcgcsvCache());
+
   // Add sealed buttons
   ['addSealedBtn', 'addSealedBtn2'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.addEventListener('click', () => showAddSealedModal());
+  });
+  // Browse sets buttons
+  ['browseSealedBtn', 'browseSealedBtn2'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('click', () => showBrowseModal());
   });
 
   // Sealed item actions
