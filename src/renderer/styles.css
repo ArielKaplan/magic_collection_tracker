@@ -1365,6 +1365,8 @@ tr.card-row-hover:hover { background: rgba(200,155,60,0.06); }
   position: fixed;
   z-index: 9999;
   width: 300px;
+  max-height: calc(100vh - 20px);
+  overflow-y: auto;
   background: var(--surface);
   border: 1px solid var(--border2);
   border-radius: 10px;

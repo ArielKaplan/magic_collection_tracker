@@ -43,13 +43,15 @@ CREATE TABLE IF NOT EXISTS sealed (
   updated_at      TEXT DEFAULT (datetime('now'))
 );
 
--- One snapshot per (scryfall_id, foil, date)
+-- One snapshot per (scryfall_id, foil, date, source)
+-- source = 'scryfall' (TCGPlayer low via Scryfall) | 'tcgcsv' (TCGPlayer market via TCGCSV)
 CREATE TABLE IF NOT EXISTS price_history (
   scryfall_id  TEXT NOT NULL,
   foil         TEXT NOT NULL,
   date         TEXT NOT NULL,
+  source       TEXT NOT NULL DEFAULT 'scryfall',
   price        REAL NOT NULL,
-  PRIMARY KEY (scryfall_id, foil, date)
+  PRIMARY KEY (scryfall_id, foil, date, source)
 );
 CREATE INDEX IF NOT EXISTS idx_price_lookup ON price_history(scryfall_id, foil, date DESC);
 

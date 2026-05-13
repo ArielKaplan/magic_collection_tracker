@@ -232,6 +232,7 @@
           id={p.id}
           title={def.title}
           icon={def.icon}
+          description={def.description || ''}
           x={p.x}
           y={p.y}
           width={p.width}

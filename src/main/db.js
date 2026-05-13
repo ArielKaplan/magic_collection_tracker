@@ -23,6 +23,26 @@ function init(dbPath) {
   try { db.exec('ALTER TABLE sealed ADD COLUMN price_history TEXT'); }
   catch (e) { /* column already exists */ }
 
+  // Migrate price_history to include source column + updated PK if needed
+  const phCols = db.prepare('PRAGMA table_info(price_history)').all().map(c => c.name);
+  if (!phCols.includes('source')) {
+    db.exec(`
+      CREATE TABLE price_history_new (
+        scryfall_id  TEXT NOT NULL,
+        foil         TEXT NOT NULL,
+        date         TEXT NOT NULL,
+        source       TEXT NOT NULL DEFAULT 'scryfall',
+        price        REAL NOT NULL,
+        PRIMARY KEY (scryfall_id, foil, date, source)
+      );
+      INSERT INTO price_history_new (scryfall_id, foil, date, source, price)
+        SELECT scryfall_id, foil, date, 'scryfall', price FROM price_history;
+      DROP TABLE price_history;
+      ALTER TABLE price_history_new RENAME TO price_history;
+      CREATE INDEX IF NOT EXISTS idx_price_lookup ON price_history(scryfall_id, foil, date DESC);
+    `);
+  }
+
   return db;
 }
 
@@ -134,32 +154,33 @@ function getPriceHistory(scryfallId, foil) {
 }
 
 function bulkStorePrices(snapshots) {
-  // snapshots: [{ scryfallId, foil, date, price }]
+  // snapshots: [{ scryfallId, foil, date, price, source? }]
+  // source defaults to 'scryfall'; use 'tcgcsv' for TCGPlayer market prices
   const stmt = db.prepare(`
-    INSERT INTO price_history (scryfall_id, foil, date, price)
-    VALUES (?, ?, ?, ?)
-    ON CONFLICT(scryfall_id, foil, date) DO UPDATE SET price=excluded.price
+    INSERT INTO price_history (scryfall_id, foil, date, source, price)
+    VALUES (?, ?, ?, ?, ?)
+    ON CONFLICT(scryfall_id, foil, date, source) DO UPDATE SET price=excluded.price
   `);
   const tx = db.transaction((arr) => {
-    for (const s of arr) stmt.run(s.scryfallId, s.foil, s.date, s.price);
+    for (const s of arr) stmt.run(s.scryfallId, s.foil, s.date, s.source || 'scryfall', s.price);
   });
   tx(snapshots);
   return snapshots.length;
 }
 
 function getAllPriceHistory() {
-  // For dashboard summaries that scan everything once. Returns map keyed
-  // 'scryfallId|foil' -> [{date, price}, ...]
+  // Returns { scryfall: { 'id|foil': [{date,price},...] }, tcgcsv: { 'id|foil': [...] } }
   const rows = db.prepare(`
-    SELECT scryfall_id, foil, date, price FROM price_history ORDER BY date ASC
+    SELECT scryfall_id, foil, date, source, price FROM price_history ORDER BY date ASC
   `).all();
-  const out = {};
+  const scryfall = {}, tcgcsv = {};
   for (const r of rows) {
     const k = `${r.scryfall_id}|${r.foil}`;
-    if (!out[k]) out[k] = [];
-    out[k].push({ date: r.date, price: r.price });
+    const bucket = r.source === 'tcgcsv' ? tcgcsv : scryfall;
+    if (!bucket[k]) bucket[k] = [];
+    bucket[k].push({ date: r.date, price: r.price });
   }
-  return out;
+  return { scryfall, tcgcsv };
 }
 
 // ── Metadata ─────────────────────────────────────────────────────────────────

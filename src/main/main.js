@@ -47,7 +47,7 @@ function buildMenu() {
       label: '&View',
       submenu: [
         tabItem('Dashboard',                'dashboard',  'CmdOrCtrl+1'),
-        tabItem('My Collection',            'cards',      'CmdOrCtrl+2'),
+        tabItem('Card Collection',          'cards',      'CmdOrCtrl+2'),
         tabItem('Sealed Collection',        'sealed',     'CmdOrCtrl+3'),
         tabItem('Gallery',                  'gallery',    'CmdOrCtrl+4'),
         tabItem('Secret Lair Explorer',     'slviewer',   'CmdOrCtrl+5'),

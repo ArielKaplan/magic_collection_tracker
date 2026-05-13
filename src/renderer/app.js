@@ -49,7 +49,7 @@ let ui = {
     columns: {
       setCode: true, foil: true, rarity: true, condition: true,
       language: true, quantity: true, purchasePrice: true,
-      currentPrice: true, priceDelta: true, trend: true, flags: true,
+      currentPrice: true, marketPrice: true, priceDelta: true, trend: true, flags: true,
       setName: false, binderName: false
     },
     colPickerOpen: false,
@@ -146,6 +146,7 @@ function makeCollection() {
     cards: [],
     sealed: [],
     priceHistory: {},
+    marketPriceHistory: {},  // scryfallId|foil → [{date,price}] from TCGCSV (market price)
     cardMetadata: {},  // scryfallId → { colors, type_line, cmc, color_identity }
     failedLookups: []  // populated on each price refresh
   };
@@ -270,11 +271,15 @@ async function autoSave() {
     // for typical collection sizes (a few thousand cards).
     const settingsJson = JSON.stringify(collection.settings || {});
 
-    // Flatten priceHistory into a list of snapshot rows for bulkStore
+    // Flatten priceHistory + marketPriceHistory into snapshot rows for bulkStore
     const priceSnaps = [];
     for (const [k, hist] of Object.entries(collection.priceHistory || {})) {
       const [sid, foil] = k.split('|');
-      for (const h of hist) priceSnaps.push({ scryfallId: sid, foil, date: h.date, price: h.price });
+      for (const h of hist) priceSnaps.push({ scryfallId: sid, foil, date: h.date, price: h.price, source: 'scryfall' });
+    }
+    for (const [k, hist] of Object.entries(collection.marketPriceHistory || {})) {
+      const [sid, foil] = k.split('|');
+      for (const h of hist) priceSnaps.push({ scryfallId: sid, foil, date: h.date, price: h.price, source: 'tcgcsv' });
     }
 
     await Promise.all([
@@ -343,7 +348,15 @@ async function autoLoad() {
       currentValue: r.current_value, status: r.status, notes: r.notes,
       priceHistory: r.priceHistory || [],
     }));
-    collection.priceHistory  = prices;
+    // prices is { scryfall: {}, tcgcsv: {} } from updated DB layer;
+    // fall back to treating it as a flat scryfall-only map for legacy exports
+    if (prices && typeof prices.scryfall === 'object') {
+      collection.priceHistory       = prices.scryfall;
+      collection.marketPriceHistory = prices.tcgcsv || {};
+    } else {
+      collection.priceHistory       = prices || {};
+      collection.marketPriceHistory = {};
+    }
     collection.cardMetadata  = metadata;
     collection.failedLookups = failures;
     collection.settings = settings.settings_blob
@@ -745,6 +758,26 @@ function storePriceSnapshot(scryfallId, foilType, price) {
   }
 }
 
+function storeMarketPriceSnapshot(scryfallId, foilType, price) {
+  if (price == null || isNaN(price) || price <= 0) return;
+  const key = priceKey(scryfallId, foilType);
+  if (!collection.marketPriceHistory[key]) collection.marketPriceHistory[key] = [];
+  const hist = collection.marketPriceHistory[key];
+  const t = today();
+  const todayIdx = hist.findIndex(h => h.date === t);
+  if (todayIdx >= 0) {
+    hist[todayIdx].price = price;
+  } else {
+    const last = hist[hist.length - 1];
+    if (!last || last.price !== price) hist.push({ date: t, price });
+  }
+}
+
+function getCurrentMarketPrice(scryfallId, foilType) {
+  const h = collection.marketPriceHistory[priceKey(scryfallId, foilType)];
+  return h?.length ? h[h.length - 1].price : null;
+}
+
 function getPriceChange(history) {
   if (!history || history.length < 2) return null;
   const cur  = history[history.length - 1].price;
@@ -805,6 +838,108 @@ async function fetchScryfallBatch(ids) {
     }
     return resp.json();
   }
+}
+
+// Fetch TCGPlayer market prices from TCGCSV for a set of cards and store them
+// in collection.marketPriceHistory. Returns number of cards successfully priced.
+async function fetchTcgcsvMarketPrices(cardPairs) {
+  // cardPairs: [{scryfallId, foil, setName, name, collectorNumber}]
+  let groups;
+  try {
+    const resp = await fetch('https://tcgcsv.com/tcgplayer/1/groups');
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const raw = await resp.json();
+    groups = Array.isArray(raw) ? raw : (raw.results || raw.groups || []);
+  } catch (e) {
+    window.logger?.warn('Price', `TCGCSV market prices: groups fetch failed — ${e.message}`);
+    return 0;
+  }
+
+  // Map group name (lowercase) → groupId
+  const groupByName = new Map();
+  for (const g of groups) {
+    if (g.name) groupByName.set(g.name.toLowerCase().trim(), g.groupId);
+  }
+
+  // Find which of our set names match a TCGCSV group
+  const uniqueSetNames = [...new Set(cardPairs.map(p => p.setName).filter(Boolean))];
+  const setToGroupId = new Map();
+  for (const setName of uniqueSetNames) {
+    const groupId = groupByName.get(setName.toLowerCase().trim());
+    if (groupId != null) setToGroupId.set(setName, groupId);
+  }
+
+  if (!setToGroupId.size) {
+    window.logger?.debug('Price', 'TCGCSV market prices: no set name matches found in groups');
+    return 0;
+  }
+
+  window.logger?.info('Price', `TCGCSV market prices: fetching ${setToGroupId.size} sets…`);
+
+  // Fetch products+prices per group in batches
+  // groupProductMap: setName → Map<normalizedCardName, [{collectorNum, normal, foil}]>
+  const groupProductMap = new Map();
+  const setEntries = [...setToGroupId.entries()];
+  const BATCH = 5;
+
+  for (let i = 0; i < setEntries.length; i += BATCH) {
+    await Promise.all(setEntries.slice(i, i + BATCH).map(async ([setName, groupId]) => {
+      try {
+        const [prodResp, priceResp] = await Promise.all([
+          fetch(`https://tcgcsv.com/tcgplayer/1/${groupId}/products`),
+          fetch(`https://tcgcsv.com/tcgplayer/1/${groupId}/prices`),
+        ]);
+        if (!prodResp.ok || !priceResp.ok) return;
+        const products = await prodResp.json().then(r => Array.isArray(r) ? r : (r.results || []));
+        const prices   = await priceResp.json().then(r => Array.isArray(r) ? r : (r.results || []));
+
+        // Build productId → { normal: marketPrice, foil: marketPrice }
+        const priceById = {};
+        for (const p of prices) {
+          if (p.productId == null || p.marketPrice == null) continue;
+          if (!priceById[p.productId]) priceById[p.productId] = {};
+          const sub = (p.subTypeName || '').toLowerCase();
+          if (sub === 'foil') priceById[p.productId].foil   = p.marketPrice;
+          else                priceById[p.productId].normal = p.marketPrice;
+        }
+
+        // Build name → [{collectorNum, normal, foil}] for quick lookup
+        const nameMap = new Map();
+        for (const prod of products) {
+          const name = (prod.name || prod.cleanName || prod.productName || '').toLowerCase().trim();
+          if (!name) continue;
+          const prc = priceById[prod.productId] || {};
+          const collNum = (prod.number || prod.extNumber || '').toString().replace(/^0+/, '');
+          if (!nameMap.has(name)) nameMap.set(name, []);
+          nameMap.get(name).push({ collectorNum: collNum, normal: prc.normal ?? null, foil: prc.foil ?? null });
+        }
+        groupProductMap.set(setName, nameMap);
+      } catch { /* silently skip failed groups */ }
+    }));
+    if (i + BATCH < setEntries.length) await new Promise(r => setTimeout(r, 150));
+  }
+
+  // Match each card pair to a market price
+  let count = 0;
+  for (const { scryfallId, foil, setName, name, collectorNumber } of cardPairs) {
+    const nameMap = groupProductMap.get(setName);
+    if (!nameMap) continue;
+    const normName = name.toLowerCase().trim();
+    const candidates = nameMap.get(normName);
+    if (!candidates?.length) continue;
+
+    // Prefer collector number match; fall back to first candidate
+    const normColl = (collectorNumber || '').toString().replace(/^0+/, '');
+    let entry = candidates.find(c => c.collectorNum === normColl) ?? candidates[0];
+
+    const price = foil !== 'normal' ? (entry.foil ?? entry.normal) : (entry.normal ?? entry.foil);
+    if (price != null) {
+      storeMarketPriceSnapshot(scryfallId, foil, price);
+      count++;
+    }
+  }
+
+  return count;
 }
 
 async function refreshPrices() {
@@ -974,11 +1109,22 @@ async function refreshPrices() {
   else if (batchFailedIds.size > 0) window.logger?.warn('Price', summary);
   else window.logger?.info('Price', summary);
 
+  // TCGCSV market price phase — runs after Scryfall, before render
+  window.logger?.info('Price', 'Fetching TCGPlayer market prices from TCGCSV…');
+  const tcgPairs = pairs.map(({ scryfallId, foil }) => {
+    const card = collection.cards.find(c => c.scryfallId === scryfallId && c.foil === foil)
+               || collection.cards.find(c => c.scryfallId === scryfallId);
+    return { scryfallId, foil, setName: card?.setName || '', name: card?.name || '', collectorNumber: card?.collectorNumber || '' };
+  }).filter(p => p.setName && p.name);
+  const marketCount = await fetchTcgcsvMarketPrices(tcgPairs);
+  window.logger?.info('Price', `TCGCSV market prices: ${marketCount} of ${tcgPairs.length} priced`);
+
   collection.lastPriceRefresh = new Date().toISOString();
   ui.refreshing = false;
   ui.refreshProgress = 0;
 
   const parts = [`${pricedCount} of ${pairs.length} printings priced`];
+  if (marketCount) parts.push(`${marketCount} market prices`);
   if (batchFailedIds.size) parts.push(`${batchFailedIds.size} batch errors`);
   if (notFoundIds.size)    parts.push(`${notFoundIds.size} not found`);
   if (failedLookups.filter(f => f.reason === 'no_price').length)
@@ -1044,21 +1190,59 @@ function updateStatusBar() {
 }
 
 function showAbout() {
+  const termStyle = 'font-weight:600;color:var(--accent2);white-space:nowrap';
+  const defStyle  = 'color:var(--text-dim);font-size:12px;line-height:1.55';
   showModal(`
-    <h2>Secret Lair Tracker</h2>
-    <p style="color:var(--text-dim);font-size:13px;margin:6px 0 14px">Desktop edition · Electron + SQLite</p>
-    <div style="display:grid;grid-template-columns:auto 1fr;gap:6px 16px;font-size:13px;line-height:1.7">
-      <span style="color:var(--text-muted)">Version</span><span>0.1.0</span>
+    <h2 style="margin-bottom:4px">Secret Lair Tracker</h2>
+    <p style="color:var(--text-dim);font-size:13px;margin:4px 0 14px">Desktop edition · Electron + SQLite</p>
+
+    <div style="display:grid;grid-template-columns:auto 1fr;gap:5px 16px;font-size:13px;line-height:1.7;margin-bottom:18px">
+      <span style="color:var(--text-muted)">Version</span><span>0.4.0</span>
       <span style="color:var(--text-muted)">Cards</span><span>${collection.cards.length.toLocaleString()}</span>
-      <span style="color:var(--text-muted)">Sealed</span><span>${collection.sealed.length.toLocaleString()}</span>
+      <span style="color:var(--text-muted)">Sealed</span><span>${(collection.sealed || []).length.toLocaleString()}</span>
       <span style="color:var(--text-muted)">Last refresh</span><span>${collection.lastPriceRefresh ? new Date(collection.lastPriceRefresh).toLocaleString() : 'Never'}</span>
     </div>
-    <p style="font-size:11px;color:var(--text-muted);margin-top:18px;line-height:1.5">
-      Card prices via <a href="#" onclick="window.api.app.openExternal('https://scryfall.com');return false">Scryfall</a>.
-      Secret Lair drop data via <a href="#" onclick="window.api.app.openExternal('https://mtgjson.com');return false">MTGJSON</a>.
-      Sealed prices via TCGCSV (free) and PriceCharting (optional API key, configured in Settings).
+
+    <h3 style="font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--accent2);margin:0 0 10px">Price Column Glossary</h3>
+    <div style="display:grid;grid-template-columns:auto 1fr;gap:8px 14px;margin-bottom:18px">
+      <span style="${termStyle}">Low (SCR)</span>
+      <span style="${defStyle}">The cheapest active listing on TCGPlayer right now, as reported by Scryfall. This is what you could theoretically buy the card for today — but it may be a single heavily-played copy or an outlier listing.</span>
+
+      <span style="${termStyle}">Mkt (TCG)</span>
+      <span style="${defStyle}">TCGPlayer's market price — a weighted average of what the card has actually sold for recently. This is the most realistic indicator of a card's true value and what most other trackers use.</span>
+
+      <span style="${termStyle}">Cost (basis)</span>
+      <span style="${defStyle}">What you paid (or what the card was worth when you acquired it). ManaBox records the TCGPlayer price automatically when you add a card, so this is a historical snapshot — not necessarily your literal out-of-pocket cost.</span>
+
+      <span style="${termStyle}">Δ Price</span>
+      <span style="${defStyle}">Percentage change between the two most recent price snapshots for that card. Requires at least two refresh dates to show movement.</span>
+
+      <span style="${termStyle}">Trend</span>
+      <span style="${defStyle}">A sparkline chart of the card's low price over all recorded refresh dates. Rising line = price going up; falling line = price going down.</span>
+    </div>
+
+    <h3 style="font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--accent2);margin:0 0 10px">Dashboard Terms</h3>
+    <div style="display:grid;grid-template-columns:auto 1fr;gap:8px 14px;margin-bottom:18px">
+      <span style="${termStyle}">Total Value</span>
+      <span style="${defStyle}">Cards value + sealed value combined. Uses Scryfall low price for cards and TCGPlayer market price for sealed products.</span>
+
+      <span style="${termStyle}">Cost Basis</span>
+      <span style="${defStyle}">The sum of all purchase prices across your collection. Compare this to Total Value to see your overall gain or loss.</span>
+
+      <span style="${termStyle}">Gain / Loss</span>
+      <span style="${defStyle}">Total Value minus Cost Basis. A positive number means your collection is worth more than you paid; negative means it's worth less. Shown as both a dollar amount and a percentage.</span>
+
+      <span style="${termStyle}">Top Movers</span>
+      <span style="${defStyle}">Cards with the largest price change (up or down) since the previous refresh. Useful for spotting spikes from new set releases, bans, or tournament results.</span>
+    </div>
+
+    <p style="font-size:11px;color:var(--text-muted);line-height:1.5;margin-bottom:16px">
+      Low prices via <a href="#" onclick="window.api.app.openExternal('https://scryfall.com');return false">Scryfall</a> ·
+      Market prices via <a href="#" onclick="window.api.app.openExternal('https://tcgcsv.com');return false">TCGCSV</a> ·
+      SL drop data via <a href="#" onclick="window.api.app.openExternal('https://mtgjson.com');return false">MTGJSON</a> ·
+      Sealed prices via TCGCSV and PriceCharting (optional key in Settings).
     </p>
-    <div style="display:flex;justify-content:flex-end;margin-top:18px">
+    <div style="display:flex;justify-content:flex-end">
       <button class="btn btn-primary" onclick="hideModal()">Close</button>
     </div>`);
 }
@@ -2046,7 +2230,8 @@ function renderCards() {
     { key: 'language',      label: 'Lang' },
     { key: 'quantity',      label: 'Qty' },
     { key: 'purchasePrice', label: 'Cost' },
-    { key: 'currentPrice',  label: 'Market' },
+    { key: 'currentPrice',  label: 'Low (SCR)' },
+    { key: 'marketPrice',   label: 'Mkt (TCG)' },
     { key: 'priceDelta',    label: 'Δ Price' },
     { key: 'trend',         label: 'Trend' },
     { key: 'flags',         label: 'Flags' },
@@ -2137,7 +2322,8 @@ function renderCards() {
               ${cthn('language', 'Lang')}
               ${cth('quantity', 'quantity', 'Qty')}
               ${cth('purchasePrice', 'purchasePrice', 'Cost')}
-              ${cth('currentPrice', 'currentPrice', 'Market')}
+              ${cth('currentPrice', 'currentPrice', 'Low (SCR)')}
+              ${cthn('marketPrice', 'Mkt (TCG)')}
               ${cthn('priceDelta', 'Δ Price')}
               ${cthn('trend', 'Trend')}
               ${cthn('flags', 'Flags')}
@@ -2156,8 +2342,9 @@ function renderCards() {
 }
 
 function renderCardRow(card) {
-  const hist     = getPriceHistory(card.scryfallId, card.foil);
-  const curPrice = getCurrentPrice(card.scryfallId, card.foil);
+  const hist      = getPriceHistory(card.scryfallId, card.foil);
+  const curPrice  = getCurrentPrice(card.scryfallId, card.foil);
+  const mktPrice  = getCurrentMarketPrice(card.scryfallId, card.foil);
   const change   = getPriceChange(hist);
   const cond     = CONDITION_SHORT[card.condition] || card.condition;
   const foilBadge = card.foil !== 'normal'
@@ -2184,6 +2371,7 @@ function renderCardRow(card) {
     ${col('quantity', `<td style="text-align:center">${card.quantity}</td>`)}
     ${col('purchasePrice', `<td>${fmt(card.purchasePrice)}</td>`)}
     ${col('currentPrice', `<td style="font-weight:600">${curPrice != null ? fmt(curPrice) : '<span style="color:var(--text-dim)">—</span>'}</td>`)}
+    ${col('marketPrice', `<td style="font-weight:600;color:var(--accent2)">${mktPrice != null ? fmt(mktPrice) : '<span style="color:var(--text-dim)">—</span>'}</td>`)}
     ${col('priceDelta', `<td>${changeHtml}</td>`)}
     ${col('trend', `<td>${sparkline(hist)}</td>`)}
     ${col('flags', `<td>${flags}</td>`)}
@@ -3840,6 +4028,7 @@ function showSettings() {
     if (!confirm('Delete ALL price history from the database? This cannot be undone.')) return;
     await window.api.prices.clear();
     collection.priceHistory = {};
+    collection.marketPriceHistory = {};
     hideModal(); render(); toast('Price history cleared from database', 'info');
   });
   document.getElementById('cfg-reset-all').addEventListener('click', async () => {
@@ -3847,13 +4036,14 @@ function showSettings() {
     if (!confirm('Last chance — really wipe everything?')) return;
     await window.api.data.reset();
     // Reset in-memory state to a fresh collection
-    collection.cards         = [];
-    collection.sealed        = [];
-    collection.priceHistory  = {};
-    collection.cardMetadata  = {};
-    collection.failedLookups = [];
-    collection.settings      = { pricechartingKey: '' };
-    collection.lastPriceRefresh = null;
+    collection.cards               = [];
+    collection.sealed              = [];
+    collection.priceHistory        = {};
+    collection.marketPriceHistory  = {};
+    collection.cardMetadata        = {};
+    collection.failedLookups       = [];
+    collection.settings            = { pricechartingKey: '' };
+    collection.lastPriceRefresh    = null;
     hideModal();
     render();
     toast('Database reset — starting fresh', 'success');
@@ -3905,32 +4095,43 @@ function showCardHoverPreview(el, card) {
   _hoverShowTimer = setTimeout(() => {
     preview.innerHTML = buildCardHoverHtml(card);
     preview.classList.add('visible');
-    positionHoverPreview(el);
+    // Defer until after browser reflow so offsetHeight is accurate
+    requestAnimationFrame(() => positionHoverPreview(el));
   }, 200);
 }
 
 function positionHoverPreview(anchorEl) {
   const preview = document.getElementById('card-hover-preview');
   if (!preview || !anchorEl) return;
-  const r = anchorEl.getBoundingClientRect();
-  const pw = preview.offsetWidth || 300;
-  const ph = preview.offsetHeight || 400;
+  const r   = anchorEl.getBoundingClientRect();
+  const pw  = preview.offsetWidth || 300;
   const pad = 10;
-  const vw = window.innerWidth;
-  const vh = window.innerHeight;
+  const vw  = window.innerWidth;
+  const vh  = window.innerHeight;
+
+  // scrollHeight is accurate even when image hasn't fully loaded yet because
+  // the img element reserves space via its intrinsic aspect ratio once src is set.
+  // Fall back to 520px (image ~384px + text ~100px + padding 24px) if still 0.
+  const ph = Math.max(preview.scrollHeight, preview.offsetHeight) || 520;
 
   // Prefer right of anchor; flip to left if it overflows
   let x = r.right + pad;
   if (x + pw > vw - pad) x = r.left - pw - pad;
   if (x < pad) x = pad;
 
-  // Vertically center on anchor, clamped to viewport
-  let y = r.top + (r.height / 2) - (ph / 2);
-  if (y + ph > vh - pad) y = vh - ph - pad;
-  if (y < pad) y = pad;
+  // Align top of popup to top of anchor row; clamp so it never goes below viewport
+  let y = r.top;
+  if (y + ph > vh - pad) y = Math.max(pad, vh - ph - pad);
 
   preview.style.left = `${x}px`;
   preview.style.top  = `${y}px`;
+
+  // Reposition once the card image finishes loading — its height changes the layout
+  const img = preview.querySelector('img.chp-img');
+  if (img && !img.complete) {
+    img.addEventListener('load',  () => positionHoverPreview(anchorEl), { once: true });
+    img.addEventListener('error', () => positionHoverPreview(anchorEl), { once: true });
+  }
 }
 
 function hideCardHoverPreview() {
@@ -3965,7 +4166,7 @@ function showSlTileHoverPreview(el, scryfallId) {
         `).join('')}
       </div>` : ''}`;
     preview.classList.add('visible');
-    positionHoverPreview(el);
+    requestAnimationFrame(() => positionHoverPreview(el));
   }, 200);
 }
 
@@ -4260,9 +4461,6 @@ async function init() {
   if (loaded) {
     const el = document.getElementById('autosave-status');
     if (el) {
-      const t = collection.lastPriceRefresh
-        ? new Date(collection.lastPriceRefresh).toLocaleDateString()
-        : 'previously';
       el.textContent = `● Restored (${collection.cards.length.toLocaleString()} cards)`;
       el.style.opacity = '1';
       el._fadeTimer = setTimeout(() => { el.style.opacity = '0.4'; }, 5000);
@@ -4273,6 +4471,22 @@ async function init() {
   }
 
   render();
+
+  // Auto-refresh once per calendar day on first open — runs after render so the
+  // UI is visible before the network requests start.
+  if (collection.cards.length > 0) {
+    const todayStr = new Date().toDateString();
+    const lastStr  = collection.lastPriceRefresh
+      ? new Date(collection.lastPriceRefresh).toDateString()
+      : null;
+    if (lastStr !== todayStr) {
+      window.logger?.info('App', 'First open today — auto-refreshing prices and SL data…');
+      setTimeout(async () => {
+        await refreshPrices();
+        if (typeof refreshSlData === 'function') refreshSlData();
+      }, 800);
+    }
+  }
 }
 
 document.addEventListener('DOMContentLoaded', init);

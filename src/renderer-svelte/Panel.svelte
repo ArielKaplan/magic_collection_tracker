@@ -7,6 +7,7 @@
   export let id;
   export let title;
   export let icon = '';
+  export let description = '';          // help text shown via ⓘ button
   export let x = 0;
   export let y = 0;
   export let width = 320;
@@ -35,6 +36,18 @@
   $: filterSummary = filter
     ? `${(filter.binders?.include?.length || 0)} incl · ${(filter.binders?.exclude?.length || 0)} excl`
     : '';
+
+  let showInfo = false;
+  let infoAbove = false;
+  function toggleInfo() {
+    showInfo = !showInfo;
+    if (showInfo) {
+      bringToFront();
+      // Flip popover above the panel if there isn't room below the header
+      const rect = el.getBoundingClientRect();
+      infoAbove = rect.top + 36 + 200 > window.innerHeight;
+    }
+  }
 
   let showFilter = false;
   function toggleFilter() {
@@ -119,6 +132,9 @@
     {#if icon}<span class="panel-icon">{icon}</span>{/if}
     <span class="panel-title">{title}</span>
     <span class="panel-actions">
+      {#if description}
+        <button class="panel-btn info-btn" class:info-on={showInfo} title="About this panel" on:click={toggleInfo} on:pointerdown|stopPropagation>ⓘ</button>
+      {/if}
       {#if filterable}
         <button
           class="panel-btn filter-btn"
@@ -164,6 +180,16 @@
             {/each}
           </div>
         {/if}
+      </div>
+    {/if}
+
+    {#if showInfo && description}
+      <div class="info-popover" class:above={infoAbove} on:pointerdown|stopPropagation>
+        <div class="info-head">
+          <span class="info-title">About this panel</span>
+          <button class="fp-clear" on:click={() => showInfo = false}>✕</button>
+        </div>
+        <p class="info-body">{description}</p>
       </div>
     {/if}
 
@@ -223,6 +249,29 @@
   }
   .panel-btn:hover { background: rgba(255,255,255,0.08); color: var(--text, #ece9e1); }
   .filter-btn.filter-on { color: var(--accent2, #e8b84b); }
+  .info-btn { font-size: 13px; }
+  .info-btn.info-on { color: var(--accent2, #e8b84b); }
+
+  .info-popover {
+    position: absolute;
+    top: 36px;
+    right: 6px;
+    width: 260px;
+    z-index: 99999;
+    background: var(--surface2, #181830);
+    border: 1px solid var(--border2, #303058);
+    border-radius: 8px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.6);
+    padding: 10px 12px 12px;
+  }
+  .info-popover.above {
+    top: auto;
+    bottom: 36px;
+    margin-bottom: 2px;
+  }
+  .info-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+  .info-title { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent2, #e8b84b); }
+  .info-body { font-size: 11.5px; color: var(--text-dim, #7a7692); line-height: 1.55; margin: 0; }
   .panel-btn-delete:hover { color: #e05555 !important; background: rgba(224,85,85,0.12) !important; }
   .filter-dot {
     position: absolute;
