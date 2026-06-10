@@ -63,7 +63,8 @@
       {
         "provider": "github",
         "owner": "ArielKaplan",
-        "repo": "magic_collection_tracker"
+        "repo": "magic_collection_tracker",
+        "releaseType": "release"
       }
     ]
   }
