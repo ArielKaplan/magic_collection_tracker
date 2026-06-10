@@ -50,11 +50,19 @@ contextBridge.exposeInMainWorld('api', {
     openCsv:   ()      => inv('dialog:openCsv'),
     openJson:  ()      => inv('dialog:openJson'),
     saveJson:  (json)  => inv('dialog:saveJson', json),
+    saveFile:  (opts)  => inv('dialog:saveFile', opts),
   },
   app: {
     dbPath:        ()       => inv('app:dbPath'),
     openExternal:  (url)    => inv('app:openExternal', url),
+    version:       ()       => inv('app:version'),
     platform:      process.platform,
+  },
+  updater: {
+    check:    () => inv('updater:check'),
+    download: () => inv('updater:download'),
+    install:  () => inv('updater:install'),
+    onEvent:  (handler) => ipcRenderer.on('updater:event', (_e, msg) => handler(msg)),
   },
   // Listen for menu actions from the native menu bar
   onMenuAction:    (handler) => ipcRenderer.on('menu:action', (_e, action) => handler(action)),

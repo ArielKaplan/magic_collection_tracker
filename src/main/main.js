@@ -2,9 +2,27 @@ const { app, BrowserWindow, Menu, ipcMain, dialog, shell } = require('electron')
 const path = require('path');
 const fs   = require('fs');
 const db   = require('./db');
+const { autoUpdater } = require('electron-updater');
 
 const isDev = process.argv.includes('--dev');
 let mainWindow = null;
+
+// electron-updater: we drive everything from the UI, no auto downloads
+autoUpdater.autoDownload = false;
+autoUpdater.autoInstallOnAppQuit = true;
+
+function sendUpdater(event, payload) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('updater:event', { event, payload });
+  }
+}
+
+autoUpdater.on('checking-for-update', () => sendUpdater('checking'));
+autoUpdater.on('update-available',    (info) => sendUpdater('available',     { version: info.version, releaseNotes: info.releaseNotes, releaseDate: info.releaseDate }));
+autoUpdater.on('update-not-available',(info) => sendUpdater('not-available', { version: info.version }));
+autoUpdater.on('error',               (err)  => sendUpdater('error',         { message: err == null ? 'unknown' : (err.stack || err.message || String(err)) }));
+autoUpdater.on('download-progress',   (p)    => sendUpdater('progress',      { percent: p.percent, bytesPerSecond: p.bytesPerSecond, transferred: p.transferred, total: p.total }));
+autoUpdater.on('update-downloaded',   (info) => sendUpdater('downloaded',    { version: info.version }));
 
 // Helper: send a menu action to the renderer
 function sendMenu(action) {
@@ -73,6 +91,7 @@ function buildMenu() {
       label: '&Help',
       submenu: [
         { label: 'Open Database Folder', click: () => shell.openPath(app.getPath('userData')) },
+        { label: 'Check for Updates…', click: () => sendMenu('updates:check') },
         { label: 'About Secret Lair Tracker', click: () => sendMenu('about:show') },
       ],
     },
@@ -86,6 +105,18 @@ function dbPath() {
   const dir = path.join(app.getPath('userData'));
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
   return path.join(dir, 'collection.db');
+}
+
+// Silent background check shortly after launch. Notifies the renderer if an
+// update is available; no download until the user clicks in Settings.
+function scheduleStartupUpdateCheck() {
+  if (isDev) return;
+  setTimeout(() => {
+    autoUpdater.checkForUpdates().catch((err) => {
+      // Network errors at startup shouldn't disrupt the user; log only.
+      console.warn('[updater] startup check failed:', err && err.message);
+    });
+  }, 8000);
 }
 
 function createWindow() {
@@ -168,6 +199,18 @@ function registerIpc() {
     return { path: res.filePaths[0], text };
   });
 
+  ipcMain.handle('dialog:saveFile', async (_e, opts) => {
+    const { title, defaultPath, filterName, extensions, content } = opts || {};
+    const res = await dialog.showSaveDialog({
+      title: title || 'Export',
+      defaultPath: defaultPath || 'export.txt',
+      filters: [{ name: filterName || 'All files', extensions: extensions || ['*'] }],
+    });
+    if (res.canceled || !res.filePath) return null;
+    fs.writeFileSync(res.filePath, content ?? '', 'utf-8');
+    return res.filePath;
+  });
+
   ipcMain.handle('dialog:saveJson', async (_e, json) => {
     const res = await dialog.showSaveDialog({
       title: 'Export collection backup',
@@ -189,12 +232,41 @@ function registerIpc() {
   // App info
   ipcMain.handle('app:dbPath',         () => dbPath());
   ipcMain.handle('app:openExternal',   (_e, url) => shell.openExternal(url));
+  ipcMain.handle('app:version',        () => app.getVersion());
+
+  // Updater
+  ipcMain.handle('updater:check', async () => {
+    if (isDev) {
+      sendUpdater('error', { message: 'Update checks are disabled in dev mode. Build an installed copy to test.' });
+      return { ok: false, devMode: true };
+    }
+    try {
+      const r = await autoUpdater.checkForUpdates();
+      return { ok: true, version: r && r.updateInfo ? r.updateInfo.version : null };
+    } catch (err) {
+      return { ok: false, error: err.message || String(err) };
+    }
+  });
+  ipcMain.handle('updater:download', async () => {
+    try {
+      await autoUpdater.downloadUpdate();
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: err.message || String(err) };
+    }
+  });
+  ipcMain.handle('updater:install', () => {
+    // quitAndInstall(isSilent, isForceRunAfter)
+    autoUpdater.quitAndInstall(false, true);
+    return { ok: true };
+  });
 }
 
 app.whenReady().then(() => {
   db.init(dbPath());
   registerIpc();
   createWindow();
+  scheduleStartupUpdateCheck();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();

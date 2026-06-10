@@ -69,12 +69,11 @@ export function panelDef(id) {
   return PANELS.find(p => p.id === id);
 }
 
-export function defaultLayout() {
+export function defaultLayout(canvasW = 1480) {
   // Tile panels in a tidy grid with no overlap. KPIs run across the top row,
   // bigger content panels flow below in row-major order.
   const out = [];
   const gap = 12;
-  const canvasW = 1480; // soft cap; content wraps when exceeded
 
   // KPIs row(s)
   let x = 12, y = 12;

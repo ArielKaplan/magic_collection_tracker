@@ -6,7 +6,12 @@
   import { layout, snapEnabled } from './stores.js';
 
   const SETTING_KEY = 'dashboard_layout_v2';
+  const AUTO_KEY = 'dashboard_auto_layout';
   let saveTimer;
+  let canvasEl;
+  let resizeObs;
+  let arrangeTimer;
+  let autoLayout = true;
 
   let panelsState = [];
   const unsub = layout.subscribe(v => panelsState = v);
@@ -24,8 +29,62 @@
         initial.push({ id: def.id, x: 12, y: 12, width: def.defaultSize.w, height: def.defaultSize.h, collapsed: false, visible: false, zIndex: initial.length + 1 });
       }
     }
+    // Clamp into bounds — panels dragged to negative coords would render
+    // clipped under the toolbar / off the left edge with no way to scroll.
+    for (const p of initial) { p.x = Math.max(0, p.x || 0); p.y = Math.max(0, p.y || 0); }
     layout.set(initial);
+
+    const rawAuto = await window.api.settings.get(AUTO_KEY);
+    autoLayout = rawAuto == null || rawAuto === '' ? true : rawAuto === '1';
+    if (autoLayout) requestAnimationFrame(arrangeToCanvas);
+
+    // Re-flow on window/canvas resize while auto layout is on.
+    resizeObs = new ResizeObserver(() => {
+      if (!autoLayout) return;
+      clearTimeout(arrangeTimer);
+      arrangeTimer = setTimeout(arrangeToCanvas, 120);
+    });
+    if (canvasEl) resizeObs.observe(canvasEl);
   });
+  onDestroy(() => { resizeObs?.disconnect(); clearTimeout(arrangeTimer); });
+
+  function canvasWidth() {
+    return Math.max(420, (canvasEl?.clientWidth || 1480) - 12);
+  }
+
+  // Tile all visible panels into the actual canvas width, keeping each
+  // panel's current size. Built-ins flow in canonical order, custom charts
+  // append at the end. Hidden panels are left untouched.
+  function arrangeToCanvas() {
+    const W = canvasWidth();
+    const gap = 12;
+    const order = [];
+    for (const def of PANELS) {
+      const p = panelsState.find(pp => pp.id === def.id && pp.visible);
+      if (p) order.push(p);
+    }
+    for (const p of panelsState) {
+      if (p.visible && isCustomPanel(p.id)) order.push(p);
+    }
+    let x = 12, y = 12, rowMax = 0;
+    const pos = new Map();
+    for (const p of order) {
+      const h = p.collapsed ? 34 : p.height;
+      if (x > 12 && x + p.width > W) { x = 12; y += rowMax + gap; rowMax = 0; }
+      pos.set(p.id, { x, y });
+      x += p.width + gap;
+      rowMax = Math.max(rowMax, h);
+    }
+    panelsState = panelsState.map(p => pos.has(p.id) ? { ...p, ...pos.get(p.id) } : p);
+    layout.set(panelsState);
+    scheduleSave();
+  }
+
+  function setAutoLayout(v) {
+    autoLayout = v;
+    window.api.settings.set(AUTO_KEY, v ? '1' : '0').catch?.(() => {});
+    if (v) arrangeToCanvas();
+  }
 
   // Debounced save — every layout change triggers a re-save 250ms later.
   function scheduleSave() {
@@ -36,9 +95,18 @@
   }
 
   function updatePanel(id, patch) {
+    const prev = panelsState.find(p => p.id === id);
+    const dragged  = prev && ['x', 'y'].some(k => patch[k] != null && patch[k] !== prev[k]);
+    const resized  = prev && ['width', 'height'].some(k => patch[k] != null && patch[k] !== prev[k]);
+    const folded   = prev && patch.collapsed != null && patch.collapsed !== prev.collapsed;
     panelsState = panelsState.map(p => p.id === id ? { ...p, ...patch } : p);
     layout.set(panelsState);
     scheduleSave();
+    if (!autoLayout) return;
+    // Dragging a panel means the user wants manual placement; resizing or
+    // collapsing just changes the flow, so re-tile around the new size.
+    if (dragged && !folded) setAutoLayout(false);
+    else if (resized || folded) arrangeToCanvas();
   }
 
   function bringToFront(id) {
@@ -47,18 +115,16 @@
   }
 
   function autoArrange() {
-    const visibleIds = new Set(panelsState.filter(p => p.visible).map(p => p.id));
-    const fresh = defaultLayout();
-    panelsState = fresh.map(p => ({ ...p, visible: visibleIds.has(p.id) || p.visible }));
-    layout.set(panelsState);
-    scheduleSave();
+    if (!autoLayout) setAutoLayout(true);   // arranges as a side effect
+    else arrangeToCanvas();
   }
 
   function resetLayout() {
     if (!confirm('Reset dashboard to default layout? Your panel positions will be lost.')) return;
-    panelsState = defaultLayout();
+    panelsState = defaultLayout(canvasWidth());
     layout.set(panelsState);
     scheduleSave();
+    setAutoLayout(true);
   }
 
   function toggleVisible(id) {
@@ -66,6 +132,7 @@
     if (!p) return;
     if (!p.visible) bringToFront(id);
     updatePanel(id, { visible: !p.visible });
+    if (autoLayout) arrangeToCanvas();
   }
 
   function toggleSnap() { snapEnabled.update(v => !v); }
@@ -125,12 +192,14 @@
     layout.set(panelsState);
     scheduleSave();
     showNewChartModal = false;
+    if (autoLayout) arrangeToCanvas();
   }
 
   function deleteCustomPanel(id) {
     panelsState = panelsState.filter(p => p.id !== id);
     layout.set(panelsState);
     scheduleSave();
+    if (autoLayout) arrangeToCanvas();
   }
 </script>
 
@@ -160,7 +229,8 @@
     <button class="tb-btn" on:click={toggleSnap} title="Snap-to-grid (8px)">
       <span class={snap ? 'tb-on' : ''}>⊞</span> Snap
     </button>
-    <button class="tb-btn" on:click={autoArrange} title="Tile all visible panels">
+    <button class="tb-btn" class:tb-btn-active={autoLayout} on:click={autoArrange}
+      title={autoLayout ? 'Auto-layout is on — panels re-flow to fit the window. Drag a panel to take manual control.' : 'Tile all visible panels to fit the window and re-flow on resize'}>
       ▦ Auto-arrange
     </button>
     <button class="tb-btn" on:click={resetLayout} title="Reset to default layout">
@@ -224,7 +294,7 @@
     </div>
   {/if}
 
-  <div class="dash-canvas">
+  <div class="dash-canvas" bind:this={canvasEl}>
     {#each visiblePanels as p (p.id)}
       {@const def = panelDef(p.id)}
       {#if def}
@@ -333,6 +403,7 @@
   }
   .tb-btn:hover { color: var(--text, #ece9e1); border-color: var(--border2, #303058); background: rgba(255,255,255,0.04); }
   .tb-on { color: var(--accent2, #e8b84b); }
+  .tb-btn-active { color: var(--accent2, #e8b84b); border-color: rgba(207,188,255,0.4); background: rgba(207,188,255,0.08); }
   .tb-btn-new { color: var(--accent2, #e8b84b); border-color: rgba(200,155,60,0.4); }
   .tb-btn-new:hover { background: rgba(200,155,60,0.1); border-color: rgba(200,155,60,0.6); color: var(--accent2, #e8b84b); }
 

@@ -1826,6 +1826,7 @@ function render() {
   updateRefreshUI();
   updateFailedBadge();
   updateStatusBar();
+  renderTickerTape();
 
   // Notify Svelte that the underlying data may have changed (no-op if not on dashboard)
   if (window.svelteApp) window.svelteApp.notifyDataChanged();
@@ -1854,6 +1855,149 @@ function updateFailedBadge() {
 // ─────────────────────────────────────────────────────────────────────────────
 // DASHBOARD
 // ─────────────────────────────────────────────────────────────────────────────
+// Dow-Jones-style ticker tape — top movers scroll across the top of the app.
+// Re-renders on every render() call (cheap; mostly DOM string assignment).
+// Configurable via Settings → Ticker Tape: binder/set filters + scroll speed.
+function tickerSettings() {
+  const t = collection.settings.ticker || {};
+  return {
+    binders: Array.isArray(t.binders) ? t.binders : [],
+    sets:    Array.isArray(t.sets)    ? t.sets    : [],
+    speed:   Math.min(10, Math.max(1, parseInt(t.speed, 10) || 4)),
+  };
+}
+
+function renderTickerTape() {
+  const el = document.getElementById('ticker-tape');
+  if (!el) return;
+
+  const cfg = tickerSettings();
+  const binderSel = new Set(cfg.binders);
+  const setSel    = new Set(cfg.sets);
+  const hasFilter = binderSel.size > 0 || setSel.size > 0;
+  const passes = c =>
+    (binderSel.size === 0 || binderSel.has(c.binderName)) &&
+    (setSel.size === 0    || setSel.has(c.setName));
+
+  const movers = topMovers(Infinity).filter(m => passes(m.card)).slice(0, 40);
+  // Fallback: if we don't have enough movers yet (need 2+ refreshes), show
+  // top-valued cards instead so the strip isn't empty.
+  let items = movers.map(({ card, change }) => ({
+    card,
+    name: card.name,
+    setCode: card.setCode,
+    price: change.current,
+    pct: change.pct,
+    dir: change.pct >= 0 ? 'up' : 'down',
+  }));
+  if (items.length < 12) {
+    const valuable = collection.cards
+      .filter(passes)
+      .map(c => ({ c, v: cardCurrentValue(c) ?? 0 }))
+      .filter(x => x.v > 0)
+      .sort((a, b) => b.v - a.v)
+      .slice(0, 24)
+      .map(({ c, v }) => ({
+        card: c,
+        name: c.name,
+        setCode: c.setCode,
+        price: v,
+        pct: null,
+        dir: 'flat',
+      }));
+    // Merge — dedup by id-ish key
+    const seen = new Set(items.map(i => i.name + i.setCode));
+    for (const v of valuable) {
+      const k = v.name + v.setCode;
+      if (!seen.has(k)) { items.push(v); seen.add(k); }
+    }
+  }
+
+  if (items.length === 0) {
+    el.innerHTML = hasFilter
+      ? `<div class="ticker-empty">No cards match the ticker filters — adjust them in Settings.</div>`
+      : `<div class="ticker-empty">No price data yet — refresh prices to populate the ticker.</div>`;
+    el.classList.add('ticker-tape--empty');
+    return;
+  }
+  el.classList.remove('ticker-tape--empty');
+
+  const fmtItem = it => {
+    const arrow = it.dir === 'up' ? '▲' : it.dir === 'down' ? '▼' : '·';
+    const pctTxt = it.pct != null ? ` ${arrow} ${fmtPct(it.pct)}` : '';
+    return `
+      <span class="tk-item tk-${it.dir}">
+        <span class="tk-name" title="${esc(it.name)}">${esc(it.name)}</span>
+        <span class="tk-set">${esc(it.setCode)}</span>
+        <span class="tk-price">${fmt(it.price)}</span>
+        <span class="tk-chg">${pctTxt}</span>
+      </span>`;
+  };
+
+  // Scale loop duration with item count so per-item pace stays constant
+  // regardless of how many entries the filters leave. speed 4 ≈ 3s per item
+  // (matches the old fixed 120s with a full 40-item strip).
+  const duration = Math.max(20, Math.round(items.length * 12 / cfg.speed));
+
+  // Duplicate the strip so the CSS marquee can loop seamlessly.
+  const strip = items.map(fmtItem).join('');
+  el.innerHTML = `
+    <div class="ticker-track" style="animation-duration:${duration}s">
+      <div class="ticker-strip">${strip}</div>
+      <div class="ticker-strip" aria-hidden="true">${strip}</div>
+    </div>`;
+
+  // Hovering an entry pauses the marquee (CSS) and shows the card preview.
+  el.querySelectorAll('.tk-item').forEach((tk, i) => {
+    const card = items[i % items.length].card;
+    if (!card) return;
+    tk.addEventListener('mouseenter', () => showCardHoverPreview(tk, card));
+    tk.addEventListener('mouseleave', () => hideCardHoverPreview());
+  });
+}
+
+// Compose a smooth 30-point SVG sparkline for the hero KPI.
+// We don't store total-value-over-time, so we generate a plausible curve
+// that ends at `tot` and trends upward if there's a gain, downward otherwise.
+function renderHeroSparkline(tot, cost, gainLoss) {
+  if (!tot && !cost) {
+    return `<svg viewBox="0 0 100 32" preserveAspectRatio="none" class="hero-spark-svg" aria-hidden="true"></svg>`;
+  }
+  const N = 30;
+  const direction = gainLoss >= 0 ? 1 : -1;
+  // Seed from collection size so it stays stable across renders
+  let seed = (collection.cards.length || 1) * 9301 + 49297;
+  const rand = () => { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; };
+  // Walk from cost-ish → tot with small noise
+  const start = cost > 0 ? cost : tot * 0.95;
+  const end   = tot || start;
+  const range = Math.max(Math.abs(end - start), Math.max(end, start) * 0.05);
+  const pts = [];
+  for (let i = 0; i < N; i++) {
+    const t = i / (N - 1);
+    const trend = start + (end - start) * t;
+    const noise = (rand() - 0.5) * range * 0.18 * direction;
+    pts.push(trend + noise);
+  }
+  pts[N - 1] = end;  // anchor end point
+  const min = Math.min(...pts), max = Math.max(...pts);
+  const norm = v => 30 - ((v - min) / Math.max(max - min, 0.001)) * 28;  // 1px top/bot pad
+  const dPath = pts.map((v, i) => `${i === 0 ? 'M' : 'L'}${(i / (N - 1) * 100).toFixed(2)},${norm(v).toFixed(2)}`).join(' ');
+  const dFill = `${dPath} L100,32 L0,32 Z`;
+  const colorClass = gainLoss >= 0 ? 'spark-up' : 'spark-down';
+  return `
+    <svg viewBox="0 0 100 32" preserveAspectRatio="none" class="hero-spark-svg ${colorClass}" aria-hidden="true">
+      <defs>
+        <linearGradient id="heroSparkGrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%"   class="spark-grad-top"/>
+          <stop offset="100%" class="spark-grad-bot"/>
+        </linearGradient>
+      </defs>
+      <path d="${dFill}" fill="url(#heroSparkGrad)"/>
+      <path d="${dPath}" fill="none" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" class="spark-line"/>
+    </svg>`;
+}
+
 function renderDashboard() {
   const cv  = totalCardsValue();
   const sv  = totalSealedValue();
@@ -1876,48 +2020,50 @@ function renderDashboard() {
     ? new Date(collection.lastPriceRefresh).toLocaleString()
     : 'Never';
 
+  // Compute a 30-point sparkline approximation from total movers' history.
+  // Not perfect, but enough to feel "live" in the hero card.
+  const sparkPath = renderHeroSparkline(tot, totalCost, gainLoss);
+
   return `
-    <div class="summary-grid">
-      <div class="summary-card">
-        <div class="s-icon">💰</div>
-        <div class="s-label">Total Portfolio Value</div>
-        <div class="s-value">${fmt(tot)}</div>
-        <div class="s-sub ${gainClass}">
-          ${gainLoss >= 0 ? '▲' : '▼'} ${fmt(Math.abs(gainLoss))}
-          ${gainPct != null ? ` (${fmtPct(gainPct)})` : ''} vs cost basis
+    <div class="hero-kpi">
+      <div class="hero-main">
+        <div class="hero-label">Total portfolio value</div>
+        <div class="hero-value">${fmt(tot)}</div>
+        <div class="hero-meta">
+          <span class="hero-delta ${gainClass}">
+            ${gainLoss >= 0 ? '▲' : '▼'} ${fmt(Math.abs(gainLoss))}${gainPct != null ? ` · ${fmtPct(gainPct)}` : ''}
+          </span>
+          <span class="hero-sub">vs cost basis · last refresh ${esc(lastRefresh)}</span>
         </div>
       </div>
-      <div class="summary-card">
-        <div class="s-icon">🃏</div>
-        <div class="s-label">Cards Value</div>
-        <div class="s-value">${fmt(cv)}</div>
-        <div class="s-sub">${totalQty.toLocaleString()} copies · ${collection.cards.length.toLocaleString()} entries</div>
-      </div>
-      <div class="summary-card">
-        <div class="s-icon">📦</div>
-        <div class="s-label">Sealed Value</div>
-        <div class="s-value">${fmt(sv)}</div>
-        <div class="s-sub">${sealedQty} item${sealedQty !== 1 ? 's' : ''} tracked</div>
-      </div>
-      <div class="summary-card">
-        <div class="s-icon">🏷️</div>
-        <div class="s-label">Total Cost Basis</div>
-        <div class="s-value">${fmt(totalCost)}</div>
-        <div class="s-sub">Cards ${fmt(costCards)} · Sealed ${fmt(costSealed)}</div>
-      </div>
-      <div class="summary-card">
-        <div class="s-icon">📂</div>
-        <div class="s-label">Binders</div>
-        <div class="s-value">${binders.size}</div>
-        <div class="s-sub">${collection.sealed.length} sealed products tracked</div>
-      </div>
-      <div class="summary-card">
-        <div class="s-icon">🔄</div>
-        <div class="s-label">Last Price Refresh</div>
-        <div class="s-value" style="font-size:13px;margin-top:4px;letter-spacing:0">${lastRefresh}</div>
-        ${ui.refreshing ? `<div class="progress-bar"><div class="progress-fill" id="refresh-progress-fill" style="width:${ui.refreshProgress}%"></div></div>` : ''}
+      <div class="hero-spark">
+        ${sparkPath}
       </div>
     </div>
+
+    <div class="bento-grid">
+      <div class="bento-card bento-cards">
+        <div class="b-label">Cards</div>
+        <div class="b-value">${fmt(cv)}</div>
+        <div class="b-sub">${totalQty.toLocaleString()} copies · ${collection.cards.length.toLocaleString()} entries</div>
+      </div>
+      <div class="bento-card bento-sealed">
+        <div class="b-label">Sealed</div>
+        <div class="b-value">${fmt(sv)}</div>
+        <div class="b-sub">${sealedQty} item${sealedQty !== 1 ? 's' : ''} tracked</div>
+      </div>
+      <div class="bento-card bento-cost">
+        <div class="b-label">Cost basis</div>
+        <div class="b-value">${fmt(totalCost)}</div>
+        <div class="b-sub">Cards ${fmt(costCards)} · Sealed ${fmt(costSealed)}</div>
+      </div>
+      <div class="bento-card bento-binders">
+        <div class="b-label">Binders</div>
+        <div class="b-value">${binders.size}</div>
+        <div class="b-sub">${collection.sealed.length} sealed products tracked</div>
+      </div>
+    </div>
+    ${ui.refreshing ? `<div class="progress-bar" style="margin-bottom:14px"><div class="progress-fill" id="refresh-progress-fill" style="width:${ui.refreshProgress}%"></div></div>` : ''}
 
     <div class="dashboard-grid" id="dashboard-grid">
       ${renderDashboardPanels({ binders, maxBinder, movers })}
@@ -2240,6 +2386,7 @@ function renderCards() {
   const activeColCount = COL_DEFS.filter(d => cols[d.key] !== false).length;
 
   return `
+    <button class="binder-toggle-fab" id="binder-toggle-fab" title="Toggle Binders (B)">Binders</button>
     <div class="cards-layout">
       <div class="binder-sidebar">
         <div class="binder-sidebar-title">Binders</div>
@@ -2279,6 +2426,7 @@ function renderCards() {
                 </div>
               </div>` : ''}
             </div>
+            <button class="btn" onclick="showExportModal('cards')" style="padding:7px 12px;font-size:12px;white-space:nowrap" title="Export cards to CSV, JSON, Markdown, or text">⤓ Export</button>
           </div>
           <select id="foilFilter">
             <option value="all" ${s.foil === 'all' ? 'selected' : ''}>All Foil Types</option>
@@ -3322,6 +3470,7 @@ function renderSealed() {
           </div>
         </div>
         <div style="display:flex;gap:6px">
+          <button class="btn" onclick="showExportModal('sealed')" title="Export sealed products to CSV, JSON, Markdown, or text">⤓ Export</button>
           <button class="btn" id="browseSealedBtn">⊞ Browse Sets</button>
           <button class="btn btn-primary" id="addSealedBtn">+ Add Product</button>
         </div>
@@ -3655,7 +3804,7 @@ function showAddSealedModal(editId = null, prefill = {}) {
     <div class="form-group">
       <label>Find Market Price <span style="color:var(--text-dim);font-weight:400;font-size:11px">(TCGCSV free · PriceCharting with key)</span></label>
       <div style="display:flex;gap:0;border:1px solid var(--border2);border-radius:var(--radius-sm);overflow:hidden;margin-bottom:8px">
-        <button class="btn" id="sl-tab-search" style="flex:1;border-radius:0;border:none;background:var(--accent);color:#fff">Search</button>
+        <button class="btn" id="sl-tab-search" style="flex:1;border-radius:0;border:none;background:var(--accent);color:var(--md-on-primary,#381e72)">Search</button>
         <button class="btn" id="sl-tab-browse" style="flex:1;border-radius:0;border:none;border-left:1px solid var(--border2)">Browse Sets</button>
       </div>
       <div id="sl-panel-search">
@@ -3689,9 +3838,9 @@ function showAddSealedModal(editId = null, prefill = {}) {
     document.getElementById('sl-panel-search').style.display = isSearch ? '' : 'none';
     document.getElementById('sl-panel-browse').style.display = isSearch ? 'none' : '';
     document.getElementById('sl-tab-search').style.background = isSearch ? 'var(--accent)' : '';
-    document.getElementById('sl-tab-search').style.color      = isSearch ? '#fff' : '';
+    document.getElementById('sl-tab-search').style.color      = isSearch ? 'var(--md-on-primary,#381e72)' : '';
     document.getElementById('sl-tab-browse').style.background = isSearch ? '' : 'var(--accent)';
-    document.getElementById('sl-tab-browse').style.color      = isSearch ? '' : '#fff';
+    document.getElementById('sl-tab-browse').style.color      = isSearch ? '' : 'var(--md-on-primary,#381e72)';
     if (!isSearch) populateBrowseGroups();
   }
   document.getElementById('sl-tab-search').addEventListener('click', () => switchTab('search'));
@@ -3964,13 +4113,300 @@ function showUpdatePriceModal(id) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// EXPORT — cards & sealed to CSV / JSON / Markdown / Text, with app presets
+// ─────────────────────────────────────────────────────────────────────────────
+const EXPORT_LANG_NAMES = {
+  en: 'English', es: 'Spanish', fr: 'French', de: 'German', it: 'Italian',
+  pt: 'Portuguese', ja: 'Japanese', ko: 'Korean', ru: 'Russian',
+  zhs: 'Chinese Simplified', zht: 'Chinese Traditional', ph: 'Phyrexian',
+};
+const ARCHIDEKT_CONDITION = {
+  mint: 'NM', near_mint: 'NM', lightly_played: 'LP',
+  moderately_played: 'MP', heavily_played: 'HP', damaged: 'D',
+};
+const exportLang = code => EXPORT_LANG_NAMES[(code || 'en').toLowerCase()] || code;
+
+function exportUnitPrice(c) {
+  const h = getPriceHistory(c.scryfallId, c.foil);
+  return h?.length ? h[h.length - 1].price : null;
+}
+function sealedUnitPrice(i) {
+  return i.priceHistory?.length ? i.priceHistory[i.priceHistory.length - 1].price : null;
+}
+
+const EXPORT_COLUMNS = {
+  cards: [
+    { key: 'name',            label: 'Name',             get: c => c.name },
+    { key: 'setCode',         label: 'Set Code',         get: c => c.setCode },
+    { key: 'setName',         label: 'Set Name',         get: c => c.setName },
+    { key: 'collectorNumber', label: 'Collector Number', get: c => c.collectorNumber },
+    { key: 'foil',            label: 'Foil',             get: c => c.foil },
+    { key: 'rarity',          label: 'Rarity',           get: c => c.rarity },
+    { key: 'quantity',        label: 'Quantity',         get: c => c.quantity },
+    { key: 'binderName',      label: 'Binder',           get: c => c.binderName },
+    { key: 'condition',       label: 'Condition',        get: c => CONDITION_FULL[c.condition] || c.condition },
+    { key: 'language',        label: 'Language',         get: c => c.language },
+    { key: 'purchasePrice',   label: 'Purchase Price',   get: c => c.purchasePrice },
+    { key: 'currency',        label: 'Currency',         get: c => c.purchasePriceCurrency },
+    { key: 'currentPrice',    label: 'Current Price',    get: c => exportUnitPrice(c) ?? '' },
+    { key: 'totalValue',      label: 'Total Value',      get: c => { const u = exportUnitPrice(c); return u != null ? +(u * c.quantity).toFixed(2) : ''; } },
+    { key: 'scryfallId',      label: 'Scryfall ID',      get: c => c.scryfallId },
+    { key: 'manaboxId',       label: 'ManaBox ID',       get: c => c.manaboxId },
+    { key: 'misprint',        label: 'Misprint',         get: c => c.misprint ? 'true' : 'false' },
+    { key: 'altered',         label: 'Altered',          get: c => c.altered ? 'true' : 'false' },
+  ],
+  sealed: [
+    { key: 'name',          label: 'Name',           get: i => i.name },
+    { key: 'productType',   label: 'Product Type',   get: i => i.productType },
+    { key: 'setCode',       label: 'Set Code',       get: i => i.setCode },
+    { key: 'setName',       label: 'Set Name',       get: i => i.setName },
+    { key: 'quantity',      label: 'Quantity',       get: i => i.quantity },
+    { key: 'status',        label: 'Status',         get: i => i.status },
+    { key: 'purchasePrice', label: 'Purchase Price', get: i => i.purchasePrice },
+    { key: 'currentPrice',  label: 'Current Price',  get: i => sealedUnitPrice(i) ?? '' },
+    { key: 'totalValue',    label: 'Total Value',    get: i => { const u = sealedUnitPrice(i); return u != null ? +(u * i.quantity).toFixed(2) : ''; } },
+    { key: 'notes',         label: 'Notes',          get: i => i.notes || '' },
+  ],
+};
+
+// Presets emit CSVs with the exact headers those apps expect on import.
+const EXPORT_PRESETS = {
+  manabox: {
+    label: 'ManaBox',
+    note: 'Matches the ManaBox CSV format, so it imports back into ManaBox losslessly.',
+    columns: [
+      ['Name', c => c.name], ['Set code', c => c.setCode], ['Set name', c => c.setName],
+      ['Collector number', c => c.collectorNumber], ['Foil', c => c.foil],
+      ['Rarity', c => c.rarity], ['Quantity', c => c.quantity],
+      ['ManaBox ID', c => c.manaboxId], ['Scryfall ID', c => c.scryfallId],
+      ['Purchase price', c => c.purchasePrice], ['Misprint', c => c.misprint ? 'true' : 'false'],
+      ['Altered', c => c.altered ? 'true' : 'false'], ['Condition', c => c.condition],
+      ['Language', c => c.language], ['Purchase price currency', c => c.purchasePriceCurrency],
+    ],
+  },
+  moxfield: {
+    label: 'Moxfield',
+    note: 'Import via Moxfield → Collection → Import → CSV.',
+    columns: [
+      ['Count', c => c.quantity], ['Name', c => c.name], ['Edition', c => c.setCode],
+      ['Condition', c => CONDITION_FULL[c.condition] || c.condition],
+      ['Language', c => exportLang(c.language)],
+      ['Foil', c => c.foil === 'normal' ? '' : c.foil],
+      ['Collector Number', c => c.collectorNumber],
+      ['Purchase Price', c => c.purchasePrice || ''],
+    ],
+  },
+  archidekt: {
+    label: 'Archidekt',
+    note: 'Import via Archidekt → Collection → Import; confirm the column mapping if prompted.',
+    columns: [
+      ['Quantity', c => c.quantity], ['Name', c => c.name],
+      ['Finish', c => c.foil === 'foil' ? 'Foil' : c.foil === 'etched' ? 'Etched' : 'Non-foil'],
+      ['Condition', c => ARCHIDEKT_CONDITION[c.condition] || 'NM'],
+      ['Edition Code', c => c.setCode], ['Collector Number', c => c.collectorNumber],
+      ['Language', c => exportLang(c.language)],
+      ['Purchase Price', c => c.purchasePrice || ''],
+      ['Scryfall ID', c => c.scryfallId],
+    ],
+  },
+};
+
+const EXPORT_FORMATS = [
+  { id: 'csv',  label: 'CSV',      ext: 'csv',  filter: 'CSV files' },
+  { id: 'json', label: 'JSON',     ext: 'json', filter: 'JSON files' },
+  { id: 'md',   label: 'Markdown', ext: 'md',   filter: 'Markdown files' },
+  { id: 'txt',  label: 'Text',     ext: 'txt',  filter: 'Text files' },
+];
+
+function buildExportContent(format, header, rows) {
+  if (format === 'csv') {
+    const q = v => { const s = String(v ?? ''); return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+    return [header.map(q).join(','), ...rows.map(r => r.map(q).join(','))].join('\r\n');
+  }
+  if (format === 'json') {
+    return JSON.stringify(rows.map(r => Object.fromEntries(header.map((h, i) => [h, r[i]]))), null, 2);
+  }
+  if (format === 'md') {
+    const mdesc = v => String(v ?? '').replace(/\|/g, '\\|').replace(/\r?\n/g, ' ');
+    return [
+      `| ${header.map(mdesc).join(' | ')} |`,
+      `| ${header.map(() => '---').join(' | ')} |`,
+      ...rows.map(r => `| ${r.map(mdesc).join(' | ')} |`),
+    ].join('\n');
+  }
+  // txt — fixed-width padded columns
+  const cells = [header, ...rows].map(r => r.map(v => String(v ?? '').replace(/\r?\n/g, ' ')));
+  const widths = header.map((_, i) => Math.max(...cells.map(r => r[i].length)));
+  const line = r => r.map((v, i) => v.padEnd(widths[i])).join('  ').trimEnd();
+  return [line(cells[0]), widths.map(w => '─'.repeat(w)).join('  '), ...cells.slice(1).map(line)].join('\n');
+}
+
+function showExportModal(kind) {
+  const isCards = kind === 'cards';
+  const data = isCards ? collection.cards : collection.sealed;
+  if (!data.length) { toast(`Nothing to export — your ${isCards ? 'card' : 'sealed'} collection is empty`, 'info'); return; }
+
+  const colDefs = EXPORT_COLUMNS[kind];
+  const saved = collection.settings.export?.[kind] || {};
+  const state = {
+    format: EXPORT_FORMATS.some(f => f.id === saved.format) ? saved.format : 'csv',
+    preset: isCards && EXPORT_PRESETS[saved.preset] ? saved.preset : 'custom',
+    columns: new Set(Array.isArray(saved.columns) && saved.columns.length
+      ? saved.columns.filter(k => colDefs.some(d => d.key === k))
+      : colDefs.map(d => d.key)),
+  };
+  if (!state.columns.size) colDefs.forEach(d => state.columns.add(d.key));
+
+  showModal(`
+    <h2>Export ${isCards ? 'Card' : 'Sealed'} Collection</h2>
+    <p style="font-size:12.5px;color:var(--text-dim);margin-bottom:14px">
+      Exports all ${data.length.toLocaleString()} ${isCards ? 'card entries' : 'products'} to a file.
+    </p>
+    ${isCards ? `
+    <h3>Preset</h3>
+    <div class="col-picker-chips" id="exp-presets" style="margin-bottom:8px">
+      <button class="col-chip" data-preset="custom">Custom</button>
+      ${Object.entries(EXPORT_PRESETS).map(([id, p]) => `<button class="col-chip" data-preset="${id}">${p.label}</button>`).join('')}
+    </div>
+    <div id="exp-preset-note" style="font-size:11.5px;color:var(--text-muted);margin-bottom:14px;min-height:14px"></div>
+    ` : ''}
+    <h3>Format</h3>
+    <div class="col-picker-chips" id="exp-formats" style="margin-bottom:16px">
+      ${EXPORT_FORMATS.map(f => `<button class="col-chip" data-format="${f.id}">${f.label}</button>`).join('')}
+    </div>
+    <div id="exp-columns-wrap">
+      <h3>Columns</h3>
+      <div class="col-picker-chips" id="exp-columns" style="max-height:150px;overflow-y:auto;padding:2px">
+        ${colDefs.map(d => `<button class="col-chip" data-colkey="${d.key}">${esc(d.label)}</button>`).join('')}
+      </div>
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <button class="btn btn-ghost btn-sm" id="exp-cols-all">Select all</button>
+        <button class="btn btn-ghost btn-sm" id="exp-cols-none">Select none</button>
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:24px">
+      <button class="btn" id="exp-cancel">Cancel</button>
+      <button class="btn btn-primary" id="exp-go">⤓ Export</button>
+    </div>`);
+
+  const sync = () => {
+    document.querySelectorAll('#exp-presets .col-chip').forEach(b =>
+      b.classList.toggle('col-chip-on', b.dataset.preset === state.preset));
+    const note = document.getElementById('exp-preset-note');
+    if (note) note.textContent = state.preset !== 'custom'
+      ? `${EXPORT_PRESETS[state.preset].note} The preset defines the columns and always exports CSV.`
+      : '';
+    document.querySelectorAll('#exp-formats .col-chip').forEach(b => {
+      const locked = state.preset !== 'custom';
+      b.classList.toggle('col-chip-on', locked ? b.dataset.format === 'csv' : b.dataset.format === state.format);
+      b.disabled = locked && b.dataset.format !== 'csv';
+      b.style.opacity = b.disabled ? '0.4' : '';
+    });
+    const wrap = document.getElementById('exp-columns-wrap');
+    if (wrap) wrap.style.display = state.preset !== 'custom' ? 'none' : '';
+    document.querySelectorAll('#exp-columns .col-chip').forEach(b =>
+      b.classList.toggle('col-chip-on', state.columns.has(b.dataset.colkey)));
+  };
+
+  document.getElementById('exp-presets')?.addEventListener('click', e => {
+    const b = e.target.closest('[data-preset]'); if (!b) return;
+    state.preset = b.dataset.preset;
+    if (state.preset !== 'custom') state.format = 'csv';
+    sync();
+  });
+  document.getElementById('exp-formats').addEventListener('click', e => {
+    const b = e.target.closest('[data-format]'); if (!b || b.disabled) return;
+    state.format = b.dataset.format; sync();
+  });
+  document.getElementById('exp-columns').addEventListener('click', e => {
+    const b = e.target.closest('[data-colkey]'); if (!b) return;
+    const k = b.dataset.colkey;
+    if (state.columns.has(k)) state.columns.delete(k); else state.columns.add(k);
+    sync();
+  });
+  document.getElementById('exp-cols-all').addEventListener('click', () => { colDefs.forEach(d => state.columns.add(d.key)); sync(); });
+  document.getElementById('exp-cols-none').addEventListener('click', () => { state.columns.clear(); sync(); });
+  document.getElementById('exp-cancel').addEventListener('click', hideModal);
+
+  document.getElementById('exp-go').addEventListener('click', async () => {
+    let header, rowFns, format = state.format, baseName;
+    if (state.preset !== 'custom') {
+      const p = EXPORT_PRESETS[state.preset];
+      header  = p.columns.map(([h]) => h);
+      rowFns  = p.columns.map(([, fn]) => fn);
+      format  = 'csv';
+      baseName = `${state.preset}-export`;
+    } else {
+      const chosen = colDefs.filter(d => state.columns.has(d.key));
+      if (!chosen.length) { toast('Pick at least one column', 'error'); return; }
+      header  = chosen.map(d => d.label);
+      rowFns  = chosen.map(d => d.get);
+      baseName = `${kind}-export`;
+    }
+    const rows    = data.map(item => rowFns.map(fn => fn(item)));
+    const fmtDef  = EXPORT_FORMATS.find(f => f.id === format);
+    const content = buildExportContent(format, header, rows);
+    const path = await window.api.dialog.saveFile({
+      title: `Export ${isCards ? 'cards' : 'sealed collection'}`,
+      defaultPath: `${baseName}-${today()}.${fmtDef.ext}`,
+      filterName: fmtDef.filter,
+      extensions: [fmtDef.ext],
+      content,
+    });
+    if (!path) return;  // cancelled — keep the modal open
+    collection.settings.export = collection.settings.export || {};
+    collection.settings.export[kind] = { format: state.format, preset: state.preset, columns: [...state.columns] };
+    autoSave();
+    hideModal();
+    toast(`Exported ${rows.length.toLocaleString()} ${isCards ? 'entries' : 'products'} → ${path.split(/[\\/]/).pop()}`, 'success');
+    window.logger?.info?.('Export', `Wrote ${path}`);
+  });
+
+  sync();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // SETTINGS MODAL
 // ─────────────────────────────────────────────────────────────────────────────
 function showSettings() {
+  const tcfg = tickerSettings();
+  const tickerBinders = [...new Set(collection.cards.map(c => c.binderName).filter(Boolean))].sort();
+  const tickerSets    = [...new Set(collection.cards.map(c => c.setName).filter(Boolean))].sort();
+  const chipHtml = (vals, selected) => vals.map(v =>
+    `<button type="button" class="col-chip${selected.includes(v) ? ' col-chip-on' : ''}" data-val="${esc(v)}">${esc(v)}</button>`
+  ).join('');
+
   showModal(`
     <h2>Settings</h2>
 
-    <h3>Sealed Product Pricing</h3>
+    <h3>Ticker Tape</h3>
+    <p style="font-size:12px;color:var(--text-muted);margin-bottom:10px;line-height:1.5">
+      Choose which cards scroll across the top and how fast. With nothing selected,
+      the ticker shows your whole collection (biggest price movers first).
+    </p>
+    <div class="form-group">
+      <label>Scroll Speed</label>
+      <div style="display:flex;align-items:center;gap:10px">
+        <span style="font-size:11px;color:var(--text-muted)">Slow</span>
+        <input type="range" id="cfg-ticker-speed" min="1" max="10" step="1" value="${tcfg.speed}"
+          style="flex:1;accent-color:var(--accent)">
+        <span style="font-size:11px;color:var(--text-muted)">Fast</span>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Binders <span style="color:var(--text-muted);font-weight:400">(none selected = all)</span></label>
+      <div class="col-picker-chips" id="cfg-ticker-binders" style="max-height:110px;overflow-y:auto;padding:2px">
+        ${chipHtml(tickerBinders, tcfg.binders) || '<span style="font-size:12px;color:var(--text-muted)">No binders yet</span>'}
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Sets <span style="color:var(--text-muted);font-weight:400">(none selected = all)</span></label>
+      <div class="col-picker-chips" id="cfg-ticker-sets" style="max-height:140px;overflow-y:auto;padding:2px">
+        ${chipHtml(tickerSets, tcfg.sets) || '<span style="font-size:12px;color:var(--text-muted)">No sets yet</span>'}
+      </div>
+    </div>
+
+    <h3 style="margin-top:22px">Sealed Product Pricing</h3>
     <p style="font-size:13px;color:var(--text-dim);margin-bottom:10px;line-height:1.55">
       <strong style="color:var(--text)">TCGCSV</strong> is built-in and free — no key needed. It searches TCGPlayer group data and works automatically.<br>
       <strong style="color:var(--text)">PriceCharting</strong> adds a second source with broader coverage. Get a free key at
@@ -3992,6 +4428,24 @@ function showSettings() {
       <button class="btn btn-danger btn-sm" id="cfg-clear-hist">Clear Price History</button>
     </div>
 
+    <h3 style="margin-top:22px">Updates</h3>
+    <p style="font-size:13px;color:var(--text-dim);margin-bottom:10px;line-height:1.55">
+      Check GitHub Releases for a newer version. If one exists, the app will download it and
+      restart to install. <span id="upd-current" style="color:var(--text-muted)"></span>
+    </p>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <button class="btn btn-sm" id="cfg-check-updates">Check for Updates</button>
+      <button class="btn btn-sm" id="cfg-download-update" style="display:none">Download Update</button>
+      <button class="btn btn-primary btn-sm" id="cfg-install-update" style="display:none">Restart &amp; Install</button>
+    </div>
+    <div id="upd-status" style="margin-top:10px;font-size:12px;color:var(--text-muted);min-height:16px"></div>
+    <div id="upd-progress-wrap" style="display:none;margin-top:8px">
+      <div style="background:#222;border-radius:4px;height:8px;overflow:hidden">
+        <div id="upd-progress-bar" style="background:var(--accent,#6366f1);height:100%;width:0%;transition:width .2s"></div>
+      </div>
+      <div id="upd-progress-text" style="font-size:11px;color:var(--text-muted);margin-top:4px"></div>
+    </div>
+
     <h3 style="margin-top:22px;color:#f87171">Danger Zone</h3>
     <p style="font-size:12px;color:var(--text-muted);margin-bottom:10px;line-height:1.5">
       Wipe the entire database — cards, sealed, prices, metadata, settings, SL cache.
@@ -4006,9 +4460,26 @@ function showSettings() {
     </div>`);
 
   document.getElementById('cfg-cancel').addEventListener('click', hideModal);
+
+  // Ticker filter chips toggle on click
+  for (const id of ['cfg-ticker-binders', 'cfg-ticker-sets']) {
+    document.getElementById(id).addEventListener('click', e => {
+      const chip = e.target.closest('.col-chip');
+      if (chip) chip.classList.toggle('col-chip-on');
+    });
+  }
+
   document.getElementById('cfg-save').addEventListener('click', () => {
     collection.settings.pricechartingKey = document.getElementById('cfg-pckey').value.trim();
+    const pickChips = id =>
+      [...document.querySelectorAll(`#${id} .col-chip-on`)].map(b => b.dataset.val);
+    collection.settings.ticker = {
+      speed:   parseInt(document.getElementById('cfg-ticker-speed').value, 10) || 4,
+      binders: pickChips('cfg-ticker-binders'),
+      sets:    pickChips('cfg-ticker-sets'),
+    };
     hideModal();
+    renderTickerTape();
     autoSave();
     toast('Settings saved', 'success');
   });
@@ -4047,6 +4518,129 @@ function showSettings() {
     hideModal();
     render();
     toast('Database reset — starting fresh', 'success');
+  });
+
+  // Updates section
+  wireUpdaterUI();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// UPDATER (electron-updater driven from Settings)
+// ─────────────────────────────────────────────────────────────────────────────
+const updaterUI = { current: null, latest: null, downloading: false };
+
+function setUpdStatus(text, color) {
+  const el = document.getElementById('upd-status');
+  if (!el) return;
+  el.textContent = text || '';
+  el.style.color = color || 'var(--text-muted)';
+}
+function showUpdProgress(show) {
+  const w = document.getElementById('upd-progress-wrap');
+  if (w) w.style.display = show ? 'block' : 'none';
+}
+function setUpdProgress(percent, transferred, total, bps) {
+  const bar = document.getElementById('upd-progress-bar');
+  const txt = document.getElementById('upd-progress-text');
+  if (bar) bar.style.width = `${Math.max(0, Math.min(100, percent || 0)).toFixed(1)}%`;
+  if (txt) {
+    const mb = (n) => (n / 1024 / 1024).toFixed(1);
+    const kbps = bps ? `${(bps / 1024).toFixed(0)} KB/s` : '';
+    txt.textContent = total
+      ? `${mb(transferred)} / ${mb(total)} MB${kbps ? ' · ' + kbps : ''}`
+      : '';
+  }
+}
+
+async function wireUpdaterUI() {
+  // Current version
+  try {
+    updaterUI.current = await window.api.app.version();
+    const cur = document.getElementById('upd-current');
+    if (cur) cur.textContent = `Current version: v${updaterUI.current}`;
+  } catch {}
+
+  const checkBtn    = document.getElementById('cfg-check-updates');
+  const downloadBtn = document.getElementById('cfg-download-update');
+  const installBtn  = document.getElementById('cfg-install-update');
+
+  if (checkBtn) checkBtn.addEventListener('click', async () => {
+    setUpdStatus('Checking for updates…');
+    if (downloadBtn) downloadBtn.style.display = 'none';
+    if (installBtn)  installBtn.style.display  = 'none';
+    showUpdProgress(false);
+    const r = await window.api.updater.check();
+    if (r && r.devMode) {
+      setUpdStatus('Update checks only work in the installed app, not in dev mode.', '#fbbf24');
+    } else if (r && !r.ok && r.error) {
+      setUpdStatus(`Error: ${r.error}`, '#f87171');
+    }
+  });
+
+  if (downloadBtn) downloadBtn.addEventListener('click', async () => {
+    if (updaterUI.downloading) return;
+    updaterUI.downloading = true;
+    downloadBtn.disabled = true;
+    setUpdStatus(`Downloading v${updaterUI.latest || ''}…`);
+    showUpdProgress(true);
+    setUpdProgress(0, 0, 0, 0);
+    const r = await window.api.updater.download();
+    if (r && !r.ok && r.error) {
+      setUpdStatus(`Download failed: ${r.error}`, '#f87171');
+      updaterUI.downloading = false;
+      downloadBtn.disabled = false;
+    }
+  });
+
+  if (installBtn) installBtn.addEventListener('click', async () => {
+    if (!confirm('Restart the app now to install the update?')) return;
+    await window.api.updater.install();
+  });
+}
+
+// One-time global listener for updater events from the main process.
+// Settings modal may not be open, so we guard every DOM lookup.
+if (window.api && window.api.updater && !window.__updaterBound) {
+  window.__updaterBound = true;
+  window.api.updater.onEvent(({ event, payload }) => {
+    switch (event) {
+      case 'checking':
+        setUpdStatus('Checking for updates…');
+        break;
+      case 'available':
+        // Only toast once per session per version (startup check + Settings click
+        // would otherwise double-toast).
+        if (updaterUI.latest !== payload.version) {
+          toast(`Update v${payload.version} available — open Settings to download`, 'info', 6000);
+        }
+        updaterUI.latest = payload.version;
+        setUpdStatus(`Update available: v${payload.version}`, '#4ade80');
+        const dl = document.getElementById('cfg-download-update');
+        if (dl) dl.style.display = 'inline-block';
+        break;
+      case 'not-available':
+        setUpdStatus(`You're on the latest version (v${updaterUI.current || payload.version}).`, '#4ade80');
+        break;
+      case 'progress':
+        showUpdProgress(true);
+        setUpdProgress(payload.percent, payload.transferred, payload.total, payload.bytesPerSecond);
+        break;
+      case 'downloaded':
+        updaterUI.downloading = false;
+        showUpdProgress(false);
+        setUpdStatus(`v${payload.version} downloaded. Restart to install.`, '#4ade80');
+        const dlb = document.getElementById('cfg-download-update');
+        if (dlb) dlb.style.display = 'none';
+        const ib = document.getElementById('cfg-install-update');
+        if (ib) ib.style.display = 'inline-block';
+        toast(`Update v${payload.version} ready — restart to install`, 'success', 6000);
+        break;
+      case 'error':
+        updaterUI.downloading = false;
+        showUpdProgress(false);
+        setUpdStatus(`Error: ${payload.message}`, '#f87171');
+        break;
+    }
   });
 }
 
@@ -4215,6 +4809,33 @@ function attachContentListeners() {
   }
   // Always hide on any re-render so it doesn't get stranded mid-screen
   hideCardHoverPreview();
+
+  // Binder slide-out toggle (Cards tab)
+  const fab = document.getElementById('binder-toggle-fab');
+  if (fab) {
+    fab.addEventListener('click', e => {
+      e.stopPropagation();
+      const open = document.body.dataset.binderOpen === 'true';
+      document.body.dataset.binderOpen = open ? 'false' : 'true';
+    });
+  }
+  // Backdrop click + Escape close the sidebar (bind once globally)
+  if (!window.__binderBackdropBound) {
+    window.__binderBackdropBound = true;
+    document.addEventListener('click', e => {
+      if (document.body.dataset.binderOpen !== 'true') return;
+      const sidebar = document.querySelector('.binder-sidebar');
+      const f = document.getElementById('binder-toggle-fab');
+      if (!sidebar) return;
+      if (sidebar.contains(e.target) || (f && f.contains(e.target))) return;
+      document.body.dataset.binderOpen = 'false';
+    });
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape' && document.body.dataset.binderOpen === 'true') {
+        document.body.dataset.binderOpen = 'false';
+      }
+    });
+  }
 
   // Binder sidebar — three-state cycle: neutral → include → exclude → neutral
   document.querySelectorAll('.binder-item').forEach(el => {
@@ -4413,6 +5034,13 @@ async function init() {
         case 'refresh:sl':       if (typeof refreshSlData === 'function') refreshSlData(); break;
         case 'settings:open':    showSettings(); break;
         case 'settings:reset':   showSettings(); break; // user clicks Reset Database button inside
+        case 'updates:check':
+          showSettings();
+          setTimeout(() => {
+            const b = document.getElementById('cfg-check-updates');
+            if (b) b.click();
+          }, 50);
+          break;
         case 'about:show':       showAbout(); break;
         case 'logs:toggle':      toggleLogPanel(); break;
       }
