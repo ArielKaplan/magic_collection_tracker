@@ -2087,6 +2087,73 @@ body[data-binder-open="true"]::before {
   border-radius: 99px;
 }
 
+/* ── Context menus ─────────────────────── */
+.ctx-menu {
+  position: fixed;
+  z-index: 10000;
+  min-width: 230px;
+  background: var(--surface2);
+  border: 1px solid var(--border2);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  padding: 6px;
+  animation: ctxIn 0.12s cubic-bezier(.2, 0, 0, 1);
+  user-select: none;
+}
+@keyframes ctxIn { from { opacity: 0; transform: scale(0.97); } to { opacity: 1; transform: scale(1); } }
+
+.ctx-header {
+  padding: 7px 12px 5px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 290px;
+}
+.ctx-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.ctx-item:hover { background: color-mix(in srgb, var(--text) 8%, transparent); }
+.ctx-ico { width: 18px; text-align: center; font-size: 13px; opacity: 0.85; flex-shrink: 0; }
+.ctx-lbl { flex: 1; overflow: hidden; text-overflow: ellipsis; max-width: 300px; }
+.ctx-arrow { color: var(--text-muted); font-size: 14px; }
+.ctx-sep { height: 1px; background: var(--border2); margin: 5px 10px; }
+.ctx-danger { color: var(--red); }
+.ctx-danger .ctx-ico { opacity: 1; }
+.ctx-danger:hover { background: color-mix(in srgb, var(--red) 12%, transparent); }
+.ctx-disabled { opacity: 0.4; cursor: default; }
+.ctx-disabled:hover { background: transparent; }
+
+.ctx-sub {
+  display: none;
+  position: absolute;
+  left: calc(100% - 4px);
+  top: -7px;
+  min-width: 200px;
+  max-width: 300px;
+  max-height: 340px;
+  overflow-y: auto;
+  background: var(--surface2);
+  border: 1px solid var(--border2);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  padding: 6px;
+  z-index: 1;
+}
+.ctx-sub.flip { left: auto; right: calc(100% - 4px); }
+.ctx-item:hover > .ctx-sub { display: block; }
+
 /* ── Misc ──────────────────────────────── */
 .hidden { display: none !important; }
 a { color: var(--accent); text-decoration: none; }
