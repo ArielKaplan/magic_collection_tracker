@@ -96,6 +96,35 @@ CREATE TABLE IF NOT EXISTS sl_scryfall_drops (
 );
 CREATE INDEX IF NOT EXISTS idx_sl_drop_lookup ON sl_scryfall_drops(drop_name);
 
+-- Decks — a deck is a *played* list, distinct from binders (the owned collection).
+-- Deck cards may link to an owned collection card (card_id) or be unowned
+-- placeholders identified by scryfall_id/name. Deck contents never count
+-- toward collection value — that stays binder-only.
+CREATE TABLE IF NOT EXISTS decks (
+  id          TEXT PRIMARY KEY,
+  name        TEXT NOT NULL,
+  format      TEXT DEFAULT 'commander',
+  description TEXT,
+  created_at  TEXT DEFAULT (datetime('now')),
+  updated_at  TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS deck_cards (
+  id               TEXT PRIMARY KEY,
+  deck_id          TEXT NOT NULL REFERENCES decks(id) ON DELETE CASCADE,
+  card_id          TEXT,             -- nullable link to cards.id when owned
+  scryfall_id      TEXT,
+  name             TEXT NOT NULL,
+  set_code         TEXT,
+  set_name         TEXT,
+  collector_number TEXT,
+  foil             TEXT DEFAULT 'normal',
+  quantity         INTEGER NOT NULL DEFAULT 1,
+  board            TEXT NOT NULL DEFAULT 'main',  -- main | side | commander
+  created_at       TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_deck_cards_deck ON deck_cards(deck_id);
+
 -- Key-value bag for misc settings (eBay creds, last_price_refresh, sl_data_updated_at, etc.)
 CREATE TABLE IF NOT EXISTS settings (
   key    TEXT PRIMARY KEY,

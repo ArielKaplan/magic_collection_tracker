@@ -135,6 +135,79 @@ function upsertSealed(item) {
 }
 function deleteSealed(id) { return db.prepare('DELETE FROM sealed WHERE id=?').run(id).changes; }
 
+// ── Decks ────────────────────────────────────────────────────────────────────
+function listDecks() {
+  const decks = db.prepare('SELECT * FROM decks ORDER BY name').all();
+  const cardStmt = db.prepare('SELECT * FROM deck_cards WHERE deck_id = ?');
+  return decks.map(d => ({
+    id: d.id,
+    name: d.name,
+    format: d.format || 'commander',
+    description: d.description || '',
+    createdAt: d.created_at,
+    cards: cardStmt.all(d.id).map(c => ({
+      id: c.id,
+      cardId: c.card_id || null,
+      scryfallId: c.scryfall_id || '',
+      name: c.name,
+      setCode: c.set_code || '',
+      setName: c.set_name || '',
+      collectorNumber: c.collector_number || '',
+      foil: c.foil || 'normal',
+      quantity: c.quantity || 1,
+      board: c.board || 'main',
+    })),
+  }));
+}
+
+// Full replace per deck: upsert the deck row, then rewrite its card list.
+// Deck lists are small (≤ a few hundred rows), so replace is simpler and safer
+// than diffing.
+function upsertDeck(deck) {
+  const tx = db.transaction(() => {
+    db.prepare(`INSERT INTO decks (id, name, format, description)
+      VALUES (@id, @name, @format, @description)
+      ON CONFLICT(id) DO UPDATE SET
+        name=excluded.name, format=excluded.format,
+        description=excluded.description, updated_at=datetime('now')`).run({
+      id: deck.id, name: deck.name,
+      format: deck.format || 'commander',
+      description: deck.description || null,
+    });
+    db.prepare('DELETE FROM deck_cards WHERE deck_id = ?').run(deck.id);
+    const stmt = db.prepare(`INSERT INTO deck_cards
+      (id, deck_id, card_id, scryfall_id, name, set_code, set_name, collector_number, foil, quantity, board)
+      VALUES (@id, @deck_id, @card_id, @scryfall_id, @name, @set_code, @set_name, @collector_number, @foil, @quantity, @board)`);
+    for (const c of deck.cards || []) stmt.run({
+      id: c.id,
+      deck_id: deck.id,
+      card_id: c.cardId || null,
+      scryfall_id: c.scryfallId || null,
+      name: c.name,
+      set_code: c.setCode || null,
+      set_name: c.setName || null,
+      collector_number: c.collectorNumber || null,
+      foil: c.foil || 'normal',
+      quantity: c.quantity || 1,
+      board: c.board || 'main',
+    });
+  });
+  tx();
+}
+
+function deleteDeck(id) {
+  // ON DELETE CASCADE clears deck_cards (foreign_keys pragma is ON)
+  return db.prepare('DELETE FROM decks WHERE id = ?').run(id).changes;
+}
+
+function clearDecks() {
+  const tx = db.transaction(() => {
+    db.prepare('DELETE FROM deck_cards').run();
+    db.prepare('DELETE FROM decks').run();
+  });
+  tx();
+}
+
 // ── Price history ────────────────────────────────────────────────────────────
 function getCurrentPrice(scryfallId, foil) {
   const row = db.prepare(`
@@ -330,6 +403,8 @@ function resetAll() {
   const tx = db.transaction(() => {
     db.prepare('DELETE FROM cards').run();
     db.prepare('DELETE FROM sealed').run();
+    db.prepare('DELETE FROM deck_cards').run();
+    db.prepare('DELETE FROM decks').run();
     db.prepare('DELETE FROM price_history').run();
     db.prepare('DELETE FROM card_metadata').run();
     db.prepare('DELETE FROM failed_lookups').run();
@@ -349,6 +424,8 @@ module.exports = {
   listCards, bulkUpsertCards, deleteCard, updateCardScryfallId, clearCards,
   // sealed
   listSealed, upsertSealed, deleteSealed, clearSealed,
+  // decks
+  listDecks, upsertDeck, deleteDeck, clearDecks,
   // prices
   getCurrentPrice, getPriceHistory, bulkStorePrices, getAllPriceHistory, clearPriceHistory,
   // metadata

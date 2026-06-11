@@ -18,6 +18,12 @@ contextBridge.exposeInMainWorld('api', {
     remove:  (id)    => inv('sealed:delete', id),
     clear:   ()      => inv('sealed:clear'),
   },
+  decks: {
+    list:    ()      => inv('decks:list'),
+    upsert:  (deck)  => inv('decks:upsert', deck),
+    remove:  (id)    => inv('decks:delete', id),
+    clear:   ()      => inv('decks:clear'),
+  },
   prices: {
     getCurrent:  (sid, foil) => inv('prices:getCurrent', sid, foil),
     history:     (sid, foil) => inv('prices:history', sid, foil),
@@ -48,6 +54,7 @@ contextBridge.exposeInMainWorld('api', {
   },
   dialog: {
     openCsv:   ()      => inv('dialog:openCsv'),
+    openDeck:  ()      => inv('dialog:openDeck'),
     openJson:  ()      => inv('dialog:openJson'),
     saveJson:  (json)  => inv('dialog:saveJson', json),
     saveFile:  (opts)  => inv('dialog:saveFile', opts),

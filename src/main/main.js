@@ -41,6 +41,7 @@ function buildMenu() {
       label: '&File',
       submenu: [
         { label: 'Import CSV…',        accelerator: 'CmdOrCtrl+I', click: () => sendMenu('import:csv') },
+        { label: 'Import Deck…',       accelerator: 'CmdOrCtrl+D', click: () => sendMenu('import:deck') },
         { label: 'Load Collection…',   accelerator: 'CmdOrCtrl+O', click: () => sendMenu('import:json') },
         { label: 'Save Collection…',   accelerator: 'CmdOrCtrl+S', click: () => sendMenu('export:json') },
         { type: 'separator' },
@@ -70,6 +71,7 @@ function buildMenu() {
         tabItem('Gallery',                  'gallery',    'CmdOrCtrl+4'),
         tabItem('Secret Lair Explorer',     'slviewer',   'CmdOrCtrl+5'),
         tabItem('Failed Lookups',           'failures',   'CmdOrCtrl+6'),
+        tabItem('Decks',                    'decks',      'CmdOrCtrl+7'),
         { type: 'separator' },
         { label: 'Toggle Activity Log', accelerator: 'CmdOrCtrl+L', click: () => sendMenu('logs:toggle') },
         { type: 'separator' },
@@ -154,6 +156,12 @@ function registerIpc() {
   ipcMain.handle('sealed:upsert',      (_e, item)      => db.upsertSealed(item));
   ipcMain.handle('sealed:delete',      (_e, id)        => db.deleteSealed(id));
 
+  // Decks
+  ipcMain.handle('decks:list',         ()              => db.listDecks());
+  ipcMain.handle('decks:upsert',       (_e, deck)      => db.upsertDeck(deck));
+  ipcMain.handle('decks:delete',       (_e, id)        => db.deleteDeck(id));
+  ipcMain.handle('decks:clear',        ()              => db.clearDecks());
+
   // Prices
   ipcMain.handle('prices:getCurrent',  (_e, sid, foil) => db.getCurrentPrice(sid, foil));
   ipcMain.handle('prices:history',     (_e, sid, foil) => db.getPriceHistory(sid, foil));
@@ -193,6 +201,20 @@ function registerIpc() {
     const res = await dialog.showOpenDialog({
       title: 'Import legacy collection.json',
       filters: [{ name: 'JSON files', extensions: ['json'] }],
+      properties: ['openFile'],
+    });
+    if (res.canceled || !res.filePaths[0]) return null;
+    const text = fs.readFileSync(res.filePaths[0], 'utf-8');
+    return { path: res.filePaths[0], text };
+  });
+
+  ipcMain.handle('dialog:openDeck', async () => {
+    const res = await dialog.showOpenDialog({
+      title: 'Import Deck (text or CSV)',
+      filters: [
+        { name: 'Deck files', extensions: ['txt', 'csv', 'dec', 'dek'] },
+        { name: 'All files', extensions: ['*'] },
+      ],
       properties: ['openFile'],
     });
     if (res.canceled || !res.filePaths[0]) return null;
