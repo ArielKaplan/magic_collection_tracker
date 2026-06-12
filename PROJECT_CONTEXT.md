@@ -1,6 +1,8 @@
 # Secret Lair Tracker — Project Context
 
 A handoff document for new Claude sessions. Read this first before making changes.
+For the June 2026 deep code review, the remediation status of its findings, and the
+full product strategy / feature roadmap reasoning, see **REVIEW_AND_ROADMAP.md**.
 
 ---
 
