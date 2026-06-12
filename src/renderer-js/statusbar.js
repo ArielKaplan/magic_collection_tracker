@@ -1,0 +1,112 @@
+import { totalCardsValue, totalSealedValue } from './analytics.js';
+import { hideModal, showModal } from './modals.js';
+import { sparkline } from './prices.js';
+import { render } from './render.js';
+import { collection, ui } from './state.js';
+import { fmt, today } from './utils.js';
+
+
+// ── Status bar (bottom of window) ───────────────────────────────────────────
+export function updateStatusBar() {
+  const cardCountEl = document.getElementById('sb-cards');
+  const valueEl     = document.getElementById('sb-value');
+  const refreshEl   = document.getElementById('sb-refresh');
+  const issuesEl    = document.getElementById('sb-issues');
+  if (!cardCountEl) return; // status bar not in DOM (shouldn't happen)
+
+  const totalCards   = collection.cards.reduce((s, c) => s + (c.quantity || 1), 0);
+  const totalValue   = (totalCardsValue() ?? 0) + (totalSealedValue() ?? 0);
+  cardCountEl.textContent = `${totalCards.toLocaleString()} cards · ${collection.cards.length.toLocaleString()} entries`;
+  valueEl.textContent     = fmt(totalValue);
+
+  if (ui.refreshing) {
+    refreshEl.textContent = `↻ Refreshing prices… ${ui.refreshProgress}%`;
+    refreshEl.style.color = 'var(--accent2)';
+  } else {
+    refreshEl.style.color = '';
+    if (collection.lastPriceRefresh) {
+      const d = new Date(collection.lastPriceRefresh);
+      const now = Date.now();
+      const ageMin = Math.floor((now - d.getTime()) / 60000);
+      let agoStr;
+      if (ageMin < 1)        agoStr = 'just now';
+      else if (ageMin < 60)  agoStr = `${ageMin}m ago`;
+      else if (ageMin < 1440) agoStr = `${Math.floor(ageMin/60)}h ago`;
+      else                   agoStr = `${Math.floor(ageMin/1440)}d ago`;
+      refreshEl.textContent = `Last refresh: ${agoStr}`;
+      refreshEl.title = d.toLocaleString();
+    } else {
+      refreshEl.textContent = 'Never refreshed';
+      refreshEl.title = '';
+    }
+  }
+
+  const failCount = (collection.failedLookups || []).length;
+  if (failCount > 0) {
+    issuesEl.style.display = '';
+    issuesEl.className = 'sb-section sb-issues-warn';
+    issuesEl.textContent = `⚠ ${failCount} issue${failCount !== 1 ? 's' : ''}`;
+    issuesEl.onclick = () => { ui.activeTab = 'failures'; document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === 'failures')); render(); };
+  } else {
+    issuesEl.style.display = 'none';
+  }
+}
+
+export function showAbout() {
+  const termStyle = 'font-weight:600;color:var(--accent2);white-space:nowrap';
+  const defStyle  = 'color:var(--text-dim);font-size:12px;line-height:1.55';
+  showModal(`
+    <h2 style="margin-bottom:4px">Secret Lair Tracker</h2>
+    <p style="color:var(--text-dim);font-size:13px;margin:4px 0 14px">Desktop edition · Electron + SQLite</p>
+
+    <div style="display:grid;grid-template-columns:auto 1fr;gap:5px 16px;font-size:13px;line-height:1.7;margin-bottom:18px">
+      <span style="color:var(--text-muted)">Version</span><span>0.4.0</span>
+      <span style="color:var(--text-muted)">Cards</span><span>${collection.cards.length.toLocaleString()}</span>
+      <span style="color:var(--text-muted)">Sealed</span><span>${(collection.sealed || []).length.toLocaleString()}</span>
+      <span style="color:var(--text-muted)">Last refresh</span><span>${collection.lastPriceRefresh ? new Date(collection.lastPriceRefresh).toLocaleString() : 'Never'}</span>
+    </div>
+
+    <h3 style="font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--accent2);margin:0 0 10px">Price Column Glossary</h3>
+    <div style="display:grid;grid-template-columns:auto 1fr;gap:8px 14px;margin-bottom:18px">
+      <span style="${termStyle}">Low (SCR)</span>
+      <span style="${defStyle}">The cheapest active listing on TCGPlayer right now, as reported by Scryfall. This is what you could theoretically buy the card for today — but it may be a single heavily-played copy or an outlier listing.</span>
+
+      <span style="${termStyle}">Mkt (TCG)</span>
+      <span style="${defStyle}">TCGPlayer's market price — a weighted average of what the card has actually sold for recently. This is the most realistic indicator of a card's true value and what most other trackers use.</span>
+
+      <span style="${termStyle}">Cost (basis)</span>
+      <span style="${defStyle}">What you paid (or what the card was worth when you acquired it). ManaBox records the TCGPlayer price automatically when you add a card, so this is a historical snapshot — not necessarily your literal out-of-pocket cost.</span>
+
+      <span style="${termStyle}">Δ Price</span>
+      <span style="${defStyle}">Percentage change between the two most recent price snapshots for that card. Requires at least two refresh dates to show movement.</span>
+
+      <span style="${termStyle}">Trend</span>
+      <span style="${defStyle}">A sparkline chart of the card's low price over all recorded refresh dates. Rising line = price going up; falling line = price going down.</span>
+    </div>
+
+    <h3 style="font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--accent2);margin:0 0 10px">Dashboard Terms</h3>
+    <div style="display:grid;grid-template-columns:auto 1fr;gap:8px 14px;margin-bottom:18px">
+      <span style="${termStyle}">Total Value</span>
+      <span style="${defStyle}">Cards value + sealed value combined. Uses Scryfall low price for cards and TCGPlayer market price for sealed products.</span>
+
+      <span style="${termStyle}">Cost Basis</span>
+      <span style="${defStyle}">The sum of all purchase prices across your collection. Compare this to Total Value to see your overall gain or loss.</span>
+
+      <span style="${termStyle}">Gain / Loss</span>
+      <span style="${defStyle}">Total Value minus Cost Basis. A positive number means your collection is worth more than you paid; negative means it's worth less. Shown as both a dollar amount and a percentage.</span>
+
+      <span style="${termStyle}">Top Movers</span>
+      <span style="${defStyle}">Cards with the largest price change (up or down) since the previous refresh. Useful for spotting spikes from new set releases, bans, or tournament results.</span>
+    </div>
+
+    <p style="font-size:11px;color:var(--text-muted);line-height:1.5;margin-bottom:16px">
+      Low prices via <a href="#" onclick="window.api.app.openExternal('https://scryfall.com');return false">Scryfall</a> ·
+      Market prices via <a href="#" onclick="window.api.app.openExternal('https://tcgcsv.com');return false">TCGCSV</a> ·
+      SL drop data via <a href="#" onclick="window.api.app.openExternal('https://mtgjson.com');return false">MTGJSON</a> ·
+      Sealed prices via TCGCSV and PriceCharting (optional key in Settings).
+    </p>
+    <div style="display:flex;justify-content:flex-end">
+      <button class="btn btn-primary" onclick="hideModal()">Close</button>
+    </div>`);
+}
+

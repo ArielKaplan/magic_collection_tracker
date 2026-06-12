@@ -1,21 +1,22 @@
 // Throwaway render smoke test: ensures the Decks tab render functions produce
 // HTML without throwing. Run: node scripts/smoke-decks-render.js
 'use strict';
-const fs = require('fs'), path = require('path'), vm = require('vm');
 const noop = () => {};
-const sandbox = {
-  console, crypto: require('crypto'), setTimeout, clearTimeout,
-  fetch: async () => { throw new Error('no net'); },
-  navigator: { clipboard: {} },
-  window: { addEventListener: noop },
-  document: { addEventListener: noop, getElementById: () => null, querySelectorAll: () => [], querySelector: () => null, body: { dataset: {} } },
-  confirm: () => true,
+globalThis.window = { addEventListener: noop };
+globalThis.document = {
+  addEventListener: noop,
+  getElementById: () => null,
+  querySelectorAll: () => [],
+  querySelector: () => null,
+  body: { dataset: {} },
 };
-vm.createContext(sandbox);
-vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'app.js'), 'utf-8'), sandbox, { filename: 'app.js' });
+globalThis.confirm = () => true;
 
-const out = vm.runInContext(`
-(() => {
+(async () => {
+  const { renderDecks } = await import('../src/renderer-js/decks.js');
+  const { createDeck, addCardToDeck } = await import('../src/renderer-js/decks.js');
+  const { collection, ui } = await import('../src/renderer-js/state.js');
+
   const empty = renderDecks();
   collection.cards = [{ id: 'c1', scryfallId: 'aaaa1111-1111-4111-8111-111111111111', name: 'Sol Ring', setCode: 'c21', setName: 'C21', collectorNumber: '263', foil: 'normal', quantity: 2, binderName: 'Main', purchasePrice: 0, language: 'en', condition: 'near_mint' }];
   collection.priceHistory = {};
@@ -29,7 +30,7 @@ const out = vm.runInContext(`
   const detail = renderDecks();
   ui.decks.deckId = 'nonexistent';
   const fallback = renderDecks();
-  return {
+  const out = {
     emptyOk: empty.includes('No decks yet'),
     listOk: list.includes('deck-tile') && list.includes('My Deck'),
     detailOk: detail.includes('deck-detail') && detail.includes('Krenko') && detail.includes('Mainboard') && detail.includes('Sideboard'),
@@ -38,9 +39,8 @@ const out = vm.runInContext(`
     ownedPill: detail.includes('own-full'),
     fallbackOk: fallback.includes('deck-tile'),
   };
-})()
-`, sandbox);
 
-console.log(out);
-if (Object.values(out).every(Boolean)) console.log('All render smoke tests passed.');
-else { console.error('RENDER FAILURES'); process.exit(1); }
+  console.log(out);
+  if (Object.values(out).every(Boolean)) console.log('All render smoke tests passed.');
+  else { console.error('RENDER FAILURES'); process.exit(1); }
+})().catch(err => { console.error(err); process.exit(1); });

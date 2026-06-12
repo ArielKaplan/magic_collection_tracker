@@ -1,0 +1,4 @@
+{
+  "type": "module",
+  "//": "Scopes ESM to the renderer modules so Node tooling (smoke tests) can import them directly. The Electron main process stays CommonJS."
+}
