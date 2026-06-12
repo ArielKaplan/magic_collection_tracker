@@ -202,6 +202,20 @@ function escJs(str) {
     .replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
 }
 
+// All external HTTP goes through the main process (no CORS, no third-party
+// proxies, API keys never leave first-party connections). Returns a
+// Response-like object so existing call sites read naturally.
+async function netFetch(url, opts) {
+  const r = await window.api.net.fetch(url, opts);
+  if (!r.status && r.error) throw new Error(r.error);
+  return {
+    ok: r.ok,
+    status: r.status,
+    json: async () => JSON.parse(r.text),
+    text: async () => r.text,
+  };
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // CSV PARSING
 // ─────────────────────────────────────────────────────────────────────────────
@@ -268,36 +282,28 @@ function csvRowToCard(row) {
 // the SQLite database living in the user's app-data folder.
 
 async function autoSave() {
+  // Take ownership of the pending snapshots up front; restore on failure so
+  // they get retried on the next save instead of being lost.
+  const priceSnaps = pendingPriceSnaps;
+  pendingPriceSnaps = [];
   try {
-    // Push everything to SQLite in one go. Native is fast — full saves are fine
-    // for typical collection sizes (a few thousand cards).
     const settingsJson = JSON.stringify(collection.settings || {});
-
-    // Flatten priceHistory + marketPriceHistory into snapshot rows for bulkStore
-    const priceSnaps = [];
-    for (const [k, hist] of Object.entries(collection.priceHistory || {})) {
-      const [sid, foil] = k.split('|');
-      for (const h of hist) priceSnaps.push({ scryfallId: sid, foil, date: h.date, price: h.price, source: 'scryfall' });
-    }
-    for (const [k, hist] of Object.entries(collection.marketPriceHistory || {})) {
-      const [sid, foil] = k.split('|');
-      for (const h of hist) priceSnaps.push({ scryfallId: sid, foil, date: h.date, price: h.price, source: 'tcgcsv' });
-    }
 
     await Promise.all([
       window.api.cards.bulkUpsert(collection.cards),
-      window.api.prices.bulkStore(priceSnaps),
+      // Price history is append-only: persist only the snapshots recorded
+      // since the last save. Mirroring the full history here used to rewrite
+      // every row on every save — O(all-history) and growing daily.
+      priceSnaps.length ? window.api.prices.bulkStore(priceSnaps) : Promise.resolve(),
       window.api.metadata.bulkUpsert(
         Object.entries(collection.cardMetadata || {}).map(([id, m]) => ({ scryfallId: id, ...m }))
       ),
       window.api.failures.replace(collection.failedLookups || []),
       window.api.settings.set('settings_blob', settingsJson),
       window.api.settings.set('last_price_refresh', collection.lastPriceRefresh || ''),
+      ...(collection.sealed || []).map(s => window.api.sealed.upsert(s)),
+      ...(collection.decks || []).map(d => window.api.decks.upsert(d)),
     ]);
-    // Sealed: replace via per-row upsert (small list)
-    for (const s of collection.sealed || []) await window.api.sealed.upsert(s);
-    // Decks: per-deck upsert rewrites each deck's card list (small lists)
-    for (const d of collection.decks || []) await window.api.decks.upsert(d);
 
     const el = document.getElementById('autosave-status');
     if (el) {
@@ -308,6 +314,7 @@ async function autoSave() {
       el._fadeTimer = setTimeout(() => { el.style.opacity = '0.4'; }, 3000);
     }
   } catch (err) {
+    pendingPriceSnaps = priceSnaps.concat(pendingPriceSnaps);
     console.warn('Auto-save failed:', err);
     window.logger?.error('Save', `autoSave failed: ${err.message}`);
   }
@@ -420,7 +427,9 @@ async function loadCollectionFile() {
     }
 
     // Merge price history — incoming entries OVERWRITE same (key, date) pair,
-    // but existing dates not present in incoming are preserved.
+    // but existing dates not present in incoming are preserved. Incoming
+    // entries are queued for the delta save (autoSave no longer mirrors the
+    // full history).
     const incomingPrices = normalizePriceHistoryKeys(data.priceHistory || {});
     for (const [k, hist] of Object.entries(incomingPrices)) {
       if (!collection.priceHistory[k]) collection.priceHistory[k] = [];
@@ -428,6 +437,8 @@ async function loadCollectionFile() {
       for (const h of collection.priceHistory[k]) byDate[h.date] = h;
       for (const h of hist) byDate[h.date] = h; // incoming wins
       collection.priceHistory[k] = Object.values(byDate).sort((a, b) => a.date.localeCompare(b.date));
+      const [sid, foil] = k.split('|');
+      for (const h of hist) pendingPriceSnaps.push({ scryfallId: sid, foil, date: h.date, price: h.price, source: 'scryfall' });
     }
 
     // Merge metadata — incoming overrides on collision
@@ -721,6 +732,10 @@ function showImportWizard({ path: filePath, text }) {
 // ─────────────────────────────────────────────────────────────────────────────
 function priceKey(scryfallId, foilType) { return `${scryfallId}|${foilType}`; }
 
+// Snapshots recorded since the last autoSave — flushed as a delta instead of
+// re-mirroring the entire price history to SQLite on every save.
+let pendingPriceSnaps = [];
+
 // Re-key priceHistory so all UUIDs are lowercase (fixes mismatches from old imports)
 function normalizePriceHistoryKeys(hist) {
   const out = {};
@@ -757,11 +772,14 @@ function storePriceSnapshot(scryfallId, foilType, price) {
   const t = today();
   const todayIdx = hist.findIndex(h => h.date === t);
   if (todayIdx >= 0) {
+    if (hist[todayIdx].price === price) return;
     hist[todayIdx].price = price;
   } else {
     const last = hist[hist.length - 1];
-    if (!last || last.price !== price) hist.push({ date: t, price });
+    if (last && last.price === price) return;
+    hist.push({ date: t, price });
   }
+  pendingPriceSnaps.push({ scryfallId, foil: foilType, date: t, price, source: 'scryfall' });
 }
 
 function storeMarketPriceSnapshot(scryfallId, foilType, price) {
@@ -772,11 +790,14 @@ function storeMarketPriceSnapshot(scryfallId, foilType, price) {
   const t = today();
   const todayIdx = hist.findIndex(h => h.date === t);
   if (todayIdx >= 0) {
+    if (hist[todayIdx].price === price) return;
     hist[todayIdx].price = price;
   } else {
     const last = hist[hist.length - 1];
-    if (!last || last.price !== price) hist.push({ date: t, price });
+    if (last && last.price === price) return;
+    hist.push({ date: t, price });
   }
+  pendingPriceSnaps.push({ scryfallId, foil: foilType, date: t, price, source: 'tcgcsv' });
 }
 
 function getCurrentMarketPrice(scryfallId, foilType) {
@@ -818,7 +839,7 @@ function sparkline(history, w = 70, h = 22) {
 async function fetchScryfallBatch(ids) {
   const DELAYS = [2000, 4000, 8000];
   for (let attempt = 0; attempt <= DELAYS.length; attempt++) {
-    const resp = await fetch(SCRYFALL_COLLECTION, {
+    const resp = await netFetch(SCRYFALL_COLLECTION, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ identifiers: ids.map(id => ({ id })) })
@@ -852,7 +873,7 @@ async function fetchTcgcsvMarketPrices(cardPairs) {
   // cardPairs: [{scryfallId, foil, setName, name, collectorNumber}]
   let groups;
   try {
-    const resp = await fetch('https://tcgcsv.com/tcgplayer/1/groups');
+    const resp = await netFetch('https://tcgcsv.com/tcgplayer/1/groups');
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const raw = await resp.json();
     groups = Array.isArray(raw) ? raw : (raw.results || raw.groups || []);
@@ -892,8 +913,8 @@ async function fetchTcgcsvMarketPrices(cardPairs) {
     await Promise.all(setEntries.slice(i, i + BATCH).map(async ([setName, groupId]) => {
       try {
         const [prodResp, priceResp] = await Promise.all([
-          fetch(`https://tcgcsv.com/tcgplayer/1/${groupId}/products`),
-          fetch(`https://tcgcsv.com/tcgplayer/1/${groupId}/prices`),
+          netFetch(`https://tcgcsv.com/tcgplayer/1/${groupId}/products`),
+          netFetch(`https://tcgcsv.com/tcgplayer/1/${groupId}/prices`),
         ]);
         if (!prodResp.ok || !priceResp.ok) return;
         const products = await prodResp.json().then(r => Array.isArray(r) ? r : (r.results || []));
@@ -1341,7 +1362,7 @@ async function refreshTcgcsvCache() {
 
   try {
     // Step 1: fetch all groups
-    const grpResp = await fetch(TCGCSV_GROUPS);
+    const grpResp = await netFetch(TCGCSV_GROUPS);
     if (!grpResp.ok) throw new Error(`Groups fetch failed (${grpResp.status})`);
     const grpRaw = await grpResp.json();
     tcgcsvCache.groups    = Array.isArray(grpRaw) ? grpRaw : (grpRaw.results || grpRaw.groups || []);
@@ -1368,8 +1389,8 @@ async function refreshTcgcsvCache() {
       await Promise.all(batch.map(async g => {
         try {
           const [prodResp, priceResp] = await Promise.all([
-            fetch(`https://tcgcsv.com/tcgplayer/1/${g.groupId}/products`),
-            fetch(`https://tcgcsv.com/tcgplayer/1/${g.groupId}/prices`),
+            netFetch(`https://tcgcsv.com/tcgplayer/1/${g.groupId}/products`),
+            netFetch(`https://tcgcsv.com/tcgplayer/1/${g.groupId}/prices`),
           ]);
           if (!prodResp.ok || !priceResp.ok) { errors++; return; }
 
@@ -1469,7 +1490,7 @@ async function searchTcgcsv(query) {
   ensureTcgcsvCache();
   // …and meanwhile do a quick live group-name search as fallback
   if (!tcgcsvCache.groups) {
-    const resp = await fetch(TCGCSV_GROUPS);
+    const resp = await netFetch(TCGCSV_GROUPS);
     if (!resp.ok) throw new Error(`TCGCSV unavailable (${resp.status})`);
     const raw = await resp.json();
     tcgcsvCache.groups = Array.isArray(raw) ? raw : (raw.results || raw.groups || []);
@@ -1480,8 +1501,8 @@ async function searchTcgcsv(query) {
   await Promise.all(matches.map(async g => {
     try {
       const [prodResp, priceResp] = await Promise.all([
-        fetch(`https://tcgcsv.com/tcgplayer/1/${g.groupId}/products`),
-        fetch(`https://tcgcsv.com/tcgplayer/1/${g.groupId}/prices`),
+        netFetch(`https://tcgcsv.com/tcgplayer/1/${g.groupId}/products`),
+        netFetch(`https://tcgcsv.com/tcgplayer/1/${g.groupId}/prices`),
       ]);
       if (!prodResp.ok || !priceResp.ok) return;
       const products = await prodResp.json().then(r => Array.isArray(r) ? r : (r.results || []));
@@ -1508,7 +1529,7 @@ async function searchPriceCharting(query) {
   const key = collection.settings.pricechartingKey;
   if (!key) throw new Error('PriceCharting API key not set — add it in Settings');
   const target = `${PC_API}/products?q=${encodeURIComponent(query)}&status=price&format=json&key=${encodeURIComponent(key)}`;
-  const resp = await fetch(`https://corsproxy.io/?url=${encodeURIComponent(target)}`);
+  const resp = await netFetch(target);
   if (!resp.ok) throw new Error(`PriceCharting search failed (${resp.status})`);
   const data = await resp.json();
   if (data.status !== 'success') throw new Error(data['error-message'] || 'Search failed');
@@ -1529,7 +1550,7 @@ async function fetchPriceChartingById(id) {
   const key = collection.settings.pricechartingKey;
   if (!key) throw new Error('PriceCharting API key not set — add it in Settings');
   const target = `${PC_API}/product?id=${encodeURIComponent(id)}&status=price&format=json&key=${encodeURIComponent(key)}`;
-  const resp = await fetch(`https://corsproxy.io/?url=${encodeURIComponent(target)}`);
+  const resp = await netFetch(target);
   if (!resp.ok) throw new Error(`Price fetch failed (${resp.status})`);
   const data = await resp.json();
   if (data.status !== 'success') throw new Error(data['error-message'] || 'Price fetch failed');
@@ -1860,26 +1881,6 @@ function renderTop10ValueCards() {
   </table></div>`;
 }
 
-// ── Render: Top 10 Least Valuable Cards ──────────────────────────────────────
-function renderBottom10ValueCards() {
-  const bottom = bottomValueCards(10);
-  if (!bottom.length) return '<p style="color:var(--text-muted);font-size:13px">Refresh prices to see least valuable cards.</p>';
-  return `<div class="table-wrap"><table>
-    <thead><tr><th>#</th><th>Name</th><th>Set</th><th>Foil</th><th>Qty</th><th>Market</th><th>Total</th></tr></thead>
-    <tbody>
-      ${bottom.map(({ card: c, value }, i) => `
-        <tr>
-          <td style="color:var(--text-muted);font-weight:700;font-size:13px">${i + 1}</td>
-          <td style="font-weight:600;max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${esc(c.name)}">${esc(c.name)}</td>
-          <td style="color:var(--text-muted);font-size:11.5px;font-weight:600">${esc(c.setCode.toUpperCase())}</td>
-          <td>${c.foil !== 'normal' ? `<span class="badge badge-${c.foil}">${FOIL_LABEL[c.foil]}</span>` : '<span style="color:var(--text-muted)">—</span>'}</td>
-          <td style="text-align:center">${c.quantity}</td>
-          <td style="font-weight:700;color:var(--text-dim)">${fmt(value)}</td>
-          <td style="font-weight:700">${fmt(value * c.quantity)}</td>
-        </tr>`).join('')}
-    </tbody>
-  </table></div>`;
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // RENDER ORCHESTRATION
@@ -1898,8 +1899,9 @@ function render() {
           window.svelteApp.mountDashboard(document.getElementById('svelte-dashboard-mount'));
           window.svelteApp.notifyDataChanged();
         } else {
-          // Svelte bundle hasn't loaded yet — fall back to legacy renderer
-          content.innerHTML = renderDashboard();
+          // Svelte bundle failed to load (it ships locally, so this means a
+          // broken install/build, not a timing race)
+          content.innerHTML = '<div class="empty-state" style="padding:40px"><p>Dashboard failed to load — try restarting the app. If it persists, rebuild with <code>npm run build:renderer</code>.</p></div>';
         }
         break;
       case 'cards':     content.innerHTML = renderCards();             break;
@@ -2053,245 +2055,6 @@ function renderTickerTape() {
   });
 }
 
-// Compose a smooth 30-point SVG sparkline for the hero KPI.
-// We don't store total-value-over-time, so we generate a plausible curve
-// that ends at `tot` and trends upward if there's a gain, downward otherwise.
-function renderHeroSparkline(tot, cost, gainLoss) {
-  if (!tot && !cost) {
-    return `<svg viewBox="0 0 100 32" preserveAspectRatio="none" class="hero-spark-svg" aria-hidden="true"></svg>`;
-  }
-  const N = 30;
-  const direction = gainLoss >= 0 ? 1 : -1;
-  // Seed from collection size so it stays stable across renders
-  let seed = (collection.cards.length || 1) * 9301 + 49297;
-  const rand = () => { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; };
-  // Walk from cost-ish → tot with small noise
-  const start = cost > 0 ? cost : tot * 0.95;
-  const end   = tot || start;
-  const range = Math.max(Math.abs(end - start), Math.max(end, start) * 0.05);
-  const pts = [];
-  for (let i = 0; i < N; i++) {
-    const t = i / (N - 1);
-    const trend = start + (end - start) * t;
-    const noise = (rand() - 0.5) * range * 0.18 * direction;
-    pts.push(trend + noise);
-  }
-  pts[N - 1] = end;  // anchor end point
-  const min = Math.min(...pts), max = Math.max(...pts);
-  const norm = v => 30 - ((v - min) / Math.max(max - min, 0.001)) * 28;  // 1px top/bot pad
-  const dPath = pts.map((v, i) => `${i === 0 ? 'M' : 'L'}${(i / (N - 1) * 100).toFixed(2)},${norm(v).toFixed(2)}`).join(' ');
-  const dFill = `${dPath} L100,32 L0,32 Z`;
-  const colorClass = gainLoss >= 0 ? 'spark-up' : 'spark-down';
-  return `
-    <svg viewBox="0 0 100 32" preserveAspectRatio="none" class="hero-spark-svg ${colorClass}" aria-hidden="true">
-      <defs>
-        <linearGradient id="heroSparkGrad" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%"   class="spark-grad-top"/>
-          <stop offset="100%" class="spark-grad-bot"/>
-        </linearGradient>
-      </defs>
-      <path d="${dFill}" fill="url(#heroSparkGrad)"/>
-      <path d="${dPath}" fill="none" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" class="spark-line"/>
-    </svg>`;
-}
-
-function renderDashboard() {
-  const cv  = totalCardsValue();
-  const sv  = totalSealedValue();
-  const tot = (cv ?? 0) + (sv ?? 0);
-
-  const costCards  = collection.cards.reduce((s, c) => s + c.purchasePrice * c.quantity, 0);
-  const costSealed = collection.sealed.reduce((s, i) => s + i.purchasePrice * i.quantity, 0);
-  const totalCost  = costCards + costSealed;
-
-  const gainLoss = tot - totalCost;
-  const gainPct  = totalCost > 0 ? (gainLoss / totalCost) * 100 : null;
-  const gainClass = gainLoss >= 0 ? 'price-up' : 'price-down';
-
-  const totalQty   = collection.cards.reduce((s, c) => s + c.quantity, 0);
-  const sealedQty  = collection.sealed.reduce((s, i) => s + i.quantity, 0);
-  const binders    = binderValueMap();
-  const maxBinder  = Math.max(1, ...Array.from(binders.values()).map(v => v.value));
-  const movers     = topMovers();
-  const lastRefresh = collection.lastPriceRefresh
-    ? new Date(collection.lastPriceRefresh).toLocaleString()
-    : 'Never';
-
-  // Compute a 30-point sparkline approximation from total movers' history.
-  // Not perfect, but enough to feel "live" in the hero card.
-  const sparkPath = renderHeroSparkline(tot, totalCost, gainLoss);
-
-  return `
-    <div class="hero-kpi">
-      <div class="hero-main">
-        <div class="hero-label">Total portfolio value</div>
-        <div class="hero-value">${fmt(tot)}</div>
-        <div class="hero-meta">
-          <span class="hero-delta ${gainClass}">
-            ${gainLoss >= 0 ? '▲' : '▼'} ${fmt(Math.abs(gainLoss))}${gainPct != null ? ` · ${fmtPct(gainPct)}` : ''}
-          </span>
-          <span class="hero-sub">vs cost basis · last refresh ${esc(lastRefresh)}</span>
-        </div>
-      </div>
-      <div class="hero-spark">
-        ${sparkPath}
-      </div>
-    </div>
-
-    <div class="bento-grid">
-      <div class="bento-card bento-cards">
-        <div class="b-label">Cards</div>
-        <div class="b-value">${fmt(cv)}</div>
-        <div class="b-sub">${totalQty.toLocaleString()} copies · ${collection.cards.length.toLocaleString()} entries</div>
-      </div>
-      <div class="bento-card bento-sealed">
-        <div class="b-label">Sealed</div>
-        <div class="b-value">${fmt(sv)}</div>
-        <div class="b-sub">${sealedQty} item${sealedQty !== 1 ? 's' : ''} tracked</div>
-      </div>
-      <div class="bento-card bento-cost">
-        <div class="b-label">Cost basis</div>
-        <div class="b-value">${fmt(totalCost)}</div>
-        <div class="b-sub">Cards ${fmt(costCards)} · Sealed ${fmt(costSealed)}</div>
-      </div>
-      <div class="bento-card bento-binders">
-        <div class="b-label">Binders</div>
-        <div class="b-value">${binders.size}</div>
-        <div class="b-sub">${collection.sealed.length} sealed products tracked</div>
-      </div>
-    </div>
-    ${ui.refreshing ? `<div class="progress-bar" style="margin-bottom:14px"><div class="progress-fill" id="refresh-progress-fill" style="width:${ui.refreshProgress}%"></div></div>` : ''}
-
-    <div class="dashboard-grid" id="dashboard-grid">
-      ${renderDashboardPanels({ binders, maxBinder, movers })}
-    </div>`;
-}
-
-// Single source of truth for dashboard panels. Order in this array is the
-// default; the user's saved order (in collection.settings) overrides it.
-function dashboardPanelDefs(ctx) {
-  const { binders, maxBinder, movers } = ctx;
-  return [
-    { id: 'cotd',      title: 'Card of the Day',                   icon: '🎴', body: renderCardOfTheDay() },
-    { id: 'binders',   title: 'Value by Binder',                   icon: '📊', body:
-      Array.from(binders.entries()).sort((a, b) => b[1].value - a[1].value)
-        .map(([name, { value, qty }]) => `
-          <div class="bar-row">
-            <div class="bar-label" title="${esc(name)}">${esc(name)}</div>
-            <div class="bar-track"><div class="bar-fill" style="width:${(value / maxBinder * 100).toFixed(1)}%"></div></div>
-            <div class="bar-val">${fmt(value)}</div>
-          </div>
-          <div class="bar-sub">${qty} copies</div>`).join('')
-    },
-    { id: 'movers',    title: 'Top Movers (vs Previous Refresh)',  icon: '📈', body:
-      movers.length === 0
-        ? '<p style="color:var(--text-muted);font-size:13px;padding:10px 0">Refresh prices at least twice to see movers.</p>'
-        : `<div class="table-wrap"><table>
-            <thead><tr><th>Card</th><th>Foil</th><th>Set</th><th>Before</th><th>After</th><th>Δ</th></tr></thead>
-            <tbody>
-              ${movers.map(({ card: c, change: ch }) => `
-                <tr>
-                  <td style="font-weight:600;max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${esc(c.name)}">${esc(c.name)}</td>
-                  <td>${c.foil !== 'normal' ? `<span class="badge badge-${c.foil}">${FOIL_LABEL[c.foil]}</span>` : '<span style="color:var(--text-muted)">—</span>'}</td>
-                  <td style="color:var(--text-muted);font-size:11.5px;font-weight:600">${esc(c.setCode)}</td>
-                  <td style="color:var(--text-dim)">${fmt(ch.previous)}</td>
-                  <td style="font-weight:700">${fmt(ch.current)}</td>
-                  <td class="${ch.pct >= 0 ? 'price-up' : 'price-down'}" style="font-weight:700">${fmtPct(ch.pct)}</td>
-                </tr>`).join('')}
-            </tbody></table></div>`
-    },
-    { id: 'colors',    title: 'Value by Color',                    icon: '🎨', body: renderColorPanel() },
-    { id: 'types',     title: 'Value by Card Type',                icon: '🐉', body: renderTypePanel() },
-    { id: 'cmc',       title: 'Value by Mana Value (CMC)',         icon: '⚡', fullWidth: true, body: renderManaValuePanel() },
-    { id: 'rarity',    title: 'Value by Rarity',                   icon: '✦', body: renderRarityPanel() },
-    { id: 'stats',     title: 'Collection Stats',                  icon: '📋', body: renderStatsPanel() },
-    { id: 'setCount',  title: 'Card Count by Set',                 icon: '🗂️', body: renderCardCountBySet() },
-    { id: 'setValue',  title: 'Value by Set',                      icon: '💎', body: renderValueBySet() },
-    { id: 'yearCount', title: 'Card Count by Year',                icon: '📅', fullWidth: true, body: renderCardCountByYear() },
-    { id: 'top10',     title: 'Top 10 Most Valuable Cards',        icon: '🏆', body: renderTop10ValueCards() },
-  ];
-}
-
-function getDashboardPanelOrder(allIds) {
-  const saved = collection.settings?.dashboardPanelOrder || [];
-  const out = [];
-  const seen = new Set();
-  // Honor saved order for any IDs that still exist
-  for (const id of saved) {
-    if (allIds.includes(id) && !seen.has(id)) { out.push(id); seen.add(id); }
-  }
-  // Append any new panels (defined after the user's order was saved) at the end
-  for (const id of allIds) if (!seen.has(id)) out.push(id);
-  return out;
-}
-
-function renderDashboardPanels(ctx) {
-  const defs = dashboardPanelDefs(ctx);
-  const byId = new Map(defs.map(p => [p.id, p]));
-  const order = getDashboardPanelOrder(defs.map(p => p.id));
-  return order.map(id => {
-    const p = byId.get(id);
-    if (!p) return '';
-    return `
-      <div class="panel" draggable="true" data-panel-id="${esc(p.id)}"
-           ${p.fullWidth ? 'style="column-span:all"' : ''}>
-        <div class="panel-drag-handle" title="Drag to reorder">⋮⋮</div>
-        <div class="panel-title"><div class="panel-icon">${p.icon}</div><h2>${esc(p.title)}</h2></div>
-        ${p.body}
-      </div>`;
-  }).join('');
-}
-
-function reorderDashboardPanels(srcId, targetId, dropBefore) {
-  const allIds = dashboardPanelDefs({ binders: new Map(), maxBinder: 1, movers: [] }).map(p => p.id);
-  const order  = getDashboardPanelOrder(allIds);
-  const srcIdx = order.indexOf(srcId);
-  if (srcIdx < 0) return;
-  order.splice(srcIdx, 1);
-  let targetIdx = order.indexOf(targetId);
-  if (targetIdx < 0) targetIdx = order.length;
-  order.splice(dropBefore ? targetIdx : targetIdx + 1, 0, srcId);
-  if (!collection.settings) collection.settings = {};
-  collection.settings.dashboardPanelOrder = order;
-  render();
-  autoSave();
-}
-
-function attachDashboardDragHandlers() {
-  const grid = document.getElementById('dashboard-grid');
-  if (!grid) return;
-  let dragSrc = null;
-
-  grid.querySelectorAll('.panel').forEach(panel => {
-    panel.addEventListener('dragstart', e => {
-      dragSrc = panel.dataset.panelId;
-      panel.classList.add('panel-dragging');
-      e.dataTransfer.effectAllowed = 'move';
-      e.dataTransfer.setData('text/plain', dragSrc);
-    });
-    panel.addEventListener('dragover', e => {
-      e.preventDefault();
-      e.dataTransfer.dropEffect = 'move';
-      if (panel.dataset.panelId !== dragSrc) panel.classList.add('panel-drag-over');
-    });
-    panel.addEventListener('dragleave', () => panel.classList.remove('panel-drag-over'));
-    panel.addEventListener('drop', e => {
-      e.preventDefault();
-      panel.classList.remove('panel-drag-over');
-      const targetId = panel.dataset.panelId;
-      if (!dragSrc || dragSrc === targetId) return;
-      // If dropping on upper half, place before; else after
-      const rect = panel.getBoundingClientRect();
-      const dropBefore = (e.clientY - rect.top) < rect.height / 2;
-      reorderDashboardPanels(dragSrc, targetId, dropBefore);
-    });
-    panel.addEventListener('dragend', () => {
-      panel.classList.remove('panel-dragging');
-      grid.querySelectorAll('.panel').forEach(p => p.classList.remove('panel-drag-over'));
-      dragSrc = null;
-    });
-  });
-}
 
 function renderRarityPanel() {
   const rm = { mythic: { qty: 0, val: 0 }, rare: { qty: 0, val: 0 }, uncommon: { qty: 0, val: 0 }, common: { qty: 0, val: 0 } };
@@ -2887,33 +2650,12 @@ async function refreshSlData() {
   try {
     toast('Fetching Secret Lair data from MTGJSON… (may take a moment)', 'info', 10000);
     window.logger?.info('SL', 'Fetching MTGJSON SLD.json…');
+    // Fetched via the main process — no CORS there, so no proxy fallbacks needed.
     const SLD_URL = 'https://mtgjson.com/api/v5/SLD.json';
-    const candidates = [
-      { label: 'direct',     url: SLD_URL },
-      { label: 'allorigins', url: `https://api.allorigins.win/raw?url=${encodeURIComponent(SLD_URL)}` },
-      { label: 'corsproxy',  url: `https://corsproxy.io/?url=${encodeURIComponent(SLD_URL)}` },
-    ];
-
-    let json = null;
-    let lastErr = '';
-    for (const { label, url } of candidates) {
-      try {
-        window.logger?.debug('SL', `Trying ${label} fetch…`);
-        const resp = await fetch(url);
-        if (!resp.ok) {
-          lastErr = `HTTP ${resp.status} from ${label}`;
-          window.logger?.warn('SL', `${label} returned HTTP ${resp.status}`);
-          continue;
-        }
-        json = await resp.json();
-        window.logger?.success('SL', `Fetched via ${label}`);
-        break;
-      } catch (e) {
-        lastErr = e.message;
-        window.logger?.warn('SL', `${label} threw: ${e.message}`);
-      }
-    }
-    if (!json) throw new Error(lastErr || 'All sources failed');
+    const resp = await netFetch(SLD_URL);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status} from mtgjson.com`);
+    const json = await resp.json();
+    window.logger?.success('SL', 'Fetched SLD.json from mtgjson.com');
     // MTGJSON v5 set files are shaped as { data: { code, name, cards: [...], tokens: [...], ... } }
     // — the actual card list lives at data.cards, NOT Object.values(data).
     const cards = (json.data && Array.isArray(json.data.cards)) ? json.data.cards : [];
@@ -3260,7 +3002,7 @@ async function showSlViewerModal(scryfallId) {
     </div>`);
 
   try {
-    const resp = await fetch(`https://api.scryfall.com/cards/${scryfallId}`);
+    const resp = await netFetch(`https://api.scryfall.com/cards/${scryfallId}`);
     const data = await resp.json();
     const el = document.getElementById('sl-modal-details');
     if (!el) return;
@@ -4243,7 +3985,7 @@ function showDeckAddCardModal(deckId) {
       scryBtn.disabled = true;
       scryBtn.textContent = 'Searching Scryfall…';
       try {
-        const resp = await fetch(`https://api.scryfall.com/cards/search?q=${encodeURIComponent(input.value.trim())}&unique=cards&order=name`);
+        const resp = await netFetch(`https://api.scryfall.com/cards/search?q=${encodeURIComponent(input.value.trim())}&unique=cards&order=name`);
         if (!resp.ok) throw new Error(resp.status === 404 ? 'No cards found' : `HTTP ${resp.status}`);
         const data = await resp.json();
         const cards = (data.data || []).slice(0, 25);
@@ -4492,7 +4234,7 @@ async function resolveDeckEntries(entries) {
         ? { set: e.setCode, collector_number: e.collectorNumber }
         : { name: e.name });
     try {
-      const resp = await fetch(SCRYFALL_COLLECTION, {
+      const resp = await netFetch(SCRYFALL_COLLECTION, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ identifiers }),
@@ -5155,8 +4897,8 @@ function showProductPicker(opts = {}) {
       // Live fetch so the set view shows ALL its products, not just the
       // sealed-keyword subset kept in the search index.
       const [prodResp, priceResp] = await Promise.all([
-        fetch(`https://tcgcsv.com/tcgplayer/1/${gid}/products`),
-        fetch(`https://tcgcsv.com/tcgplayer/1/${gid}/prices`),
+        netFetch(`https://tcgcsv.com/tcgplayer/1/${gid}/products`),
+        netFetch(`https://tcgcsv.com/tcgplayer/1/${gid}/prices`),
       ]);
       if (!prodResp.ok || !priceResp.ok) throw new Error('fetch failed');
       const products = await prodResp.json().then(r => Array.isArray(r) ? r : (r.results || []));
@@ -5894,6 +5636,7 @@ function showSettings() {
     await window.api.prices.clear();
     collection.priceHistory = {};
     collection.marketPriceHistory = {};
+    pendingPriceSnaps = [];
     hideModal(); render(); toast('Price history cleared from database', 'info');
   });
   document.getElementById('cfg-reset-all').addEventListener('click', async () => {
@@ -5909,6 +5652,7 @@ function showSettings() {
     collection.failedLookups       = [];
     collection.settings            = { pricechartingKey: '' };
     collection.lastPriceRefresh    = null;
+    pendingPriceSnaps              = [];
     hideModal();
     render();
     toast('Database reset — starting fresh', 'success');
@@ -6159,9 +5903,6 @@ function showSlTileHoverPreview(el, scryfallId) {
 }
 
 function attachContentListeners() {
-  // Dashboard drag-and-drop reorder
-  if (ui.activeTab === 'dashboard') attachDashboardDragHandlers();
-
   // Empty state CSV import
   const emptyCsv = document.getElementById('emptyCsvBtn');
   if (emptyCsv) emptyCsv.addEventListener('click', () => importCsvFile().catch(console.error));

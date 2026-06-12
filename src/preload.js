@@ -59,6 +59,9 @@ contextBridge.exposeInMainWorld('api', {
     saveJson:  (json)  => inv('dialog:saveJson', json),
     saveFile:  (opts)  => inv('dialog:saveFile', opts),
   },
+  net: {
+    fetch: (url, opts) => inv('net:fetch', url, opts),
+  },
   app: {
     dbPath:        ()       => inv('app:dbPath'),
     openExternal:  (url)    => inv('app:openExternal', url),

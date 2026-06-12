@@ -398,6 +398,11 @@ function clearSlData() {
   tx();
 }
 
+// Online backup via better-sqlite3 — safe while the DB is open (WAL included).
+function backupTo(destPath) {
+  return db.backup(destPath);
+}
+
 // Nuke everything except schema. Returns counts.
 function resetAll() {
   const tx = db.transaction(() => {
@@ -436,6 +441,8 @@ module.exports = {
   getSetting, setSetting, getAllSettings, clearSettings,
   // SL
   replaceSlData, getSlData, clearSlData,
+  // backup
+  backupTo,
   // nuclear
   resetAll,
 };

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, ipcMain, dialog, shell } = require('electron');
+const { app, BrowserWindow, Menu, ipcMain, dialog, shell, net } = require('electron');
 const path = require('path');
 const fs   = require('fs');
 const db   = require('./db');
@@ -133,7 +133,7 @@ function createWindow() {
       preload: path.join(__dirname, '..', 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false,
+      sandbox: true,
     },
   });
 
@@ -143,8 +143,45 @@ function createWindow() {
   mainWindow.on('closed', () => { mainWindow = null; });
 }
 
+// Hosts the renderer is allowed to reach through net:fetch. The main process
+// has no CORS, so this replaces the third-party proxy fallbacks (corsproxy,
+// allorigins) the renderer used to need — and keeps API keys first-party.
+const ALLOWED_FETCH_HOSTS = new Set([
+  'api.scryfall.com',
+  'mtgjson.com',
+  'tcgcsv.com',
+  'www.pricecharting.com',
+]);
+
 // ── IPC handlers ─────────────────────────────────────────────────────────────
 function registerIpc() {
+  // Network proxy for the renderer — validates host, returns body as text.
+  ipcMain.handle('net:fetch', async (_e, url, opts) => {
+    let parsed;
+    try { parsed = new URL(url); } catch { return { ok: false, status: 0, error: `Invalid URL: ${url}` }; }
+    if (parsed.protocol !== 'https:' || !ALLOWED_FETCH_HOSTS.has(parsed.hostname)) {
+      return { ok: false, status: 0, error: `Host not allowed: ${parsed.hostname}` };
+    }
+    try {
+      // net.fetch uses the Chromium network stack — APIs that reject bare
+      // Node/undici requests (Scryfall, Cloudflare-fronted hosts) accept it.
+      const headers = {
+        'User-Agent': `SecretLairTracker/${app.getVersion()}`,
+        'Accept': 'application/json',
+        ...(opts?.headers || {}),
+      };
+      const resp = await net.fetch(url, {
+        method: opts?.method || 'GET',
+        headers,
+        body: opts?.body || undefined,
+      });
+      const text = await resp.text();
+      return { ok: resp.ok, status: resp.status, text };
+    } catch (err) {
+      return { ok: false, status: 0, error: err.message || String(err) };
+    }
+  });
+
   // Cards
   ipcMain.handle('cards:list',         ()              => db.listCards());
   ipcMain.handle('cards:bulkUpsert',   (_e, cards)     => db.bulkUpsertCards(cards));
@@ -254,7 +291,11 @@ function registerIpc() {
 
   // App info
   ipcMain.handle('app:dbPath',         () => dbPath());
-  ipcMain.handle('app:openExternal',   (_e, url) => shell.openExternal(url));
+  ipcMain.handle('app:openExternal',   (_e, url) => {
+    let parsed;
+    try { parsed = new URL(url); } catch { return; }
+    if (parsed.protocol === 'http:' || parsed.protocol === 'https:') return shell.openExternal(url);
+  });
   ipcMain.handle('app:version',        () => app.getVersion());
 
   // Updater
@@ -285,11 +326,37 @@ function registerIpc() {
   });
 }
 
+// One backup per calendar day, kept in userData/backups, pruned to the 10
+// newest. The collection is years of hand-curation in a single file — this is
+// the insurance policy.
+const BACKUP_KEEP = 10;
+async function runDailyBackup() {
+  try {
+    const dir = path.join(app.getPath('userData'), 'backups');
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    const stamp = new Date().toISOString().slice(0, 10);
+    const dest = path.join(dir, `collection-${stamp}.db`);
+    if (!fs.existsSync(dest)) {
+      await db.backupTo(dest);
+      console.log('[backup] wrote', dest);
+    }
+    const files = fs.readdirSync(dir)
+      .filter(f => /^collection-\d{4}-\d{2}-\d{2}\.db$/.test(f))
+      .sort();
+    while (files.length > BACKUP_KEEP) {
+      fs.unlinkSync(path.join(dir, files.shift()));
+    }
+  } catch (err) {
+    console.warn('[backup] failed:', err && err.message);
+  }
+}
+
 app.whenReady().then(() => {
   db.init(dbPath());
   registerIpc();
   createWindow();
   scheduleStartupUpdateCheck();
+  runDailyBackup();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
