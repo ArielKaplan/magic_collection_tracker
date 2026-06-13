@@ -60,6 +60,18 @@ export function showSettings() {
       <input type="text" id="cfg-pckey" placeholder="Paste your PriceCharting API key here" value="${esc(collection.settings.pricechartingKey || '')}">
     </div>
 
+    <h3 style="margin-top:22px">Secret Lair Data</h3>
+    <p style="font-size:13px;color:var(--text-dim);margin-bottom:6px;line-height:1.55">
+      Superdrop groupings, drops, and card lists are <strong style="color:var(--text)">built in</strong> — reconciled from MTGJSON, Scryfall, and mtg.wiki.
+      The <strong style="color:var(--text)">↻ Check for New Cards</strong> button in the Secret Lair Explorer only refreshes card lists from MTGJSON; it does not change superdrop groupings (that data isn't published anywhere machine-readable).
+    </p>
+    <p style="font-size:13px;color:var(--text-dim);margin-bottom:6px;line-height:1.55">
+      To fix or re-group a drop just for yourself, use the <strong style="color:var(--text)">✎ Edit</strong> buttons in the Secret Lair Explorer — your groupings and notes save only on this computer and never affect the shared dataset.
+    </p>
+    <p style="font-size:12px;color:var(--text-muted);margin-bottom:10px;line-height:1.5">
+      To update the built-in dataset for everyone (e.g. when a new superdrop drops), re-run the build pipeline in <code>scripts/sl-build/</code> (see its README) and ship a new version.
+    </p>
+
     <h3 style="margin-top:22px">Data Management</h3>
     <p style="font-size:12px;color:var(--text-muted);margin-bottom:10px;line-height:1.5">
       Each button below permanently deletes data from the SQLite database.

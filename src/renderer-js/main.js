@@ -34,7 +34,7 @@ import { hideModal } from './modals.js';
 import { refreshPrices } from './prices.js';
 import { render } from './render.js';
 import { showSettings } from './settings.js';
-import { refreshSlData } from './slTab.js';
+import { loadSlOverrides, refreshSlData } from './slTab.js';
 import { collection, ui } from './state.js';
 import { showAbout } from './statusbar.js';
 import { autoLoad, importCsvFile, loadCollectionFile, saveCollection } from './storage.js';
@@ -124,8 +124,10 @@ async function init() {
   });
   document.getElementById('modal-close').addEventListener('click', hideModal);
 
-  // Load cached SL data from SQLite (from a previous Refresh SL Data click)
+  // Load cached SL data from SQLite (from a previous "Check for New Cards" click)
   if (typeof loadSlDataFromCache === 'function') await loadSlDataFromCache();
+  // Apply this user's local Secret Lair grouping/note overrides on top of the baked data
+  await loadSlOverrides();
 
   // Expose helpers/state to the Svelte renderer (window.app + window.collection)
   window.collection = collection;

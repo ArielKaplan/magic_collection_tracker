@@ -84,7 +84,7 @@ function buildMenu() {
       label: '&Tools',
       submenu: [
         { label: 'Refresh Prices',        accelerator: 'F5',          click: () => sendMenu('refresh:prices') },
-        { label: 'Refresh Secret Lair…',  click: () => sendMenu('refresh:sl') },
+        { label: 'Check for New SL Cards…',  click: () => sendMenu('refresh:sl') },
         { type: 'separator' },
         { label: 'Settings…',             accelerator: 'CmdOrCtrl+,', click: () => sendMenu('settings:open') },
       ],
