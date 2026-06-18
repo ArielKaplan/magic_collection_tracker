@@ -12,7 +12,7 @@ import { refreshTcgcsvCache } from './sealedPricing.js';
 import { showSlViewerModal } from './slTab.js';
 import { collection, ui } from './state.js';
 import { autoSave, importCsvFile } from './storage.js';
-import { esc, fmt, toast } from './utils.js';
+import { esc, fmt, netFetch, toast } from './utils.js';
 
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -20,6 +20,12 @@ import { esc, fmt, toast } from './utils.js';
 // ─────────────────────────────────────────────────────────────────────────────
 // ── Card hover preview ─────────────────────────────────────────────────────
 export let _hoverShowTimer = null;
+
+// Monotonic token: bumped every time the preview's contents change (any path).
+// An in-flight async upgrade (SL unowned-card Scryfall fetch) only applies if its
+// captured token still matches — otherwise the user has since moved to another
+// card (or the grid re-rendered) and the stale result is dropped.
+let _hoverToken = 0;
 
 export function findCollectionCardById(id) {
   return collection.cards.find(c => c.id === id);
@@ -58,6 +64,7 @@ export function showCardHoverPreview(el, card) {
   if (!preview) return;
   clearTimeout(_hoverShowTimer);
   _hoverShowTimer = setTimeout(() => {
+    _hoverToken++;
     preview.innerHTML = buildCardHoverHtml(card);
     preview.classList.add('visible');
     // Defer until after browser reflow so offsetHeight is accurate
@@ -101,13 +108,88 @@ export function positionHoverPreview(anchorEl) {
 
 export function hideCardHoverPreview() {
   clearTimeout(_hoverShowTimer);
+  _hoverToken++; // invalidate any in-flight SL detail upgrade
   const preview = document.getElementById('card-hover-preview');
   if (preview) preview.classList.remove('visible');
 }
 
+// Scryfall card details fetched for unowned SL hover tiles, cached so a tile is
+// only ever fetched once (repeat hovers are instant). Concurrent hovers of the
+// same id share one in-flight request. Failures aren't cached so they retry.
+const _slHoverData = new Map();      // scryfallId → Scryfall card object
+const _slHoverInflight = new Map();  // scryfallId → Promise<card|null>
+
+function fetchSlCardData(scryfallId) {
+  if (_slHoverData.has(scryfallId)) return Promise.resolve(_slHoverData.get(scryfallId));
+  if (_slHoverInflight.has(scryfallId)) return _slHoverInflight.get(scryfallId);
+  const p = (async () => {
+    try {
+      const resp = await netFetch(`https://api.scryfall.com/cards/${scryfallId}`);
+      const data = await resp.json();
+      _slHoverData.set(scryfallId, data);
+      return data;
+    } catch {
+      return null; // don't cache failures — let the next hover retry
+    } finally {
+      _slHoverInflight.delete(scryfallId);
+    }
+  })();
+  _slHoverInflight.set(scryfallId, p);
+  return p;
+}
+
+// Build the hover body for an UNOWNED SL printing. `data` is the Scryfall card
+// object once fetched, or null for the instant partial (MTGJSON name + drop info)
+// shown while the fetch is in flight.
+function buildSlUnownedHoverHtml(scryfallId, data) {
+  const id = (scryfallId || '').toLowerCase();
+  const img = id ? `https://cards.scryfall.io/normal/front/${id[0]}/${id[1]}/${id}.jpg` : '';
+  const num = (typeof SL_SCRYFALL_TO_NUMBER !== 'undefined' && SL_SCRYFALL_TO_NUMBER[scryfallId]) || '';
+  const slInfo = typeof getSlInfoById === 'function' ? getSlInfoById(scryfallId) : [];
+
+  const name = (data && data.name)
+    || (typeof SL_SCRYFALL_TO_NAME !== 'undefined' && SL_SCRYFALL_TO_NAME[scryfallId])
+    || 'Unknown card';
+  const typeLine = data ? (data.type_line || data.card_faces?.[0]?.type_line || '') : '';
+  const oracle = data
+    ? (data.oracle_text || (data.card_faces || []).map(f => f.oracle_text).filter(Boolean).join('\n\n//\n\n'))
+    : '';
+  const artist = data ? (data.artist || data.card_faces?.[0]?.artist || '') : '';
+  const rarity = data?.rarity || '';
+  const cmc = data && data.cmc != null ? data.cmc : null;
+  const sub = data
+    ? `${esc(data.set_name || 'Secret Lair')} · ${esc((data.set || 'SLD').toUpperCase())} · #${esc(data.collector_number || num || '?')}`
+    : `Secret Lair · SLD${num ? ` · #${esc(num)}` : ''}`;
+  // Single, etched, or foil — match the live refresh's price fallback order.
+  const priceNum = data ? parseFloat(data.prices?.usd ?? data.prices?.usd_foil ?? data.prices?.usd_etched) : NaN;
+
+  const rows = [];
+  if (typeLine) rows.push(`<span class="lbl">Type</span><span>${esc(typeLine)}</span>`);
+  if (rarity)   rows.push(`<span class="lbl">Rarity</span><span style="text-transform:capitalize">${esc(rarity)}</span>`);
+  if (cmc != null) rows.push(`<span class="lbl">CMC</span><span>${cmc}</span>`);
+  if (artist)   rows.push(`<span class="lbl">Artist</span><span>${esc(artist)}</span>`);
+  for (const s of slInfo) {
+    rows.push(`<span class="lbl">SL Drop</span><span style="color:var(--accent2)">${esc(s.drop)}</span>`);
+    rows.push(`<span class="lbl">Superdrop</span><span>${esc(s.superdrop)}</span>`);
+  }
+  rows.push(`<span class="lbl">Owned</span><span style="color:#f87171;font-weight:600">No</span>`);
+
+  return `
+    ${img ? `<img class="chp-img" src="${esc(img)}" alt="${esc(name)}" onerror="this.style.display='none'">` : ''}
+    <div class="chp-name">${esc(name)}</div>
+    <div class="chp-sub">${sub}</div>
+    ${Number.isFinite(priceNum) ? `<div class="chp-price">${fmt(priceNum)}</div>` : ''}
+    <div class="chp-grid">${rows.join('')}</div>
+    ${oracle
+      ? `<div class="chp-oracle">${esc(oracle)}</div>`
+      : (data ? '' : `<div class="chp-oracle" style="font-style:normal;color:var(--text-muted)">Loading card details…</div>`)}
+  `;
+}
+
 // SL tile hover: user may or may not own the printing. If owned, show full
-// owned-card details. Otherwise build a partial preview from MTGJSON name +
-// drop info — no Scryfall fetch (would be too slow for hover).
+// owned-card details. If not, show the same rich metadata (type, oracle, rarity,
+// artist, price, drop) pulled from Scryfall — an instant partial preview renders
+// first, then upgrades in place once the fetch (cached after first time) returns.
 export function showSlTileHoverPreview(el, scryfallId) {
   const owned = collection.cards.find(c => c.scryfallId === scryfallId);
   if (owned) { showCardHoverPreview(el, owned); return; }
@@ -116,22 +198,22 @@ export function showSlTileHoverPreview(el, scryfallId) {
   if (!preview) return;
   clearTimeout(_hoverShowTimer);
   _hoverShowTimer = setTimeout(() => {
-    const id = (scryfallId || '').toLowerCase();
-    const img = id ? `https://cards.scryfall.io/normal/front/${id[0]}/${id[1]}/${id}.jpg` : '';
-    const name = (typeof SL_SCRYFALL_TO_NAME !== 'undefined' && SL_SCRYFALL_TO_NAME[scryfallId]) || 'Unknown card';
-    const slInfo = typeof getSlInfoById === 'function' ? getSlInfoById(scryfallId) : [];
-    preview.innerHTML = `
-      ${img ? `<img class="chp-img" src="${esc(img)}" alt="${esc(name)}" onerror="this.style.display='none'">` : ''}
-      <div class="chp-name">${esc(name)}</div>
-      <div class="chp-sub" style="color:#f87171">Not in your collection</div>
-      ${slInfo.length ? `<div class="chp-grid">
-        ${slInfo.map(s => `
-          <span class="lbl">SL Drop</span><span style="color:var(--accent2)">${esc(s.drop)}</span>
-          <span class="lbl">Superdrop</span><span>${esc(s.superdrop)}</span>
-        `).join('')}
-      </div>` : ''}`;
+    const myToken = ++_hoverToken;
+    const cached = _slHoverData.get(scryfallId) || null;
+    preview.innerHTML = buildSlUnownedHoverHtml(scryfallId, cached);
     preview.classList.add('visible');
     requestAnimationFrame(() => positionHoverPreview(el));
+
+    if (!cached) {
+      fetchSlCardData(scryfallId).then(data => {
+        // Drop the result if the user has since moved on or the grid re-rendered.
+        if (!data || _hoverToken !== myToken) return;
+        const p = document.getElementById('card-hover-preview');
+        if (!p || !p.classList.contains('visible')) return;
+        p.innerHTML = buildSlUnownedHoverHtml(scryfallId, data);
+        requestAnimationFrame(() => positionHoverPreview(el));
+      });
+    }
   }, 200);
 }
 
