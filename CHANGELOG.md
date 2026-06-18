@@ -11,6 +11,8 @@ in-app "What's New" screen — from that version's section. Keep entries
 user-facing: what changed, not how.
 
 ## [Unreleased]
+
+## [0.14.0] - 2026-06-18
 ### Added
 - **Crack or Keep (Secret Lair Explorer).** On a drop you hold sealed, a new panel compares keeping it sealed (its sealed market value) against cracking it open (the current sum of its singles, fetched on demand from Scryfall) — with a clear verdict on which is worth more and by how much.
 
