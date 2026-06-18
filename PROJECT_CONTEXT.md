@@ -12,7 +12,12 @@ A **Windows desktop app** for tracking a Magic: The Gathering collection, with a
 
 Lives at: `C:\Users\Akapl\Documents\Secret Lair Tracker Desktop\`
 Git: https://github.com/ArielKaplan/magic_collection_tracker (branch: `main`)
-Current version: see `package.json` (0.9.x as of June 2026)
+Current version: see `package.json` (0.12.x as of June 2026)
+
+Recent (v0.12.x, June 2026): unowned SL cards show full Scryfall metadata on hover;
+Discord-style in-app updater (top-bar pill + "What's New" modal, notes driven from
+`CHANGELOG.md`); sealed deletions persist (authoritative `replaceSealed`); daily
+backup is corruption-aware (integrity-check → skip+quarantine+warn, verify-before-prune).
 
 The user is a prolific MTG collector tracking thousands of cards (~4,750 entries, 6,200+ copies) across many binders. ManaBox CSV is the source of truth for imports.
 
@@ -109,7 +114,7 @@ Native chrome: menu bar with accelerators (Ctrl+I import CSV, F5 refresh prices,
 2. **Refresh Prices** (F5, auto once per day on first open) — Scryfall batches with 429 backoff (2s/4s/8s), then TCGCSV market-price pass. Foil→etched price fallback is load-bearing (don't remove). Deck cards included.
 3. **Price persistence is delta-based**: `storePriceSnapshot`/`storeMarketPriceSnapshot` queue new snapshots; `autoSave()` flushes only the queue (restored on failure). autoSave does NOT rewrite price history.
 4. **Refresh SL Data** — MTGJSON SLD.json via net:fetch (`json.data.cards`, NOT Object.values), collector-number backfill for foils, stored in SQLite.
-5. **Backups** — main process writes `backups/collection-YYYY-MM-DD.db` once per day on launch, prunes to 10.
+5. **Backups** — main process writes `backups/collection-YYYY-MM-DD.db` once per day on launch, prunes to 10. **Corruption-aware (v0.12.2):** `runDailyBackup` runs `PRAGMA integrity_check` first — if the live DB is malformed it skips the backup AND the prune (so a corrupt copy can't roll a good backup off the rotation), quarantines the bad DB to `backups/corrupt/`, and surfaces a warning to the renderer via `app:backupHealth`; freshly written backups are verified before older ones are pruned.
 
 ---
 

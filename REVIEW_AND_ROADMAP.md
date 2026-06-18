@@ -269,3 +269,36 @@ existing pattern, but it adds to the inline-handler / window-global surface that
 - **Build pipeline:** `scripts/sl-build/` (+ `README.md`).
 - **Release:** `npm run release:tag -- <minor|patch>` (scripts/release.js) bumps + tags +
   pushes; `.github/workflows/release.yml` builds + publishes the installer on the tag.
+
+---
+
+## Session handoff (v0.12.x — June 18, 2026)
+
+A polish/reliability session — no headline roadmap features. Shipped v0.12.0→v0.12.2
+(all on `main`, installers published). The four roadmap items above are still the plan
+and untouched. What changed:
+
+- **Unowned-card hover (v0.12.0):** SL Explorer tiles for cards you don't own now fetch
+  full Scryfall metadata on hover (type, oracle, rarity, artist, price, drop/superdrop,
+  "Owned: No") — instant image/name/drop partial, then async upgrade, cached, with a race
+  token so a slow fetch can't clobber a newer preview. `src/renderer-js/hover.js`.
+- **Discord-style updater (v0.12.0):** top-bar **update pill** (`#update-pill` in index.html)
+  → **"What's New" modal** with release notes → one-click download + auto-restart; mirrored
+  in Settings. Main process re-checks every 3h + on startup. `src/renderer-js/updaterUI.js`,
+  `src/main/main.js`. v0.12.2 fixed the "v?" (current version now fetched at startup in
+  `wireUpdateBadge`).
+- **Release notes are CHANGELOG-driven (committed, activates next release):** edit
+  `CHANGELOG.md` under `## [Unreleased]`; `release.js` promotes it to `## [X.Y.Z] - date`;
+  the workflow sets the GitHub release body (and thus the in-app What's New) via
+  `scripts/extract-changelog.js`. See RELEASING.md.
+- **Sealed persistence (v0.12.1):** deletes now hit the DB (`window.api.sealed.remove`), and
+  `autoSave` does an authoritative `replaceSealed` so the table can't drift. Sealed was always
+  in `collection.db` (its own table) — NOT merged into cards. `src/main/db.js`, `storage.js`.
+- **Corruption-aware backups (v0.12.2):** see PROJECT_CONTEXT Data-flow #5 + the
+  `db-corruption-recovery` memory. Triggered by a real June-18 corruption incident, recovered
+  from the 06-13 backup (cards/sealed/decks intact; ~5 days of price snapshots lost).
+- **New smoke tests:** `scripts/smoke-sealed-db.js`, `scripts/smoke-backup-integrity.js`,
+  plus one-off `scripts/db-recovery-*.js`.
+
+Still open, unchanged: Phase 2 (vitest), Phase 3 (per-tab Svelte + CSP) — and the updater +
+SL editor keep adding to the inline-`onclick`/window-global surface Phase 3 retires.
