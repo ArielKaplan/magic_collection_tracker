@@ -11,6 +11,8 @@ in-app "What's New" screen — from that version's section. Keep entries
 user-facing: what changed, not how.
 
 ## [Unreleased]
+
+## [0.15.0] - 2026-06-18
 ### Changed
 - **Drop P&L now defaults to the flat Secret Lair MSRP** (≈$29.99 non-foil / $39.99 foil, configurable in Settings → Secret Lair P&L; foil/non-foil picked automatically from the cards you own) instead of summing cheap per-single purchase prices — since Secret Lair is bought as whole drops. A sealed product linked to the drop still overrides it with its actual price; assumed costs are marked with "≈".
 ### Added
