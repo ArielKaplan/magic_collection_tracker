@@ -11,6 +11,10 @@ in-app "What's New" screen — from that version's section. Keep entries
 user-facing: what changed, not how.
 
 ## [Unreleased]
+### Changed
+- **Drop P&L now defaults to the flat Secret Lair MSRP** (≈$29.99 non-foil / $39.99 foil, configurable in Settings → Secret Lair P&L; foil/non-foil picked automatically from the cards you own) instead of summing cheap per-single purchase prices — since Secret Lair is bought as whole drops. A sealed product linked to the drop still overrides it with its actual price; assumed costs are marked with "≈".
+### Added
+- **Singles vs. Sealed on each drop page** — compare completing a drop by buying its individual cards (priced on demand from Scryfall) against buying the sealed box (from a linked product, or the TCGCSV index after a sync), with a verdict on which is cheaper — and the crack-or-keep verdict when you hold it sealed.
 
 ## [0.14.0] - 2026-06-18
 ### Added

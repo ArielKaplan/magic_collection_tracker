@@ -71,10 +71,23 @@ const near = (a, b) => Math.abs(a - b) < 1e-6;
   check('citystyles sealedQty 1, singlesQty 1', cs && cs.sealedQty === 1 && cs.singlesQty === 1, cs);
   check('citystyles gainPct = 23.01/29.99*100', cs && near(cs.gainPct, 23.01 / 29.99 * 100), cs && cs.gainPct);
 
-  // Drop with cost 0 → gainPct null (no basis)
+  // No linked sealed → cost defaults to flat MSRP (non-foil singles → 29.99)
   collection.sealed = [];
   const noBasis = computeDropPnL().find(r => r.drop === 'Phyrexian Praetors');
-  check('no sealed → cost 0, gainPct null', noBasis && noBasis.cost === 0 && noBasis.gainPct === null, noBasis);
+  check('no sealed → cost defaults to 29.99 (costIsDefault)', noBasis && near(noBasis.cost, 29.99) && noBasis.costIsDefault === true, noBasis);
+  check('no sealed → gainPct from default basis', noBasis && near(noBasis.gainPct, (200 - 29.99) / 29.99 * 100), noBasis && noBasis.gainPct);
+
+  // Foil singles → foil MSRP default (39.99)
+  collection.cards = [{ id: 'cf', scryfallId: 'aaaa', name: 'X', foil: 'foil', quantity: 1, purchasePrice: 0 }];
+  collection.priceHistory = { 'aaaa|foil': [{ date: '2026-06-18', price: 10 }] };
+  const foilRow = computeDropPnL().find(r => r.drop === 'Phyrexian Praetors');
+  check('foil single → cost defaults to 39.99', foilRow && near(foilRow.cost, 39.99) && foilRow.anyFoil === true, foilRow);
+
+  // Settings override the default MSRP
+  collection.settings = { slMsrpFoil: 50 };
+  const overridden = computeDropPnL().find(r => r.drop === 'Phyrexian Praetors');
+  check('settings override foil MSRP default (50)', overridden && near(overridden.cost, 50), overridden && overridden.cost);
+  collection.settings = {};
 
   // ── Phase 2: crack-or-keep ────────────────────────────────────────────────
   const { sumDropSingles, sealedKeepValue } = await import('../src/renderer-js/slTab.js');

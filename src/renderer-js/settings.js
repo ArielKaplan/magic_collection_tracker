@@ -72,6 +72,23 @@ export function showSettings() {
       To update the built-in dataset for everyone (e.g. when a new superdrop drops), re-run the build pipeline in <code>scripts/sl-build/</code> (see its README) and ship a new version.
     </p>
 
+    <h3 style="margin-top:22px">Secret Lair P&amp;L</h3>
+    <p style="font-size:13px;color:var(--text-dim);margin-bottom:10px;line-height:1.55">
+      Default cost basis for the 💰 P&amp;L view when a drop isn't linked to a sealed product with a
+      recorded price. Secret Lair is bought as whole drops, so P&amp;L assumes you paid the drop's
+      flat MSRP. Foil/non-foil is picked automatically from the cards you own.
+    </p>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Default MSRP — non-foil drop (USD)</label>
+        <input type="number" id="cfg-msrp-nonfoil" step="0.01" min="0" value="${collection.settings.slMsrpNonfoil ?? 29.99}">
+      </div>
+      <div class="form-group">
+        <label>Default MSRP — foil drop (USD)</label>
+        <input type="number" id="cfg-msrp-foil" step="0.01" min="0" value="${collection.settings.slMsrpFoil ?? 39.99}">
+      </div>
+    </div>
+
     <h3 style="margin-top:22px">Data Management</h3>
     <p style="font-size:12px;color:var(--text-muted);margin-bottom:10px;line-height:1.5">
       Each button below permanently deletes data from the SQLite database.
@@ -134,6 +151,10 @@ export function showSettings() {
       binders: pickChips('cfg-ticker-binders'),
       sets:    pickChips('cfg-ticker-sets'),
     };
+    const nf = parseFloat(document.getElementById('cfg-msrp-nonfoil').value);
+    const ff = parseFloat(document.getElementById('cfg-msrp-foil').value);
+    collection.settings.slMsrpNonfoil = (!isNaN(nf) && nf >= 0) ? nf : 29.99;
+    collection.settings.slMsrpFoil    = (!isNaN(ff) && ff >= 0) ? ff : 39.99;
     hideModal();
     renderTickerTape();
     autoSave();

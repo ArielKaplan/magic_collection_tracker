@@ -3,6 +3,7 @@ import { showGalleryModal } from './gallery.js';
 import { hideModal, showModal } from './modals.js';
 import { fetchScryfallBatch } from './prices.js';
 import { render } from './render.js';
+import { searchTcgcsvLocal } from './sealedPricing.js';
 import { collection, ui } from './state.js';
 import { esc, escJs, fmt, netFetch, toast } from './utils.js';
 
@@ -299,16 +300,24 @@ function slCardTile(scryfallId, numLabel) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// DROP P&L (Phase 1 — computed from data already on hand)
-// Cost basis = MSRP paid: purchase price of linked sealed products (sealed AND
-// opened — you still paid for an opened box) + any recorded cost on owned singles.
-// Current value = market value of owned singles + market value of still-sealed
-// products (opened ones already became the singles, counted above). A drop is
-// listed if you own ≥1 of its singles or any sealed product linked to it.
+// DROP P&L
+// Cost basis = MSRP paid. Secret Lair is bought as whole drops, so the default
+// cost is the flat drop MSRP (≈$29.99 non-foil / $39.99 foil, configurable in
+// Settings) — NOT the sum of cheap per-single purchase prices. A linked sealed
+// product's actual purchase price overrides the default when present.
+// Current value = market value of owned singles + still-sealed copies (opened
+// boxes already became the singles). A drop is listed if you own ≥1 of its
+// singles or any sealed product linked to it.
 // ─────────────────────────────────────────────────────────────────────────────
 function sealedMarketValue(item) {
   const h = item.priceHistory;
   return h?.length ? h[h.length - 1].price : (item.currentValue ?? null);
+}
+
+// Configurable flat MSRP defaults (Settings → Secret Lair P&L).
+export function slMsrpDefault(foil) {
+  const s = collection.settings || {};
+  return foil ? (s.slMsrpFoil ?? 39.99) : (s.slMsrpNonfoil ?? 29.99);
 }
 
 export function computeDropPnL() {
@@ -319,7 +328,8 @@ export function computeDropPnL() {
       const sd = (typeof SL_DROP_TO_SUPERDROP !== 'undefined' && SL_DROP_TO_SUPERDROP[drop]) || {};
       rows[drop] = {
         drop, superdrop: sd.superdrop || 'Standalone', date: sd.date || '',
-        cost: 0, value: 0, singlesQty: 0, sealedQty: 0, openedQty: 0,
+        value: 0, singlesQty: 0, sealedQty: 0, openedQty: 0,
+        sealedCost: 0, anyFoil: false,
       };
     }
     return rows[drop];
@@ -333,16 +343,16 @@ export function computeDropPnL() {
     const r = get(drops[0]);
     const v = cardCurrentValue(c);
     r.value += v ?? 0;
-    r.cost  += (c.purchasePrice || 0) * (c.quantity || 1);
     r.singlesQty += c.quantity || 1;
+    if (c.foil && c.foil !== 'normal') r.anyFoil = true;
   }
 
-  // Linked sealed products.
+  // Linked sealed products: a real purchase price is the actual cost basis.
   for (const s of (collection.sealed || [])) {
     if (!s.dropName) continue;
     const r = get(s.dropName);
     const qty = s.quantity || 1;
-    r.cost += (s.purchasePrice || 0) * qty;
+    r.sealedCost += (s.purchasePrice || 0) * qty;
     if (s.status === 'sealed') {
       const mv = sealedMarketValue(s);
       if (mv != null) r.value += mv * qty;
@@ -353,8 +363,11 @@ export function computeDropPnL() {
   }
 
   return Object.values(rows).map(r => {
-    const gain = r.value - r.cost;
-    return { ...r, gain, gainPct: r.cost > 0 ? (gain / r.cost) * 100 : null };
+    // Real linked-sealed cost wins; otherwise assume one drop bought at flat MSRP.
+    const costIsDefault = !(r.sealedCost > 0);
+    const cost = costIsDefault ? slMsrpDefault(r.anyFoil) : r.sealedCost;
+    const gain = r.value - cost;
+    return { ...r, cost, costIsDefault, gain, gainPct: cost > 0 ? (gain / cost) * 100 : null };
   });
 }
 
@@ -442,42 +455,62 @@ export async function priceSlDropSingles(drop) {
   }
 }
 
-// Build the crack-or-keep panel for the drop detail page (null if not holding sealed).
-function crackOrKeepBanner(drop) {
-  const keep = sealedKeepValue(drop);
-  if (!keep) return '';
-  const crack = slDropSinglesCache.get(drop);
+// Best-effort current sealed-box price for a drop: a linked sealed product's
+// price if you have one, otherwise the closest match in the synced TCGCSV index.
+function sealedPriceForDrop(drop) {
+  for (const s of (collection.sealed || [])) {
+    if (s.dropName === drop) { const mv = sealedMarketValue(s); if (mv != null) return { price: mv, source: 'linked' }; }
+  }
+  try {
+    const hit = (searchTcgcsvLocal(drop, 1) || [])[0];
+    if (hit && hit.marketPrice != null) return { price: hit.marketPrice, source: 'tcgcsv', name: hit.name };
+  } catch { /* cache not synced */ }
+  return null;
+}
+
+// "Singles vs. Sealed" economics for the drop detail page — compare the drop as a
+// sealed box against the sum of its individual cards. Frames the verdict as
+// crack-or-keep when you hold it sealed, or cheapest-to-complete otherwise.
+function dropEconomicsBanner(drop) {
+  const held = sealedKeepValue(drop);          // you hold ≥1 sealed copy?
+  const sealed = sealedPriceForDrop(drop);     // { price, source } | null
+  const crack = slDropSinglesCache.get(drop);  // cached singles total | undefined
   const pricing = slDropPricing.has(drop);
-  const gcol = (n) => n >= 0 ? 'var(--green)' : '#f87171';
 
-  const keepCell = keep.value != null
-    ? `<strong style="color:var(--text)">${fmt(keep.value)}</strong>`
-    : `<span style="color:var(--text-muted)">— <span style="font-size:11px">(add the sealed market price)</span></span>`;
+  const singlesCell = pricing
+    ? `<span style="color:var(--text-muted)">⏳ Pricing…</span>`
+    : crack
+      ? `<strong style="color:var(--text)">${fmt(crack.value)}</strong> <span style="font-size:11px;color:var(--text-muted)">(${crack.priced}/${crack.names} cards)</span>
+         <button class="btn btn-ghost" style="font-size:11px;padding:2px 8px;margin-left:4px" onclick="priceSlDropSingles('${escJs(drop)}')">↻</button>`
+      : `<button class="btn btn-sm" onclick="priceSlDropSingles('${escJs(drop)}')">💰 Price the singles</button>`;
 
-  let crackCell, verdict = '';
-  if (pricing) {
-    crackCell = `<span style="color:var(--text-muted)">⏳ Pricing singles…</span>`;
-  } else if (crack) {
-    crackCell = `<strong style="color:var(--text)">${fmt(crack.value)}</strong> <span style="font-size:11px;color:var(--text-muted)">(priced ${crack.priced}/${crack.names})</span>
-      <button class="btn btn-ghost" style="font-size:11px;padding:2px 8px;margin-left:6px" onclick="priceSlDropSingles('${escJs(drop)}')">↻</button>`;
-    if (keep.value != null) {
-      const diff = crack.value - keep.value;
-      const pct = keep.value > 0 ? Math.round(Math.abs(diff) / keep.value * 100) : null;
+  const sealedCell = sealed
+    ? `<strong style="color:var(--text)">${fmt(sealed.price)}</strong>${sealed.source === 'tcgcsv' ? ` <span style="font-size:11px;color:var(--text-muted)" title="${esc(sealed.name || '')}">≈ TCGCSV</span>` : ''}`
+    : `<span style="color:var(--text-muted)">— <span style="font-size:11px">(sync TCGCSV, or add &amp; link the sealed product)</span></span>`;
+
+  let verdict = '';
+  if (crack && sealed) {
+    const diff = crack.value - sealed.price;   // singles minus one sealed box
+    const pct = sealed.price > 0 ? Math.round(Math.abs(diff) / sealed.price * 100) : null;
+    const amt = `${fmt(Math.abs(diff))}${pct != null ? ` (${pct}%)` : ''}`;
+    if (held) {
       verdict = diff >= 0
-        ? `<div style="margin-top:8px;font-weight:700;color:${gcol(1)}">✂️ Cracking is worth ${fmt(diff)}${pct != null ? ` (${pct}%)` : ''} more than selling it sealed.</div>`
-        : `<div style="margin-top:8px;font-weight:700;color:var(--accent2)">📦 Keep it sealed — the box holds a ${fmt(-diff)}${pct != null ? ` (${pct}%)` : ''} premium over its singles.</div>`;
+        ? `<div style="margin-top:8px;font-weight:700;color:var(--green)">✂️ Crack it — the singles are worth ${amt} more than the sealed box.</div>`
+        : `<div style="margin-top:8px;font-weight:700;color:var(--accent2)">📦 Keep it sealed — the box carries a ${amt} premium over its singles.</div>`;
+    } else {
+      verdict = diff >= 0
+        ? `<div style="margin-top:8px;font-weight:700;color:var(--accent2)">📦 To complete this drop, the sealed box is cheaper by ${amt}.</div>`
+        : `<div style="margin-top:8px;font-weight:700;color:var(--green)">🃏 To complete this drop, buying the singles is cheaper by ${amt}.</div>`;
     }
-  } else {
-    crackCell = `<button class="btn btn-sm" onclick="priceSlDropSingles('${escJs(drop)}')">💰 Price the singles</button>`;
   }
 
   return `
     <div style="margin:0 0 12px;padding:11px 14px;background:var(--surface);border:1px solid var(--border);border-radius:8px;font-size:13px">
       <div style="display:flex;gap:22px;align-items:center;flex-wrap:wrap">
-        <span style="font-weight:700;color:var(--text)">💎 Crack or Keep</span>
-        <span style="color:var(--text-muted);font-size:12px">You hold ${keep.qty} sealed</span>
-        <span style="margin-left:auto"><span style="color:var(--text-muted)">Keep (sealed)</span> ${keepCell}</span>
-        <span><span style="color:var(--text-muted)">Crack &amp; sell (singles)</span> ${crackCell}</span>
+        <span style="font-weight:700;color:var(--text)">💎 ${held ? 'Crack or Keep' : 'Singles vs. Sealed'}</span>
+        ${held ? `<span style="color:var(--text-muted);font-size:12px">You hold ${held.qty} sealed</span>` : ''}
+        <span style="margin-left:auto"><span style="color:var(--text-muted)">As singles</span> ${singlesCell}</span>
+        <span><span style="color:var(--text-muted)">As sealed box</span> ${sealedCell}</span>
       </div>
       ${verdict}
     </div>`;
@@ -727,7 +760,7 @@ export function renderSlViewer() {
               ${best && best.drop === r.drop ? ` <span style="font-size:10px;background:var(--green-dim);color:var(--green);padding:1px 6px;border-radius:99px">★ best</span>` : ''}
               <div style="font-size:11px;color:var(--text-muted)">${esc(r.superdrop)}${held.length ? ' · ' + held.join(', ') : ''}</div>
             </td>
-            <td style="padding:8px 10px;text-align:right">${money(r.cost)}</td>
+            <td style="padding:8px 10px;text-align:right">${r.costIsDefault ? `<span title="Assumed Secret Lair MSRP — link a sealed product for the exact cost" style="color:var(--text-muted)">≈${fmt(r.cost)}</span>` : money(r.cost)}</td>
             <td style="padding:8px 10px;text-align:right">${money(r.value)}</td>
             <td style="padding:8px 10px;text-align:right;font-weight:600;color:${gcol(r.gain)}">${r.gain >= 0 ? '+' : ''}${fmt(r.gain)}</td>
             <td style="padding:8px 10px;text-align:right;font-weight:700;color:${gcol(r.gainPct)}">${pct(r.gainPct)}</td>
@@ -762,16 +795,16 @@ export function renderSlViewer() {
     const drops = getDropsForSuperdrop(sv.superdrop);
     const pct = stats.total ? Math.round(stats.owned / stats.total * 100) : 0;
 
-    // Compact P&L summary for this drop (Phase 1 — uses data on hand).
+    // Compact P&L summary for this drop.
     const pnl = computeDropPnL().find(r => r.drop === sv.drop);
     const gcol = (n) => n == null ? 'var(--text-muted)' : (n >= 0 ? 'var(--green)' : '#f87171');
     const pnlBanner = (pnl && (pnl.cost > 0 || pnl.value > 0)) ? `
       <div style="display:flex;gap:22px;align-items:center;flex-wrap:wrap;margin:0 0 12px;padding:10px 14px;background:var(--surface);border:1px solid var(--border);border-radius:8px;font-size:13px">
         <span style="font-weight:700;color:var(--text)">💰 Drop P&L</span>
-        <span><span style="color:var(--text-muted)">MSRP paid</span> ${pnl.cost > 0 ? fmt(pnl.cost) : '—'}</span>
+        <span><span style="color:var(--text-muted)">${pnl.costIsDefault ? 'MSRP (assumed)' : 'MSRP paid'}</span> ${pnl.costIsDefault ? '≈' : ''}${fmt(pnl.cost)}</span>
         <span><span style="color:var(--text-muted)">Current value</span> ${pnl.value > 0 ? fmt(pnl.value) : '—'}</span>
         <span style="font-weight:700;color:${gcol(pnl.gain)}">${pnl.gain >= 0 ? '+' : ''}${fmt(pnl.gain)}${pnl.gainPct != null ? ` (${pnl.gainPct >= 0 ? '+' : ''}${pnl.gainPct.toFixed(0)}%)` : ''}</span>
-        ${pnl.cost === 0 ? `<span style="color:var(--text-muted);font-size:11px;margin-left:auto">Add this drop to Sealed with its purchase price for true gain/loss</span>` : ''}
+        ${pnl.costIsDefault ? `<span style="color:var(--text-muted);font-size:11px;margin-left:auto">Assumed MSRP — link a sealed product (edit it → "Secret Lair Drop") for the exact cost</span>` : ''}
       </div>` : '';
 
     return viewToggle() + refreshBtn + breadcrumb() + `
@@ -788,7 +821,7 @@ export function renderSlViewer() {
       </div>
       ${slDropNote(sv.drop) ? `<div style="margin:0 0 12px;padding:9px 13px;background:var(--surface);border-left:3px solid var(--accent2);border-radius:6px;font-size:13px;color:var(--text);white-space:pre-wrap">📝 ${esc(slDropNote(sv.drop))}</div>` : ''}
       ${pnlBanner}
-      ${crackOrKeepBanner(sv.drop)}
+      ${dropEconomicsBanner(sv.drop)}
       <div class="gallery-grid">
         ${shown.map(scryfallId => slCardTile(scryfallId)).join('')}
       </div>
