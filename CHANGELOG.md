@@ -1,0 +1,30 @@
+# Changelog
+
+All notable changes to Secret Lair Tracker are recorded here. The format follows
+[Keep a Changelog](https://keepachangelog.com/).
+
+**How this works:** add notes under **[Unreleased]** as you make changes.
+`npm run release:tag -- <patch|minor|major>` promotes that section to the new
+version (stamped with today's date) and opens a fresh empty [Unreleased]. The
+release workflow then sets each GitHub release's notes — and therefore the
+in-app "What's New" screen — from that version's section. Keep entries
+user-facing: what changed, not how.
+
+## [Unreleased]
+
+## [0.12.2] - 2026-06-18
+### Reliability
+- **Daily backups are now corruption-aware.** Before backing up, the app checks the database's integrity. If it's damaged, the automatic backup is skipped so it can't overwrite your good backups, the damaged file is set aside, and you're warned — and every new backup is verified before older ones are rotated out.
+### Fixed
+- The update screen now shows your current version instead of "v?".
+- Release notes now display in the "What's New" screen.
+
+## [0.12.1] - 2026-06-18
+### Fixed
+- **Sealed products now stay deleted** — previously a sealed product you removed would reappear after restarting the app.
+- Sealed collection saves are now authoritative, so what's stored can't drift from what you see on screen.
+
+## [0.12.0] - 2026-06-18
+### Added
+- **Secret Lair Explorer — full details on hover for cards you don't own** (type, rules text, rarity, artist, price, and which drop/superdrop it belongs to).
+- **In-app updates** — an Update pill appears in the top bar when a new version is available, with a "What's New" view; one click downloads and restarts into the new version.

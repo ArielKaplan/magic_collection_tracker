@@ -17,6 +17,16 @@ npm run release:tag -- 0.7.2    # explicit
 
 The script bumps `package.json`, commits, tags, and pushes. CI does the rest.
 
+## Release notes (CHANGELOG-driven)
+
+Before releasing, add user-facing notes under the **[Unreleased]** heading in
+[`CHANGELOG.md`](CHANGELOG.md). `release:tag` promotes that section to
+`## [X.Y.Z] - <date>` and opens a fresh empty `[Unreleased]`. The release
+workflow then extracts that version's section (`scripts/extract-changelog.js`)
+and sets it as the GitHub release body — which is what the in-app **What's New**
+screen displays. An empty `[Unreleased]` releases with no notes (the script
+warns); the GitHub body is left untouched in that case.
+
 ## Manual release
 
 ```sh

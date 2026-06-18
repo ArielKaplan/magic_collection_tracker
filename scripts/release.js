@@ -52,6 +52,26 @@ pkg.version = next;
 fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n');
 
 run('git add package.json');
+
+// Promote CHANGELOG.md [Unreleased] -> [next] - date, and open a fresh
+// [Unreleased]. CI sets the GitHub release notes from the [next] section.
+const changelogPath = path.join(__dirname, '..', 'CHANGELOG.md');
+if (fs.existsSync(changelogPath)) {
+  let cl = fs.readFileSync(changelogPath, 'utf8');
+  const date = new Date().toISOString().slice(0, 10);
+  const m = cl.match(/^##\s+\[Unreleased\][^\n]*\n([\s\S]*?)(?=\n##\s|$)/m);
+  const unreleasedBody = m ? m[1].trim() : '';
+  if (!unreleasedBody) {
+    console.warn('\n⚠  CHANGELOG.md [Unreleased] is empty — this release will have no in-app notes.');
+  }
+  if (/^##\s+\[Unreleased\]/m.test(cl)) {
+    cl = cl.replace(/^##\s+\[Unreleased\][^\n]*$/m, `## [Unreleased]\n\n## [${next}] - ${date}`);
+    fs.writeFileSync(changelogPath, cl);
+    run('git add CHANGELOG.md');
+  } else {
+    console.warn('\n⚠  No [Unreleased] section in CHANGELOG.md — skipping changelog promotion.');
+  }
+}
 // Keep package-lock.json in sync if it exists
 if (fs.existsSync(path.join(__dirname, '..', 'package-lock.json'))) {
   run('npm install --package-lock-only --ignore-scripts');

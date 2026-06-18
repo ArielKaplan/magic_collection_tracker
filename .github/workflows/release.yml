@@ -40,3 +40,19 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Skip electron-builder's own update check (CI noise)
           USE_HARD_LINKS: false
+
+      # electron-builder publishes the release with an empty body; fill it from
+      # the matching CHANGELOG.md section so the in-app "What's New" has content.
+      - name: Set release notes from CHANGELOG
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          $version = "${{ github.ref_name }}".TrimStart('v')
+          node scripts/extract-changelog.js $version notes.md
+          if ($LASTEXITCODE -eq 0) {
+            gh release edit "${{ github.ref_name }}" --notes-file notes.md
+            Write-Host "Set release notes for $version from CHANGELOG.md"
+          } else {
+            Write-Host "No CHANGELOG entry for $version - leaving release notes unchanged."
+          }
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
