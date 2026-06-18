@@ -23,6 +23,10 @@ function init(dbPath) {
   try { db.exec('ALTER TABLE sealed ADD COLUMN price_history TEXT'); }
   catch (e) { /* column already exists */ }
 
+  // Link a sealed product to the Secret Lair drop it represents (drop P&L).
+  try { db.exec('ALTER TABLE sealed ADD COLUMN drop_name TEXT'); }
+  catch (e) { /* column already exists */ }
+
   // Migrate price_history to include source column + updated PK if needed
   const phCols = db.prepare('PRAGMA table_info(price_history)').all().map(c => c.name);
   if (!phCols.includes('source')) {
@@ -116,20 +120,20 @@ function listSealed() {
   }));
 }
 function upsertSealed(item) {
-  const cols = ['id','name','product_type','set_code','set_name','quantity','purchase_price','current_value','status','notes','price_history'];
+  const cols = ['id','name','product_type','set_code','set_name','quantity','purchase_price','current_value','status','notes','drop_name','price_history'];
   db.prepare(`INSERT INTO sealed (${cols.join(',')})
     VALUES (${cols.map(c => '@' + c).join(',')})
     ON CONFLICT(id) DO UPDATE SET
       name=excluded.name, product_type=excluded.product_type, set_code=excluded.set_code,
       set_name=excluded.set_name, quantity=excluded.quantity,
       purchase_price=excluded.purchase_price, current_value=excluded.current_value,
-      status=excluded.status, notes=excluded.notes, price_history=excluded.price_history,
-      updated_at=datetime('now')`).run({
+      status=excluded.status, notes=excluded.notes, drop_name=excluded.drop_name,
+      price_history=excluded.price_history, updated_at=datetime('now')`).run({
     id: item.id, name: item.name, product_type: item.productType || null,
     set_code: item.setCode || null, set_name: item.setName || null,
     quantity: item.quantity || 1, purchase_price: item.purchasePrice ?? 0,
     current_value: item.currentValue ?? null, status: item.status || 'sealed',
-    notes: item.notes || null,
+    notes: item.notes || null, drop_name: item.dropName || null,
     price_history: item.priceHistory?.length ? JSON.stringify(item.priceHistory) : null,
   });
 }
@@ -139,7 +143,7 @@ function deleteSealed(id) { return db.prepare('DELETE FROM sealed WHERE id=?').r
 // of truth, so a removed product can never linger (mirrors replaceFailedLookups).
 // Sealed is small and bounded, so rewriting it on each save is cheap.
 function replaceSealed(items) {
-  const cols = ['id','name','product_type','set_code','set_name','quantity','purchase_price','current_value','status','notes','price_history'];
+  const cols = ['id','name','product_type','set_code','set_name','quantity','purchase_price','current_value','status','notes','drop_name','price_history'];
   const tx = db.transaction(() => {
     db.prepare('DELETE FROM sealed').run();
     const stmt = db.prepare(`INSERT INTO sealed (${cols.join(',')}) VALUES (${cols.map(c => '@' + c).join(',')})`);
@@ -148,7 +152,7 @@ function replaceSealed(items) {
       set_code: item.setCode || null, set_name: item.setName || null,
       quantity: item.quantity || 1, purchase_price: item.purchasePrice ?? 0,
       current_value: item.currentValue ?? null, status: item.status || 'sealed',
-      notes: item.notes || null,
+      notes: item.notes || null, drop_name: item.dropName || null,
       price_history: item.priceHistory?.length ? JSON.stringify(item.priceHistory) : null,
     });
   });

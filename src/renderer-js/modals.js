@@ -269,8 +269,9 @@ export function addDropToSealed(drop) {
     onPick: sel => showAddSealedModal(null, {
       name: sel.name, price: sel.price, pcId: sel.pcId,
       setName: sel.setName, linkedName: sel.name,
+      productType: 'Secret Lair', dropName: drop,
     }),
-    onManual: q => showAddSealedModal(null, { name: q || drop, productType: 'Secret Lair' }),
+    onManual: q => showAddSealedModal(null, { name: q || drop, productType: 'Secret Lair', dropName: drop }),
   });
 }
 

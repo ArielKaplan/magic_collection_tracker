@@ -91,6 +91,7 @@ export async function autoLoad() {
       id: r.id, name: r.name, productType: r.product_type, setCode: r.set_code,
       setName: r.set_name, quantity: r.quantity, purchasePrice: r.purchase_price,
       currentValue: r.current_value, status: r.status, notes: r.notes,
+      dropName: r.drop_name || '',
       priceHistory: r.priceHistory || [],
     }));
     collection.decks = deckRows || [];

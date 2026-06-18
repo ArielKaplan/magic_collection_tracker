@@ -35,7 +35,7 @@ export let ui = {
   sealed: { search: '', type: 'all', status: 'all' },
   decks: { deckId: null, search: '' },
   gallery: { binder: '', set: '', cmc: '', search: '', sortField: 'name', sortDir: 'asc', page: 0 },
-  slViewer: { superdrop: '', drop: '', page: 0, sort: 'date_desc', search: '', view: 'drops' },
+  slViewer: { superdrop: '', drop: '', page: 0, sort: 'date_desc', search: '', view: 'drops', pnlSort: 'gainpct_desc' },
   slRefreshing: false,
   failures: { filter: 'all', retrying: false },
   refreshing: false,

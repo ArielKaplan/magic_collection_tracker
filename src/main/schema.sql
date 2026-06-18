@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS sealed (
   current_value   REAL,
   status          TEXT DEFAULT 'sealed',
   notes           TEXT,
+  drop_name       TEXT,
   created_at      TEXT DEFAULT (datetime('now')),
   updated_at      TEXT DEFAULT (datetime('now'))
 );

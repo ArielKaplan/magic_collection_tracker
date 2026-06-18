@@ -11,6 +11,12 @@ import { esc, fmt, toast, today, uid } from './utils.js';
 // ─────────────────────────────────────────────────────────────────────────────
 // ADD / EDIT SEALED MODAL
 // ─────────────────────────────────────────────────────────────────────────────
+// <datalist> of all known SL drop names, for linking a sealed product to its drop.
+function slDropOptions() {
+  const drops = typeof SL_DROP_TO_SUPERDROP !== 'undefined' ? Object.keys(SL_DROP_TO_SUPERDROP) : [];
+  return drops.sort().map(d => `<option value="${esc(d)}"></option>`).join('');
+}
+
 export function showAddSealedModal(editId = null, prefill = {}) {
   const ex = editId ? collection.sealed.find(i => i.id === editId) : null;
   const e  = ex || {};
@@ -65,6 +71,12 @@ export function showAddSealedModal(editId = null, prefill = {}) {
       </div>
     </div>
     <div class="form-group">
+      <label>Secret Lair Drop <span style="color:var(--text-muted);font-weight:400">(optional — links this product to a drop for P&amp;L)</span></label>
+      <input type="text" id="sl-drop" list="sl-drop-list" autocomplete="off"
+        placeholder="e.g. Phyrexian Praetors" value="${esc(prefill.dropName ?? e.dropName ?? '')}">
+      <datalist id="sl-drop-list">${slDropOptions()}</datalist>
+    </div>
+    <div class="form-group">
       <label>Notes</label>
       <textarea id="sl-notes" rows="2" placeholder="Optional notes…">${esc(prefill.notes ?? e.notes ?? '')}</textarea>
     </div>
@@ -88,6 +100,7 @@ export function showAddSealedModal(editId = null, prefill = {}) {
       cost:        document.getElementById('sl-cost').value,
       price:       parseFloat(document.getElementById('sl-price').value) || null,
       notes:       document.getElementById('sl-notes').value,
+      dropName:    document.getElementById('sl-drop').value.trim(),
       pcId:        _addSelectedPcId,
       linkedName:  prefill.linkedName || null,
     };
@@ -122,6 +135,7 @@ export function showAddSealedModal(editId = null, prefill = {}) {
       purchasePriceCurrency: 'USD',
       dateAdded: ex?.dateAdded || t,
       notes: document.getElementById('sl-notes').value.trim(),
+      dropName: document.getElementById('sl-drop').value.trim(),
       pricechartingId: _addSelectedPcId,
       linkedScryfallIds: ex?.linkedScryfallIds || [],
       priceHistory: ex?.priceHistory || []

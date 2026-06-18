@@ -297,6 +297,88 @@ function slCardTile(scryfallId, numLabel) {
     </div>`;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// DROP P&L (Phase 1 — computed from data already on hand)
+// Cost basis = MSRP paid: purchase price of linked sealed products (sealed AND
+// opened — you still paid for an opened box) + any recorded cost on owned singles.
+// Current value = market value of owned singles + market value of still-sealed
+// products (opened ones already became the singles, counted above). A drop is
+// listed if you own ≥1 of its singles or any sealed product linked to it.
+// ─────────────────────────────────────────────────────────────────────────────
+function sealedMarketValue(item) {
+  const h = item.priceHistory;
+  return h?.length ? h[h.length - 1].price : (item.currentValue ?? null);
+}
+
+export function computeDropPnL() {
+  if (typeof SL_SCRYFALL_TO_DROPS === 'undefined') return [];
+  const rows = {};
+  const get = (drop) => {
+    if (!rows[drop]) {
+      const sd = (typeof SL_DROP_TO_SUPERDROP !== 'undefined' && SL_DROP_TO_SUPERDROP[drop]) || {};
+      rows[drop] = {
+        drop, superdrop: sd.superdrop || 'Standalone', date: sd.date || '',
+        cost: 0, value: 0, singlesQty: 0, sealedQty: 0, openedQty: 0,
+      };
+    }
+    return rows[drop];
+  };
+
+  // Owned singles → primary drop (SLD cards almost always map to exactly one).
+  for (const c of collection.cards) {
+    if (!c.scryfallId) continue;
+    const drops = SL_SCRYFALL_TO_DROPS[c.scryfallId];
+    if (!drops || !drops.length) continue;
+    const r = get(drops[0]);
+    const v = cardCurrentValue(c);
+    r.value += v ?? 0;
+    r.cost  += (c.purchasePrice || 0) * (c.quantity || 1);
+    r.singlesQty += c.quantity || 1;
+  }
+
+  // Linked sealed products.
+  for (const s of (collection.sealed || [])) {
+    if (!s.dropName) continue;
+    const r = get(s.dropName);
+    const qty = s.quantity || 1;
+    r.cost += (s.purchasePrice || 0) * qty;
+    if (s.status === 'sealed') {
+      const mv = sealedMarketValue(s);
+      if (mv != null) r.value += mv * qty;
+      r.sealedQty += qty;
+    } else {
+      r.openedQty += qty;
+    }
+  }
+
+  return Object.values(rows).map(r => {
+    const gain = r.value - r.cost;
+    return { ...r, gain, gainPct: r.cost > 0 ? (gain / r.cost) * 100 : null };
+  });
+}
+
+function sortPnlRows(list) {
+  const [field, dir] = (ui.slViewer.pnlSort || 'gainpct_desc').split('_');
+  const mul = dir === 'asc' ? 1 : -1;
+  const keyFns = { gainpct: r => r.gainPct, gain: r => r.gain, value: r => r.value, cost: r => r.cost, name: r => r.drop, date: r => r.date };
+  const key = keyFns[field] || keyFns.gainpct;
+  return [...list].sort((a, b) => {
+    const av = key(a), bv = key(b);
+    if (field === 'name' || field === 'date') return String(av).localeCompare(String(bv)) * mul;
+    if (av == null && bv == null) return 0;
+    if (av == null) return 1;   // nulls always last
+    if (bv == null) return -1;
+    return (av - bv) * mul;
+  });
+}
+
+// Toggle sort field/direction for the P&L ledger (exposed on window via main.js).
+export function sortSlPnl(field) {
+  const [curField, curDir] = (ui.slViewer.pnlSort || '').split('_');
+  ui.slViewer.pnlSort = `${field}_${curField === field && curDir === 'desc' ? 'asc' : 'desc'}`;
+  render();
+}
+
 export function renderSlViewer() {
   const sv = ui.slViewer;
   const hasSl = typeof SL_SUPERDROPS !== 'undefined' && typeof SL_DROP_TO_SCRYFALL_IDS !== 'undefined';
@@ -451,7 +533,7 @@ export function renderSlViewer() {
   function viewToggle() {
     const v = sv.view || 'drops';
     const b = (id, label) => `<button class="btn ${v === id ? 'btn-primary' : 'btn-ghost'}" style="font-size:12px" onclick="ui.slViewer.view='${id}';ui.slViewer.page=0;render()">${label}</button>`;
-    return `<div style="display:flex;gap:8px;margin-bottom:12px">${b('drops', '📦 By Superdrop')}${b('collector', '🔢 By Collector №')}</div>`;
+    return `<div style="display:flex;gap:8px;margin-bottom:12px">${b('drops', '📦 By Superdrop')}${b('collector', '🔢 By Collector №')}${b('pnl', '💰 P&L')}</div>`;
   }
 
   // Collector-number view — flat gallery of every SLD printing, ordered by number
@@ -478,7 +560,7 @@ export function renderSlViewer() {
     // One merged control bar: view toggle + search + owned count, all on a single row.
     const headerBar = `
       <div style="display:flex;gap:10px;align-items:center;padding:8px 12px;background:var(--surface);border:1px solid var(--border);border-radius:8px">
-        <div style="display:flex;gap:6px;flex-shrink:0">${tb('drops', '📦 By Superdrop')}${tb('collector', '🔢 By Collector №')}</div>
+        <div style="display:flex;gap:6px;flex-shrink:0">${tb('drops', '📦 By Superdrop')}${tb('collector', '🔢 By Collector №')}${tb('pnl', '💰 P&L')}</div>
         <input type="text" id="slSearchInput" placeholder="Search by collector number, card name, or note…"
           value="${esc(sv.search || '')}"
           oninput="ui.slViewer.search=this.value;render();setTimeout(()=>{const el=document.getElementById('slSearchInput');if(el){el.focus();el.setSelectionRange(el.value.length,el.value.length)}},0)"
@@ -502,6 +584,70 @@ export function renderSlViewer() {
       </div>`;
   }
 
+  // P&L ledger — per-drop MSRP paid vs current value, sortable
+  if (sv.view === 'pnl') {
+    const rows = sortPnlRows(computeDropPnL());
+    const v = sv.view;
+    const tb = (id, label) => `<button class="btn ${v === id ? 'btn-primary' : 'btn-ghost'}" style="font-size:12px;white-space:nowrap" onclick="ui.slViewer.view='${id}';ui.slViewer.page=0;render()">${label}</button>`;
+    const tot = rows.reduce((a, r) => { a.cost += r.cost; a.value += r.value; return a; }, { cost: 0, value: 0 });
+    const totGain = tot.value - tot.cost;
+    const totPct = tot.cost > 0 ? (totGain / tot.cost * 100) : null;
+    const [sf, sdir] = (sv.pnlSort || 'gainpct_desc').split('_');
+    const arrow = (f) => sf === f ? (sdir === 'asc' ? ' ↑' : ' ↓') : '';
+    const gcol = (n) => n == null ? 'var(--text-muted)' : (n >= 0 ? 'var(--green)' : '#f87171');
+    const money = (n) => (n == null || n === 0) ? '—' : fmt(n);
+    const pct = (n) => n == null ? '—' : `${n >= 0 ? '+' : ''}${n.toFixed(0)}%`;
+    const best = rows.filter(r => r.gainPct != null).sort((a, b) => b.gainPct - a.gainPct)[0];
+
+    const headerBar = `
+      <div style="display:flex;gap:10px;align-items:center;padding:8px 12px;background:var(--surface);border:1px solid var(--border);border-radius:8px">
+        <div style="display:flex;gap:6px;flex-shrink:0">${tb('drops', '📦 By Superdrop')}${tb('collector', '🔢 By Collector №')}${tb('pnl', '💰 P&L')}</div>
+        <span style="margin-left:auto;font-size:12px;color:var(--text-muted)">
+          ${rows.length} drop${rows.length !== 1 ? 's' : ''} · paid <strong style="color:var(--text)">${money(tot.cost)}</strong> · now <strong style="color:var(--text)">${money(tot.value)}</strong> ·
+          <strong style="color:${gcol(totGain)}">${totGain >= 0 ? '+' : ''}${fmt(totGain)}${totPct != null ? ` (${pct(totPct)})` : ''}</strong>
+        </span>
+      </div>`;
+
+    const th = (field, label, align = 'right') => `<th onclick="sortSlPnl('${field}')" style="cursor:pointer;text-align:${align};padding:8px 10px;position:sticky;top:0;background:var(--bg);white-space:nowrap;user-select:none;border-bottom:1px solid var(--border)">${label}${arrow(field)}</th>`;
+
+    const body = rows.length === 0
+      ? `<tr><td colspan="5" style="padding:34px;text-align:center;color:var(--text-muted)">No Secret Lair P&L yet.<br>Own singles from a drop, or add a sealed drop with its purchase price (right-click a drop → "Add drop to Sealed Collection"), to see gain/loss here.</td></tr>`
+      : rows.map(r => {
+          const held = [];
+          if (r.sealedQty) held.push(`${r.sealedQty} sealed`);
+          if (r.openedQty) held.push(`${r.openedQty} opened`);
+          if (r.singlesQty) held.push(`${r.singlesQty} single${r.singlesQty !== 1 ? 's' : ''}`);
+          return `<tr style="border-top:1px solid var(--border)">
+            <td style="padding:8px 10px">
+              <a class="bc-link" onclick="ui.slViewer.view='drops';ui.slViewer.drop='${escJs(r.drop)}';ui.slViewer.page=0;render()" style="font-weight:600">${esc(r.drop)}</a>
+              ${best && best.drop === r.drop ? ` <span style="font-size:10px;background:var(--green-dim);color:var(--green);padding:1px 6px;border-radius:99px">★ best</span>` : ''}
+              <div style="font-size:11px;color:var(--text-muted)">${esc(r.superdrop)}${held.length ? ' · ' + held.join(', ') : ''}</div>
+            </td>
+            <td style="padding:8px 10px;text-align:right">${money(r.cost)}</td>
+            <td style="padding:8px 10px;text-align:right">${money(r.value)}</td>
+            <td style="padding:8px 10px;text-align:right;font-weight:600;color:${gcol(r.gain)}">${r.gain >= 0 ? '+' : ''}${fmt(r.gain)}</td>
+            <td style="padding:8px 10px;text-align:right;font-weight:700;color:${gcol(r.gainPct)}">${pct(r.gainPct)}</td>
+          </tr>`;
+        }).join('');
+
+    return `
+      <div style="display:flex;flex-direction:column;height:100%">
+        <div style="flex:0 0 auto;background:var(--bg);padding-bottom:10px;box-shadow:0 6px 10px -8px rgba(0,0,0,.55)">${headerBar}</div>
+        <div style="flex:1 1 auto;min-height:0;overflow-y:auto;padding-top:6px">
+          <table style="width:100%;border-collapse:collapse;font-size:13px">
+            <thead><tr>
+              ${th('name', 'Drop', 'left')}
+              ${th('cost', 'MSRP paid')}
+              ${th('value', 'Current value')}
+              ${th('gain', 'Gain / Loss')}
+              ${th('gainpct', '%')}
+            </tr></thead>
+            <tbody>${body}</tbody>
+          </table>
+        </div>
+      </div>`;
+  }
+
   // Drop selected — show card grid for that drop
   if (sv.drop) {
     const cardIds = SL_DROP_TO_SCRYFALL_IDS[sv.drop] || [];
@@ -511,6 +657,18 @@ export function renderSlViewer() {
     const hasMore = cardIds.length > shown.length;
     const drops = getDropsForSuperdrop(sv.superdrop);
     const pct = stats.total ? Math.round(stats.owned / stats.total * 100) : 0;
+
+    // Compact P&L summary for this drop (Phase 1 — uses data on hand).
+    const pnl = computeDropPnL().find(r => r.drop === sv.drop);
+    const gcol = (n) => n == null ? 'var(--text-muted)' : (n >= 0 ? 'var(--green)' : '#f87171');
+    const pnlBanner = (pnl && (pnl.cost > 0 || pnl.value > 0)) ? `
+      <div style="display:flex;gap:22px;align-items:center;flex-wrap:wrap;margin:0 0 12px;padding:10px 14px;background:var(--surface);border:1px solid var(--border);border-radius:8px;font-size:13px">
+        <span style="font-weight:700;color:var(--text)">💰 Drop P&L</span>
+        <span><span style="color:var(--text-muted)">MSRP paid</span> ${pnl.cost > 0 ? fmt(pnl.cost) : '—'}</span>
+        <span><span style="color:var(--text-muted)">Current value</span> ${pnl.value > 0 ? fmt(pnl.value) : '—'}</span>
+        <span style="font-weight:700;color:${gcol(pnl.gain)}">${pnl.gain >= 0 ? '+' : ''}${fmt(pnl.gain)}${pnl.gainPct != null ? ` (${pnl.gainPct >= 0 ? '+' : ''}${pnl.gainPct.toFixed(0)}%)` : ''}</span>
+        ${pnl.cost === 0 ? `<span style="color:var(--text-muted);font-size:11px;margin-left:auto">Add this drop to Sealed with its purchase price for true gain/loss</span>` : ''}
+      </div>` : '';
 
     return viewToggle() + refreshBtn + breadcrumb() + `
       <div class="gallery-filters">
@@ -525,6 +683,7 @@ export function renderSlViewer() {
         </div>
       </div>
       ${slDropNote(sv.drop) ? `<div style="margin:0 0 12px;padding:9px 13px;background:var(--surface);border-left:3px solid var(--accent2);border-radius:6px;font-size:13px;color:var(--text);white-space:pre-wrap">📝 ${esc(slDropNote(sv.drop))}</div>` : ''}
+      ${pnlBanner}
       <div class="gallery-grid">
         ${shown.map(scryfallId => slCardTile(scryfallId)).join('')}
       </div>
