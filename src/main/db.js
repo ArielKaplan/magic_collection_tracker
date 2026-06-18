@@ -423,6 +423,34 @@ function backupTo(destPath) {
   return db.backup(destPath);
 }
 
+// PRAGMA integrity_check on the live DB. Returns { ok, detail }. A healthy DB
+// returns the single row "ok"; corruption returns one row per problem found.
+function integrityCheck() {
+  try {
+    const rows = db.pragma('integrity_check');
+    const ok = rows.length === 1 && rows[0].integrity_check === 'ok';
+    return { ok, detail: rows.map(r => r.integrity_check).join('; ').slice(0, 600) };
+  } catch (e) {
+    return { ok: false, detail: e.message };
+  }
+}
+
+// integrity_check an arbitrary DB file read-only (e.g. a freshly written backup,
+// before we trust it enough to prune older ones).
+function integrityCheckFile(file) {
+  let probe;
+  try {
+    probe = new Database(file, { readonly: true, fileMustExist: true });
+    const rows = probe.pragma('integrity_check');
+    const ok = rows.length === 1 && rows[0].integrity_check === 'ok';
+    return { ok, detail: rows.map(r => r.integrity_check).join('; ').slice(0, 600) };
+  } catch (e) {
+    return { ok: false, detail: e.message };
+  } finally {
+    try { probe && probe.close(); } catch {}
+  }
+}
+
 // Nuke everything except schema. Returns counts.
 function resetAll() {
   const tx = db.transaction(() => {
@@ -461,8 +489,8 @@ module.exports = {
   getSetting, setSetting, getAllSettings, clearSettings,
   // SL
   replaceSlData, getSlData, clearSlData,
-  // backup
-  backupTo,
+  // backup / integrity
+  backupTo, integrityCheck, integrityCheckFile,
   // nuclear
   resetAll,
 };

@@ -302,6 +302,7 @@ function registerIpc() {
     if (parsed.protocol === 'http:' || parsed.protocol === 'https:') return shell.openExternal(url);
   });
   ipcMain.handle('app:version',        () => app.getVersion());
+  ipcMain.handle('app:backupHealth',   () => backupHealth);
 
   // Updater
   ipcMain.handle('updater:check', async () => {
@@ -334,17 +335,75 @@ function registerIpc() {
 // One backup per calendar day, kept in userData/backups, pruned to the 10
 // newest. The collection is years of hand-curation in a single file — this is
 // the insurance policy.
+//
+// Hardened against silent corruption: a corrupt live DB is NEVER backed up and
+// NEVER triggers a prune (which would otherwise roll a good backup off the end
+// and replace it with a corrupt copy). Freshly written backups are verified
+// before older ones are pruned, so every file in the folder is known-good.
 const BACKUP_KEEP = 10;
+
+// Surfaced to the renderer on startup (toast + activity log) — null when healthy.
+let backupHealth = null;
+
+// Preserve a copy of the corrupt live DB (+ WAL/SHM) for diagnosis / manual
+// recovery. Once per day, never pruned (lives in a subfolder).
+function quarantineCorruptDb(backupsDir) {
+  try {
+    const qdir = path.join(backupsDir, 'corrupt');
+    if (!fs.existsSync(qdir)) fs.mkdirSync(qdir, { recursive: true });
+    const stamp = new Date().toISOString().slice(0, 10);
+    const live = dbPath();
+    for (const suffix of ['', '-wal', '-shm']) {
+      const src = live + suffix;
+      const dst = path.join(qdir, `collection-${stamp}.db${suffix}`);
+      if (fs.existsSync(src) && !fs.existsSync(dst)) fs.copyFileSync(src, dst);
+    }
+    console.log('[backup] quarantined corrupt DB copy to', qdir);
+    return qdir;
+  } catch (e) {
+    console.warn('[backup] quarantine failed:', e && e.message);
+    return null;
+  }
+}
+
 async function runDailyBackup() {
   try {
     const dir = path.join(app.getPath('userData'), 'backups');
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+
+    // 1. Never back up (or prune) from a corrupt live DB.
+    const health = db.integrityCheck();
+    if (!health.ok) {
+      console.warn('[backup] live DB failed integrity_check — skipping backup & prune to protect existing backups:', health.detail);
+      quarantineCorruptDb(dir);
+      backupHealth = {
+        level: 'error',
+        message: 'Your collection database failed an integrity check. Today\'s automatic backup was skipped so it can\'t overwrite your good backups, and a copy of the damaged database was set aside. Restore from a recent backup soon.',
+        detail: health.detail,
+      };
+      return;
+    }
+
+    // 2. Write today's backup (once/day) and verify it before trusting it.
     const stamp = new Date().toISOString().slice(0, 10);
     const dest = path.join(dir, `collection-${stamp}.db`);
     if (!fs.existsSync(dest)) {
       await db.backupTo(dest);
-      console.log('[backup] wrote', dest);
+      const verify = db.integrityCheckFile(dest);
+      if (!verify.ok) {
+        console.warn('[backup] freshly written backup failed verification — discarding, not pruning:', verify.detail);
+        try { fs.unlinkSync(dest); } catch {}
+        backupHealth = {
+          level: 'warn',
+          message: 'Today\'s automatic backup could not be verified and was discarded. Your existing backups are unchanged.',
+          detail: verify.detail,
+        };
+        return;
+      }
+      console.log('[backup] wrote + verified', dest);
     }
+
+    // 3. Prune to the newest N — safe now, since every file was verified at write time.
     const files = fs.readdirSync(dir)
       .filter(f => /^collection-\d{4}-\d{2}-\d{2}\.db$/.test(f))
       .sort();

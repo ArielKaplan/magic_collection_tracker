@@ -83,10 +83,15 @@ export function renderUpdatePill(state, label) {
 }
 
 // Attached once at startup (init in main.js). Click behavior depends on state.
-export function wireUpdateBadge() {
+export async function wireUpdateBadge() {
   const pill = document.getElementById('update-pill');
   if (!pill || pill.dataset.bound) return;
   pill.dataset.bound = '1';
+  // Fetch the installed version up front so the What's New modal never shows
+  // "v?" when opened from the pill before the Settings panel has been visited.
+  if (!updaterUI.current) {
+    try { updaterUI.current = await window.api.app.version(); } catch {}
+  }
   pill.addEventListener('click', () => {
     const state = pill.dataset.state;
     if (state === 'ready') installUpdate();

@@ -38,7 +38,7 @@ import { loadSlOverrides, refreshSlData } from './slTab.js';
 import { collection, ui } from './state.js';
 import { showAbout } from './statusbar.js';
 import { autoLoad, importCsvFile, loadCollectionFile, saveCollection } from './storage.js';
-import { esc, fmt, fmtPct, today } from './utils.js';
+import { esc, fmt, fmtPct, toast, today } from './utils.js';
 
 // Expose every module export as a window global. Inline onclick handlers in
 // rendered HTML and a few Svelte panels resolve functions by global name —
@@ -175,6 +175,16 @@ async function init() {
   }
 
   render();
+
+  // Surface any backup-health warning from the main process — e.g. today's
+  // automatic backup was skipped because the live DB failed its integrity check.
+  try {
+    const health = await window.api.app?.backupHealth?.();
+    if (health && health.message) {
+      window.logger?.error('Backup', `${health.message}${health.detail ? ' (' + health.detail + ')' : ''}`);
+      toast(health.message, health.level === 'error' ? 'error' : 'info', 14000);
+    }
+  } catch { /* older main process without backupHealth — ignore */ }
 
   // Auto-refresh once per calendar day on first open — runs after render so the
   // UI is visible before the network requests start.

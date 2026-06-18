@@ -67,6 +67,7 @@ contextBridge.exposeInMainWorld('api', {
     dbPath:        ()       => inv('app:dbPath'),
     openExternal:  (url)    => inv('app:openExternal', url),
     version:       ()       => inv('app:version'),
+    backupHealth:  ()       => inv('app:backupHealth'),
     platform:      process.platform,
   },
   updater: {
