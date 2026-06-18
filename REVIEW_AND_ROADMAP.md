@@ -33,6 +33,16 @@ Phased plan agreed with the owner:
   first — smallest/newest), replacing the window-global bridge with real stores; then add
   a CSP. **Don't rewrite the app**; strangler migration only.
 
+### Update — v0.11.0 (June 13, 2026): two roadmap items handled
+
+Two Secret Lair items shipped in **v0.11.0**: (1) the hand-curated superdrop hierarchy in
+`secretlair.js` was **rebuilt from source** (MTGJSON + Scryfall + mtg.wiki) via a new
+`scripts/sl-build/` pipeline — fixing the empty 2025+ superdrops and the orphan
+"Recent Additions" pile; and (2) a **first cut of the curation UI** (strategy item #4
+below) shipped as a *local, per-install* override editor. Full context for resuming cold
+in a fresh session is in the **"Session handoff (v0.11.0)"** section at the very bottom of
+this file.
+
 ---
 
 ## The original review (June 12, 2026, v0.9.0)
@@ -141,7 +151,9 @@ No tool answers any of these. This app is four features away from answering all 
    "add missing to want list." A want list with prices turns every incomplete drop into
    a shopping list — and is the natural home for price-threshold alerts during refresh.
 4. **The curation UI** (on the roadmap since v0.2) is the *strategic* feature, not a
-   chore. Once the hierarchy is user-editable in SQLite, it's exportable JSON: a friend
+   chore. **[v0.11.0 — local editing shipped: regroup drops + notes, stored per-install in
+   `sl_overrides`. The export/import + community-sync step below is what remains.]** Once
+   the hierarchy is user-editable in SQLite, it's exportable JSON: a friend
    imports the curation; later a GitHub-hosted community file becomes the canonical SL
    dataset the app syncs, the way it syncs MTGJSON. At that point the app isn't
    competing with Moxfield — it's the reference tool for a product line WotC ships
@@ -164,3 +176,96 @@ compelling with a time axis, and the delta-save plumbing makes it ~100 lines.
    *about* something.
 3. Then the **curation UI**, once the drop views prove which hierarchy edits matter.
 4. Phase 2 (vitest) and Phase 3 (per-tab Svelte migration) run alongside any of it.
+
+---
+
+## Session handoff (v0.11.0 — June 13, 2026)
+
+Two June-2026 sessions delivered a Secret Lair data + curation overhaul, shipped as
+**v0.11.0** (installer published to GitHub Releases; friends update via Settings → Check
+for Updates). Everything below is on `main`. This is the full context to resume cold.
+Companion auto-memory notes: `sl-metadata-sourcing.md`, `sl-explorer-next-steps.md`.
+
+### 1. The SL hierarchy is now rebuilt from source (was hand-typed)
+
+The hand-typed superdrop hierarchy in `secretlair.js` had gone stale — 2025/2026
+superdrops were empty `drops: []` and unknown drops landed in a "Recent Additions"
+orphan pile. It is now **regenerated from three cross-validating sources** by a
+one-time/occasional pipeline in **`scripts/sl-build/`** (see its `README.md`):
+
+```
+node scripts/sl-build/fetch-sources.js   # download sources -> cache/ (gitignored)
+node scripts/sl-build/reconcile.js        # reconcile -> out/superdrops.json + report.md (gitignored)
+node scripts/sl-build/emit-secretlair.js  # bake data into src/renderer/secretlair.js
+node scripts/sl-build/smoke-secretlair.js # vm-sandbox validation of the baked file
+```
+
+- **Sources & roles:** **MTGJSON `SLD.json`** = drop↔cards (each card's `subsets`) +
+  collector numbers (authoritative for membership); **Scryfall `set:sld`** = per-card
+  `released_at` (dates each drop); **mtg.wiki "Secret Lair/Drop Series"** = the superdrop
+  grouping. **Use mtg.wiki, NOT the Fandom wiki** — `mtg.fandom.com` is stale and stops
+  end-2024; `mtg.wiki` (MediaWiki API at `mtg.wiki/api.php`) covers 2019→2026 in the same
+  parseable wikitext table.
+- **What gets baked** into `src/renderer/secretlair.js` (data literals only — the
+  generator splices them and leaves the hand-maintained runtime code below untouched):
+  `SL_SUPERDROPS` (grouping), `SL_DROP_CARDS`, `SL_SCRYFALL_TO_DROPS`,
+  `SL_SCRYFALL_TO_NAME`, and **`SL_SCRYFALL_TO_NUMBER`** (collector numbers — new, powers
+  the collector view). Foil/variant backfill (base collector number + name) mirrors the
+  live refresh path.
+- **Result:** all **353 drops** resolve — **49 named superdrops + 51 standalone drops**,
+  0 collisions. 2025–2026 names (PlayStation, Sonic, Marvel's Spider-Man, Avatar,
+  Summer/Winter Superdrop 2025, etc.) come straight from mtg.wiki.
+- **Maintainer gotcha:** superdrop grouping exists ONLY in the wiki/marketing — never in
+  MTGJSON/Scryfall. And dates *within* a superdrop are staggered per drop, so release date
+  alone cannot draw superdrop boundaries. So when a new superdrop drops, re-run the
+  pipeline once mtg.wiki lists it (or hand-place drops via the editor below in the interim).
+
+### 2. Local curation UI shipped (first cut of strategy item #4)
+
+A **per-install override layer** in `src/renderer-js/slTab.js`, persisted as a JSON blob
+in SQLite under settings key **`sl_overrides`** (via `window.api.settings` — no new IPC/DB
+schema). Local-only: never shipped, never affects the baked dataset or anyone else's copy.
+
+- **Capabilities:** regroup any drop into a different/new superdrop (free-text `<datalist>`
+  combobox — the "Festival in a Box" use case), and attach notes to drops, superdrops, and
+  cards. "↺ Reset to sourced" reverts a drop to the baked grouping.
+- **Mechanics:** `loadSlOverrides()` runs at startup in renderer `main.js` (right after
+  `loadSlDataFromCache()`) and calls `rebuildSlGrouping()`, which recomputes
+  `SL_SUPERDROPS` + `SL_DROP_TO_SUPERDROP` = *baseline + overrides*. A one-time baseline
+  snapshot (`slBaseHome`/`slBaseDate`) keeps edits reversible and surviving a
+  "Check for New Cards" refresh (which also calls `rebuildSlGrouping`).
+- **Searchable notes:** Explorer search matches note text at all three levels.
+- **"By Collector №" view:** toggle flips the Explorer into a flat gallery of every SLD
+  printing in collector-number order — owned/not-owned styling, click-to-modal, searchable
+  by number/name/note, **no pagination** (lazy `<img>`), under one **fixed merged toolbar**
+  (toggle + search + owned count). Custom sort: plain numerics first (foils/variants
+  `1485★`, `633Φ`, `1012a` nestle by their number), letter-prefixed specials
+  (`IFIYW-1`, `SCTLR`, `VS`) last. Shared `slCardTile()` helper renders tiles for both views.
+- **Relabels:** "Refresh SL Data" → "Check for New Cards" (button + Tools menu); new
+  Settings → "Secret Lair Data" section explains built-in vs. local-edit vs. rebuild.
+
+**Remaining strategic step (item #4):** the `sl_overrides` JSON is the seed for
+**export/import** → friend imports your curation → eventually a GitHub-hosted community
+file the app syncs like MTGJSON. Not built yet.
+
+### What did NOT change — still the priority for the next session
+
+The headline roadmap features are untouched and remain the plan, in order:
+1. **Portfolio snapshots + drop-level completion %** (next release — small, visible).
+2. **Drop P&L ledger + crack-or-keep** (the headline release — makes the app *about* something).
+3. **Want list + price watch.**
+4. **Curation export/import + community sync** (now has a concrete foundation in `sl_overrides`).
+
+Phase 2 (vitest) and Phase 3 (per-tab Svelte migration, then CSP) still open. Note: the SL
+editor added several inline-`onclick` handlers (`editSlDrop`, `commitSlDrop`, `commitSlNote`,
+`resetSlDrop`, …) exposed on `window` via the module-export bridge — consistent with the
+existing pattern, but it adds to the inline-handler / window-global surface that Phase 3 retires.
+
+### File map
+- **Data + runtime:** `src/renderer/secretlair.js` (data blocks generated; code hand-maintained).
+- **Editor + views:** `src/renderer-js/slTab.js`. **Startup hook:** `src/renderer-js/main.js`
+  (`loadSlOverrides`). **View state:** `src/renderer-js/state.js` (`slViewer.view`).
+  **Settings note:** `src/renderer-js/settings.js`. **Menu label:** `src/main/main.js`.
+- **Build pipeline:** `scripts/sl-build/` (+ `README.md`).
+- **Release:** `npm run release:tag -- <minor|patch>` (scripts/release.js) bumps + tags +
+  pushes; `.github/workflows/release.yml` builds + publishes the installer on the tag.
