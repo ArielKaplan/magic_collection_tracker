@@ -12,12 +12,15 @@ A **Windows desktop app** for tracking a Magic: The Gathering collection, with a
 
 Lives at: `C:\Users\Akapl\Documents\Secret Lair Tracker Desktop\`
 Git: https://github.com/ArielKaplan/magic_collection_tracker (branch: `main`)
-Current version: see `package.json` (0.12.x as of June 2026)
+Current version: see `package.json` (0.14.x as of June 2026)
 
-Recent (v0.12.x, June 2026): unowned SL cards show full Scryfall metadata on hover;
-Discord-style in-app updater (top-bar pill + "What's New" modal, notes driven from
-`CHANGELOG.md`); sealed deletions persist (authoritative `replaceSealed`); daily
-backup is corruption-aware (integrity-check → skip+quarantine+warn, verify-before-prune).
+Recent (v0.12–0.14, June 2026): **drop P&L + crack-or-keep shipped** (the headline — 💰 P&L
+view in the SL Explorer + per-drop crack-or-keep; sealed products now carry a `dropName`).
+Also: unowned SL cards show full Scryfall metadata on hover; Discord-style in-app updater
+(top-bar pill + "What's New" modal, notes driven from `CHANGELOG.md`); sealed deletions
+persist (authoritative `replaceSealed`); corruption-aware daily backup. See
+REVIEW_AND_ROADMAP.md handoffs for details; next roadmap item is portfolio snapshots +
+drop-level completion %.
 
 The user is a prolific MTG collector tracking thousands of cards (~4,750 entries, 6,200+ copies) across many binders. ManaBox CSV is the source of truth for imports.
 
