@@ -11,6 +11,8 @@ in-app "What's New" screen — from that version's section. Keep entries
 user-facing: what changed, not how.
 
 ## [Unreleased]
+
+## [0.13.0] - 2026-06-18
 ### Added
 - **Drop P&L in the Secret Lair Explorer.** A new **💰 P&L** view lists each drop you've engaged with — **MSRP paid** (purchase price of linked sealed products) vs. **current value** (your singles + any still-sealed copies) — with sortable gain/loss columns, totals, and a "best buy" marker. Each drop's detail page shows a compact P&L summary too.
 - **Link a sealed product to its drop:** new optional "Secret Lair Drop" field on the add/edit sealed form (auto-filled when you add a drop to Sealed), which powers the P&L cost basis.
