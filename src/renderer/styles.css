@@ -213,6 +213,54 @@ body.app-shell {
   transform: rotate(45deg);
 }
 
+/* ── Update pill (Discord-style) — appears in the top bar when a new version
+   is available; click to view "What's New" and download/restart. ───────── */
+.update-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 13px;
+  border: none;
+  border-radius: 99px;
+  background: var(--accent-dim);
+  color: var(--accent2);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, filter 0.15s, transform 0.15s cubic-bezier(.2,0,0,1);
+  animation: updatePillIn 0.35s cubic-bezier(.2,0,0,1);
+}
+.update-pill::before { content: '⬇'; font-size: 13px; line-height: 1; }
+.update-pill:hover { filter: brightness(1.15); transform: translateY(-1px); }
+/* Downloaded & ready to install — switch to the "go" color and gently pulse. */
+.update-pill.ready { background: var(--green-dim); color: var(--green); animation: updatePillPulse 2s ease-in-out infinite; }
+.update-pill.ready::before { content: '↻'; }
+/* Mid-download — non-actionable, calmer. */
+.update-pill.downloading { cursor: default; opacity: 0.85; }
+.update-pill.downloading:hover { filter: none; transform: none; }
+@keyframes updatePillIn { from { opacity: 0; transform: translateY(-6px) scale(0.9); } to { opacity: 1; transform: translateY(0) scale(1); } }
+@keyframes updatePillPulse { 0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--green) 45%, transparent); } 50% { box-shadow: 0 0 0 5px transparent; } }
+
+/* ── "What's New" release-notes body ─────────────────────────────────────── */
+.whatsnew-notes {
+  max-height: 46vh;
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 14px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.whatsnew-notes:empty::after { content: 'No release notes were provided for this version.'; color: var(--text-muted); font-style: italic; }
+
 /* ── Ticker tape ───────────────────────── */
 .ticker-tape {
   grid-area: ticker;

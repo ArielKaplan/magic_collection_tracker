@@ -109,16 +109,20 @@ function dbPath() {
   return path.join(dir, 'collection.db');
 }
 
-// Silent background check shortly after launch. Notifies the renderer if an
-// update is available; no download until the user clicks in Settings.
+// Silent background checks: shortly after launch, then every few hours so a
+// long-running session still notices a release. Notifies the renderer if an
+// update is available (it shows the top-bar pill); no download until the user
+// clicks. Network errors shouldn't disrupt the user, so they're logged only.
+const UPDATE_RECHECK_MS = 3 * 60 * 60 * 1000; // 3 hours
+function runUpdateCheck(reason) {
+  autoUpdater.checkForUpdates().catch((err) => {
+    console.warn(`[updater] ${reason} check failed:`, err && err.message);
+  });
+}
 function scheduleStartupUpdateCheck() {
   if (isDev) return;
-  setTimeout(() => {
-    autoUpdater.checkForUpdates().catch((err) => {
-      // Network errors at startup shouldn't disrupt the user; log only.
-      console.warn('[updater] startup check failed:', err && err.message);
-    });
-  }, 8000);
+  setTimeout(() => runUpdateCheck('startup'), 8000);
+  setInterval(() => runUpdateCheck('periodic'), UPDATE_RECHECK_MS);
 }
 
 function createWindow() {

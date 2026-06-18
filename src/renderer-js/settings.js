@@ -90,6 +90,7 @@ export function showSettings() {
     </p>
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
       <button class="btn btn-sm" id="cfg-check-updates">Check for Updates</button>
+      <button class="btn btn-sm" id="cfg-whats-new" style="display:none">What's New</button>
       <button class="btn btn-sm" id="cfg-download-update" style="display:none">Download Update</button>
       <button class="btn btn-primary btn-sm" id="cfg-install-update" style="display:none">Restart &amp; Install</button>
     </div>

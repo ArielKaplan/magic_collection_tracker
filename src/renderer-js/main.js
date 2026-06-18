@@ -71,6 +71,9 @@ async function init() {
   const sbs = document.getElementById('sidebarSettings');
   if (sbs) sbs.addEventListener('click', showSettings);
 
+  // Top-bar update pill (shown when the main process reports a new version)
+  NS_updaterUI.wireUpdateBadge();
+
   // Activity log panel — status-bar button + close + clear
   const sbLogs = document.getElementById('sb-logs');
   if (sbLogs) sbLogs.addEventListener('click', toggleLogPanel);
