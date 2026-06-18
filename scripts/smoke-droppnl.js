@@ -76,6 +76,36 @@ const near = (a, b) => Math.abs(a - b) < 1e-6;
   const noBasis = computeDropPnL().find(r => r.drop === 'Phyrexian Praetors');
   check('no sealed → cost 0, gainPct null', noBasis && noBasis.cost === 0 && noBasis.gainPct === null, noBasis);
 
-  console.log(failures ? `\n${failures} FAILURES` : '\nAll drop-P&L smoke tests passed.');
+  // ── Phase 2: crack-or-keep ────────────────────────────────────────────────
+  const { sumDropSingles, sealedKeepValue } = await import('../src/renderer-js/slTab.js');
+
+  // sumDropSingles: each printing is its own Scryfall object; price = usd ?? foil ?? etched.
+  // Dedupe per card NAME, taking the max across that card's printings.
+  const cards = [
+    { name: 'A', prices: { usd: '12.00' } },                        // nonfoil printing -> 12
+    { name: 'A', prices: { usd: null, usd_foil: '25.00' } },        // foil printing -> 25 (max wins)
+    { name: 'B', prices: { usd: null, usd_foil: '4.00' } },         // foil-only -> 4
+    { name: 'C', prices: { usd: null, usd_foil: null, usd_etched: '7.50' } }, // etched -> 7.5
+    { name: 'D', prices: {} },                                      // unpriced -> skipped
+  ];
+  const agg = sumDropSingles(cards);
+  check('sumDropSingles dedupes by name + best finish (25+4+7.5=36.5)', near(agg.value, 36.5), agg.value);
+  check('sumDropSingles priced count = 3 (A,B,C)', agg.priced === 3, agg.priced);
+
+  // sealedKeepValue: only still-sealed copies count toward keep value
+  collection.sealed = [
+    { id: 'k1', dropName: 'City Styles', status: 'sealed', quantity: 2, priceHistory: [{ date: '2026-06-18', price: 45 }] },
+    { id: 'k2', dropName: 'City Styles', status: 'opened', quantity: 1, priceHistory: [{ date: '2026-06-18', price: 45 }] },
+  ];
+  const keep = sealedKeepValue('City Styles');
+  check('keep value = 2 sealed * 45 = 90 (opened excluded)', keep && near(keep.value, 90) && keep.qty === 2, keep);
+  check('no sealed copies → keep null', sealedKeepValue('Nonexistent Drop') === null);
+
+  // Held sealed but no market price looked up → value null, qty counted
+  collection.sealed = [{ id: 'k3', dropName: 'City Styles', status: 'sealed', quantity: 1, priceHistory: [] }];
+  const keepNoPrice = sealedKeepValue('City Styles');
+  check('held sealed w/o price → value null, qty 1', keepNoPrice && keepNoPrice.value === null && keepNoPrice.qty === 1, keepNoPrice);
+
+  console.log(failures ? `\n${failures} FAILURES` : '\nAll drop-P&L + crack-or-keep smoke tests passed.');
   process.exit(failures ? 1 : 0);
 })();

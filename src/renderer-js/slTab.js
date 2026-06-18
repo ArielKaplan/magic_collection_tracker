@@ -1,6 +1,7 @@
 import { cardCurrentValue } from './analytics.js';
 import { showGalleryModal } from './gallery.js';
 import { hideModal, showModal } from './modals.js';
+import { fetchScryfallBatch } from './prices.js';
 import { render } from './render.js';
 import { collection, ui } from './state.js';
 import { esc, escJs, fmt, netFetch, toast } from './utils.js';
@@ -379,6 +380,109 @@ export function sortSlPnl(field) {
   render();
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// CRACK OR KEEP (Phase 2) — for a drop you hold sealed, compare the sealed market
+// value ("keep") against the current sum-of-singles if you opened it ("crack").
+// Singles for an unopened drop usually aren't in your collection, so their prices
+// are fetched on demand from Scryfall and cached in memory (not price history).
+// ─────────────────────────────────────────────────────────────────────────────
+const slDropSinglesCache = new Map();  // drop -> { value, priced, names, at }
+const slDropPricing = new Set();        // drops with a fetch in flight
+
+// "Keep" value: market value of still-sealed copies of this drop you hold.
+// Returns { value, qty } (value null if held but never price-looked-up), or null.
+export function sealedKeepValue(drop) {
+  let value = 0, qty = 0, hasPrice = false;
+  for (const s of (collection.sealed || [])) {
+    if (s.dropName !== drop || s.status !== 'sealed') continue;
+    qty += s.quantity || 1;
+    const mv = sealedMarketValue(s);
+    if (mv != null) { value += mv * (s.quantity || 1); hasPrice = true; }
+  }
+  if (!qty) return null;
+  return { value: hasPrice ? value : null, qty };
+}
+
+// Pure aggregation: sum a drop's singles, deduped per card name, taking the best
+// (max) current price across that card's printings/finishes (usd/foil/etched).
+export function sumDropSingles(cards) {
+  const byName = {};
+  for (const card of (cards || [])) {
+    const p = card.prices || {};
+    const val = parseFloat(p.usd ?? p.usd_foil ?? p.usd_etched);
+    if (isNaN(val)) continue;
+    const name = card.name || card.id;
+    byName[name] = Math.max(byName[name] ?? 0, val);
+  }
+  return { value: Object.values(byName).reduce((a, b) => a + b, 0), priced: Object.keys(byName).length };
+}
+
+// Fetch + cache the sum-of-singles for a drop (Scryfall batch, on demand).
+export async function priceSlDropSingles(drop) {
+  if (slDropPricing.has(drop)) return;
+  const ids = (typeof SL_DROP_TO_SCRYFALL_IDS !== 'undefined' && SL_DROP_TO_SCRYFALL_IDS[drop]) || [];
+  if (!ids.length) { toast('No cards are mapped to this drop yet — try "Check for New Cards".', 'info'); return; }
+  slDropPricing.add(drop);
+  render();
+  try {
+    const uniq = [...new Set(ids.map(id => id.toLowerCase()))];
+    const cards = [];
+    for (let i = 0; i < uniq.length; i += 75) {
+      const data = await fetchScryfallBatch(uniq.slice(i, i + 75));
+      for (const c of (data.data || [])) cards.push(c);
+    }
+    const { value, priced } = sumDropSingles(cards);
+    const totalNames = (typeof SL_DROP_CARDS !== 'undefined' && SL_DROP_CARDS[drop]?.length) || priced;
+    slDropSinglesCache.set(drop, { value, priced, names: totalNames, at: Date.now() });
+  } catch (e) {
+    toast(`Couldn't price singles: ${e.message}`, 'error');
+  } finally {
+    slDropPricing.delete(drop);
+    render();
+  }
+}
+
+// Build the crack-or-keep panel for the drop detail page (null if not holding sealed).
+function crackOrKeepBanner(drop) {
+  const keep = sealedKeepValue(drop);
+  if (!keep) return '';
+  const crack = slDropSinglesCache.get(drop);
+  const pricing = slDropPricing.has(drop);
+  const gcol = (n) => n >= 0 ? 'var(--green)' : '#f87171';
+
+  const keepCell = keep.value != null
+    ? `<strong style="color:var(--text)">${fmt(keep.value)}</strong>`
+    : `<span style="color:var(--text-muted)">— <span style="font-size:11px">(add the sealed market price)</span></span>`;
+
+  let crackCell, verdict = '';
+  if (pricing) {
+    crackCell = `<span style="color:var(--text-muted)">⏳ Pricing singles…</span>`;
+  } else if (crack) {
+    crackCell = `<strong style="color:var(--text)">${fmt(crack.value)}</strong> <span style="font-size:11px;color:var(--text-muted)">(priced ${crack.priced}/${crack.names})</span>
+      <button class="btn btn-ghost" style="font-size:11px;padding:2px 8px;margin-left:6px" onclick="priceSlDropSingles('${escJs(drop)}')">↻</button>`;
+    if (keep.value != null) {
+      const diff = crack.value - keep.value;
+      const pct = keep.value > 0 ? Math.round(Math.abs(diff) / keep.value * 100) : null;
+      verdict = diff >= 0
+        ? `<div style="margin-top:8px;font-weight:700;color:${gcol(1)}">✂️ Cracking is worth ${fmt(diff)}${pct != null ? ` (${pct}%)` : ''} more than selling it sealed.</div>`
+        : `<div style="margin-top:8px;font-weight:700;color:var(--accent2)">📦 Keep it sealed — the box holds a ${fmt(-diff)}${pct != null ? ` (${pct}%)` : ''} premium over its singles.</div>`;
+    }
+  } else {
+    crackCell = `<button class="btn btn-sm" onclick="priceSlDropSingles('${escJs(drop)}')">💰 Price the singles</button>`;
+  }
+
+  return `
+    <div style="margin:0 0 12px;padding:11px 14px;background:var(--surface);border:1px solid var(--border);border-radius:8px;font-size:13px">
+      <div style="display:flex;gap:22px;align-items:center;flex-wrap:wrap">
+        <span style="font-weight:700;color:var(--text)">💎 Crack or Keep</span>
+        <span style="color:var(--text-muted);font-size:12px">You hold ${keep.qty} sealed</span>
+        <span style="margin-left:auto"><span style="color:var(--text-muted)">Keep (sealed)</span> ${keepCell}</span>
+        <span><span style="color:var(--text-muted)">Crack &amp; sell (singles)</span> ${crackCell}</span>
+      </div>
+      ${verdict}
+    </div>`;
+}
+
 export function renderSlViewer() {
   const sv = ui.slViewer;
   const hasSl = typeof SL_SUPERDROPS !== 'undefined' && typeof SL_DROP_TO_SCRYFALL_IDS !== 'undefined';
@@ -684,6 +788,7 @@ export function renderSlViewer() {
       </div>
       ${slDropNote(sv.drop) ? `<div style="margin:0 0 12px;padding:9px 13px;background:var(--surface);border-left:3px solid var(--accent2);border-radius:6px;font-size:13px;color:var(--text);white-space:pre-wrap">📝 ${esc(slDropNote(sv.drop))}</div>` : ''}
       ${pnlBanner}
+      ${crackOrKeepBanner(sv.drop)}
       <div class="gallery-grid">
         ${shown.map(scryfallId => slCardTile(scryfallId)).join('')}
       </div>
