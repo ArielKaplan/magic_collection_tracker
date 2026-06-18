@@ -321,9 +321,10 @@ export function showSealedContextMenu(x, y, item) {
     '---',
     { icon: '📋', label: 'Copy name', action: () => copyToClipboard(item.name, 'Name') },
     '---',
-    { icon: '🗑', label: 'Delete product', danger: true, action: () => {
+    { icon: '🗑', label: 'Delete product', danger: true, action: async () => {
         if (!confirm(`Delete “${item.name}” from your sealed collection?`)) return;
         collection.sealed = collection.sealed.filter(i => i.id !== item.id);
+        try { await window.api.sealed.remove(item.id); } catch {}
         render(); autoSave();
         toast('Product removed', 'info');
       } },

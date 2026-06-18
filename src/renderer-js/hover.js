@@ -485,6 +485,7 @@ export function attachContentListeners() {
       else if (action === 'delete-sealed') {
         if (confirm('Delete this product from your collection?')) {
           collection.sealed = collection.sealed.filter(i => i.id !== id);
+          window.api.sealed.remove(id).catch(() => {});
           render();
           autoSave();
           toast('Product removed', 'info');

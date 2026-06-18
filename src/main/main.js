@@ -196,6 +196,7 @@ function registerIpc() {
   ipcMain.handle('sealed:list',        ()              => db.listSealed());
   ipcMain.handle('sealed:upsert',      (_e, item)      => db.upsertSealed(item));
   ipcMain.handle('sealed:delete',      (_e, id)        => db.deleteSealed(id));
+  ipcMain.handle('sealed:replace',     (_e, items)     => db.replaceSealed(items));
 
   // Decks
   ipcMain.handle('decks:list',         ()              => db.listDecks());

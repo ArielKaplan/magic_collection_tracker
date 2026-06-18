@@ -135,6 +135,26 @@ function upsertSealed(item) {
 }
 function deleteSealed(id) { return db.prepare('DELETE FROM sealed WHERE id=?').run(id).changes; }
 
+// Authoritative full replace: the renderer's in-memory sealed list is the source
+// of truth, so a removed product can never linger (mirrors replaceFailedLookups).
+// Sealed is small and bounded, so rewriting it on each save is cheap.
+function replaceSealed(items) {
+  const cols = ['id','name','product_type','set_code','set_name','quantity','purchase_price','current_value','status','notes','price_history'];
+  const tx = db.transaction(() => {
+    db.prepare('DELETE FROM sealed').run();
+    const stmt = db.prepare(`INSERT INTO sealed (${cols.join(',')}) VALUES (${cols.map(c => '@' + c).join(',')})`);
+    for (const item of items) stmt.run({
+      id: item.id, name: item.name, product_type: item.productType || null,
+      set_code: item.setCode || null, set_name: item.setName || null,
+      quantity: item.quantity || 1, purchase_price: item.purchasePrice ?? 0,
+      current_value: item.currentValue ?? null, status: item.status || 'sealed',
+      notes: item.notes || null,
+      price_history: item.priceHistory?.length ? JSON.stringify(item.priceHistory) : null,
+    });
+  });
+  tx();
+}
+
 // ── Decks ────────────────────────────────────────────────────────────────────
 function listDecks() {
   const decks = db.prepare('SELECT * FROM decks ORDER BY name').all();
@@ -428,7 +448,7 @@ module.exports = {
   // cards
   listCards, bulkUpsertCards, deleteCard, updateCardScryfallId, clearCards,
   // sealed
-  listSealed, upsertSealed, deleteSealed, clearSealed,
+  listSealed, upsertSealed, deleteSealed, replaceSealed, clearSealed,
   // decks
   listDecks, upsertDeck, deleteDeck, clearDecks,
   // prices

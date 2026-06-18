@@ -32,7 +32,9 @@ export async function autoSave() {
       window.api.failures.replace(collection.failedLookups || []),
       window.api.settings.set('settings_blob', settingsJson),
       window.api.settings.set('last_price_refresh', collection.lastPriceRefresh || ''),
-      ...(collection.sealed || []).map(s => window.api.sealed.upsert(s)),
+      // Authoritative full replace — keeps the sealed table exactly in sync with
+      // memory so a deleted product can never linger (sealed is small & bounded).
+      window.api.sealed.replace(collection.sealed || []),
       ...(collection.decks || []).map(d => window.api.decks.upsert(d)),
     ]);
 
