@@ -105,12 +105,11 @@ vite.config.mjs          # Multi-entry build: app-main + svelte-app → renderer
 
 ---
 
-## Tabs (Ctrl+1…7)
+## Tabs (Ctrl+1,2,3,5,6,7,8 — Ctrl+4 retired with the Gallery tab)
 
 1. **Dashboard** — Svelte canvas, 19 drag/resize panels (incl. "Value Over Time" line chart), per-panel binder filter, custom chart builder. Layout in `settings.dashboard_layout_v2`.
-2. **Card Collection** — table view: filters, column picker, dual pricing (Scryfall low + TCG market), Δ price, sparklines. Search matches name/set/type/oracle.
+2. **Card Collection** — **Table / Gallery view toggle** (`ui.cards.view`), sharing one binder sidebar + search + filters. *Table:* column picker, dual pricing (Scryfall low + TCG market), Δ price, sparklines. *Gallery:* card-image grid (the old Gallery tab, folded in — `showGalleryModal` lives in `gallery.js`). Search matches name/set/type/oracle.
 3. **Sealed Collection** — sealed products, TCGCSV/PriceCharting lookups, sealed/opened status.
-4. **Gallery** — image grid, hover previews.
 5. **Secret Lair Explorer** — superdrops → drops → cards, ownership indicators + per-drop owned counts; ★ on missing cards that are on the want list.
 6. **Failed Lookups** — pricing failures by reason, retry button for batch errors.
 7. **Decks** — played lists, format legality (DECK_FORMATS), Moxfield/Archidekt/ManaBox/MTGA import/export. Deck value NEVER counts toward collection value.

@@ -223,8 +223,8 @@ export function attachContentListeners() {
   if (emptyCsv) emptyCsv.addEventListener('click', () => importCsvFile().catch(console.error));
 
   // ── Card hover previews across tabs ─────────────────────────────────────
-  // Gallery: each .gallery-card has onclick="showGalleryModal('cardId')"
-  if (ui.activeTab === 'gallery') {
+  // Card Collection › Gallery view: each .gallery-card has onclick="showGalleryModal('cardId')"
+  if (ui.activeTab === 'cards') {
     document.querySelectorAll('.gallery-card[onclick*="showGalleryModal"]').forEach(el => {
       const m = el.getAttribute('onclick').match(/showGalleryModal\('([^']+)'\)/);
       const cardId = m ? m[1] : null;

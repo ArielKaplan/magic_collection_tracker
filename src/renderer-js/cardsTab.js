@@ -24,9 +24,12 @@ export function renderCards() {
   const allBinders = [...new Set(collection.cards.map(c => c.binderName))].filter(Boolean).sort();
   const langs      = [...new Set(collection.cards.map(c => c.language))].sort();
   const filtered   = filteredCards();
-  const totalPages = Math.max(1, Math.ceil(filtered.length / ui.cards.perPage));
+  const isGallery  = ui.cards.view === 'gallery';
+  // Gallery can only show printings that have a Scryfall image; the table shows all.
+  const working    = isGallery ? filtered.filter(c => c.scryfallId) : filtered;
+  const totalPages = Math.max(1, Math.ceil(working.length / ui.cards.perPage));
   const page       = Math.min(ui.cards.page, totalPages);
-  const pageSlice  = filtered.slice((page - 1) * ui.cards.perPage, page * ui.cards.perPage);
+  const pageSlice  = working.slice((page - 1) * ui.cards.perPage, page * ui.cards.perPage);
 
   const filteredValue = filtered.reduce((s, c) => s + (cardCurrentValue(c) ?? 0), 0);
   const filteredQty   = filtered.reduce((s, c) => s + c.quantity, 0);
@@ -55,6 +58,56 @@ export function renderCards() {
     { key: 'binderName',    label: 'Binder' },
   ];
   const activeColCount = COL_DEFS.filter(d => cols[d.key] !== false).length;
+
+  // View toggle (Table | Gallery) — same data, two presentations, mirroring the
+  // SL Explorer's view switcher. Resets to page 1 so the two paginations agree.
+  const viewBtn = (id, label) => `<button class="btn ${s.view === id ? 'btn-primary' : 'btn-ghost'}" style="font-size:12px;padding:7px 12px;white-space:nowrap" onclick="ui.cards.view='${id}';ui.cards.page=1;render()">${label}</button>`;
+  const viewToggle = `<div style="display:flex;gap:4px;margin-right:2px">${viewBtn('table', '▤ Table')}${viewBtn('gallery', '▦ Gallery')}</div>`;
+
+  // Gallery presentation of the same filtered+sorted set (reuses showGalleryModal
+  // + the gallery-card styling; cards without a Scryfall id were filtered out above).
+  const galleryBody = pageSlice.length
+    ? `<div class="gallery-grid">
+        ${pageSlice.map(c => {
+          const id  = c.scryfallId.toLowerCase();
+          const img = `https://cards.scryfall.io/normal/front/${id[0]}/${id[1]}/${id}.jpg`;
+          const val = cardCurrentValue(c);
+          return `<div class="gallery-card" data-card-id="${esc(c.id)}" onclick="showGalleryModal('${esc(c.id)}')" title="${esc(c.name)}">
+            <img src="${esc(img)}" alt="${esc(c.name)}" loading="lazy" onerror="this.closest('.gallery-card').style.display='none'">
+            ${c.foil !== 'normal' ? `<span class="gallery-foil">${FOIL_LABEL[c.foil]}</span>` : ''}
+            ${val != null ? `<span class="gallery-price">${fmt(val)}</span>` : ''}
+          </div>`;
+        }).join('')}
+      </div>`
+    : '<div style="padding:40px;text-align:center;color:var(--text-dim)">No cards match your filters</div>';
+
+  const tableBody = `<div class="table-wrap">
+          <table>
+            <thead><tr>
+              <th></th>
+              ${th('name', 'Name')}
+              ${cth('setCode', 'setCode', 'Set')}
+              ${cthn('setName', 'Set Name')}
+              ${cthn('foil', 'Foil')}
+              ${cth('rarity', 'rarity', 'Rarity')}
+              ${cth('condition', 'condition', 'Cond')}
+              ${cthn('language', 'Lang')}
+              ${cth('quantity', 'quantity', 'Qty')}
+              ${cth('purchasePrice', 'purchasePrice', 'Cost')}
+              ${cth('currentPrice', 'currentPrice', 'Low (SCR)')}
+              ${cthn('marketPrice', 'Mkt (TCG)')}
+              ${cthn('priceDelta', 'Δ Price')}
+              ${cthn('trend', 'Trend')}
+              ${cthn('flags', 'Flags')}
+              ${cthn('binderName', 'Binder')}
+            </tr></thead>
+            <tbody>
+              ${pageSlice.length
+                ? pageSlice.map(renderCardRow).join('')
+                : '<tr><td colspan="12" style="text-align:center;color:var(--text-dim);padding:40px">No cards match your filters</td></tr>'}
+            </tbody>
+          </table>
+        </div>`;
 
   return `
     <button class="binder-toggle-fab" id="binder-toggle-fab" title="Toggle Binders (B)">Binders</button>
@@ -85,10 +138,11 @@ export function renderCards() {
       <div>
         <div class="filter-bar">
           <div style="display:flex;gap:6px;align-items:center">
+            ${viewToggle}
             <input type="text" id="cardSearch" placeholder="Search name, set, type, or oracle text… (Enter to search)" value="${esc(s.search)}" style="flex:1;min-width:200px">
             <button class="btn" id="cardSearchBtn" style="padding:7px 14px;font-size:13px">Search</button>
             ${s.search ? `<button class="btn btn-ghost" id="cardSearchClear" style="padding:7px 10px;font-size:13px" title="Clear search">✕</button>` : ''}
-            <div class="col-picker-wrap" style="position:relative">
+            ${isGallery ? '' : `<div class="col-picker-wrap" style="position:relative">
               <button class="btn${s.colPickerOpen ? ' btn-primary' : ''}" id="colPickerBtn" style="padding:7px 12px;font-size:12px;white-space:nowrap">⊞ Columns${activeColCount < COL_DEFS.length ? ` (${activeColCount})` : ''}</button>
               ${s.colPickerOpen ? `<div class="col-picker-dropdown" id="colPickerDropdown">
                 <div class="col-picker-title">Visible Columns</div>
@@ -96,7 +150,7 @@ export function renderCards() {
                   ${COL_DEFS.map(d => `<button class="col-chip${cols[d.key] !== false ? ' col-chip-on' : ''}" data-col="${esc(d.key)}">${cols[d.key] !== false ? '✓ ' : ''}${esc(d.label)}</button>`).join('')}
                 </div>
               </div>` : ''}
-            </div>
+            </div>`}
             <button class="btn" onclick="showExportModal('cards')" style="padding:7px 12px;font-size:12px;white-space:nowrap" title="Export cards to CSV, JSON, Markdown, or text">⤓ Export</button>
           </div>
           <select id="foilFilter">
@@ -125,37 +179,11 @@ export function renderCards() {
         </div>
 
         <div class="results-info">
-          ${filtered.length.toLocaleString()} entries · ${filteredQty.toLocaleString()} copies · Value: <strong>${fmt(filteredValue)}</strong>
+          ${filtered.length.toLocaleString()} entries · ${filteredQty.toLocaleString()} copies · Value: <strong>${fmt(filteredValue)}</strong>${isGallery && working.length !== filtered.length ? ` · <span style="color:var(--text-dim)">${working.length.toLocaleString()} shown</span>` : ''}
         </div>
 
-        <div class="table-wrap">
-          <table>
-            <thead><tr>
-              <th></th>
-              ${th('name', 'Name')}
-              ${cth('setCode', 'setCode', 'Set')}
-              ${cthn('setName', 'Set Name')}
-              ${cthn('foil', 'Foil')}
-              ${cth('rarity', 'rarity', 'Rarity')}
-              ${cth('condition', 'condition', 'Cond')}
-              ${cthn('language', 'Lang')}
-              ${cth('quantity', 'quantity', 'Qty')}
-              ${cth('purchasePrice', 'purchasePrice', 'Cost')}
-              ${cth('currentPrice', 'currentPrice', 'Low (SCR)')}
-              ${cthn('marketPrice', 'Mkt (TCG)')}
-              ${cthn('priceDelta', 'Δ Price')}
-              ${cthn('trend', 'Trend')}
-              ${cthn('flags', 'Flags')}
-              ${cthn('binderName', 'Binder')}
-            </tr></thead>
-            <tbody>
-              ${pageSlice.length
-                ? pageSlice.map(renderCardRow).join('')
-                : '<tr><td colspan="12" style="text-align:center;color:var(--text-dim);padding:40px">No cards match your filters</td></tr>'}
-            </tbody>
-          </table>
-        </div>
-        ${renderPagination(page, totalPages, filtered.length)}
+        ${isGallery ? galleryBody : tableBody}
+        ${renderPagination(page, totalPages, working.length)}
       </div>
     </div>`;
 }

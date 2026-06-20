@@ -68,7 +68,6 @@ function buildMenu() {
         tabItem('Dashboard',                'dashboard',  'CmdOrCtrl+1'),
         tabItem('Card Collection',          'cards',      'CmdOrCtrl+2'),
         tabItem('Sealed Collection',        'sealed',     'CmdOrCtrl+3'),
-        tabItem('Gallery',                  'gallery',    'CmdOrCtrl+4'),
         tabItem('Secret Lair Explorer',     'slviewer',   'CmdOrCtrl+5'),
         tabItem('Failed Lookups',           'failures',   'CmdOrCtrl+6'),
         tabItem('Decks',                    'decks',      'CmdOrCtrl+7'),
