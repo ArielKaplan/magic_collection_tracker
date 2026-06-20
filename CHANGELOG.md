@@ -11,6 +11,8 @@ in-app "What's New" screen — from that version's section. Keep entries
 user-facing: what changed, not how.
 
 ## [Unreleased]
+
+## [0.16.0] - 2026-06-20
 ### Added
 - **Value Over Time (Dashboard).** A new line-chart panel tracks your collection's market value going forward — total, cards, and sealed, plotted against your cost basis. One snapshot is recorded each day prices refresh (prices auto-refresh once daily on first open), so the history builds up from now on.
 
