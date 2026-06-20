@@ -11,6 +11,8 @@ in-app "What's New" screen — from that version's section. Keep entries
 user-facing: what changed, not how.
 
 ## [Unreleased]
+
+## [0.16.1] - 2026-06-20
 ### Fixed
 - **Release notes now render properly in the "What's New" screen** — headings, bullet lists, and bold text show formatted instead of as raw HTML tags.
 
