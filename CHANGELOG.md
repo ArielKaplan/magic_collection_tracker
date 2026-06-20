@@ -11,6 +11,8 @@ in-app "What's New" screen — from that version's section. Keep entries
 user-facing: what changed, not how.
 
 ## [Unreleased]
+
+## [0.17.0] - 2026-06-20
 ### Reliability
 - **Fixed a database-corruption risk.** The app now refuses to run a second copy of itself (a second window just focuses the one already open) and closes the database cleanly on exit. Two copies writing the same database file at once was the most likely cause of the rare "database is malformed" errors; this closes that hole.
 ### Added
