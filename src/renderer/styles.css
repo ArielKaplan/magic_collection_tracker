@@ -256,10 +256,30 @@ body.app-shell {
   font-size: 13px;
   line-height: 1.6;
   color: var(--text);
-  white-space: pre-wrap;
   word-break: break-word;
 }
 .whatsnew-notes:empty::after { content: 'No release notes were provided for this version.'; color: var(--text-muted); font-style: italic; }
+/* Release notes arrive as HTML (Markdown converted by the updater) — keep the
+   rendered headings/lists compact so they sit nicely inside the modal. */
+.whatsnew-notes > :first-child { margin-top: 0; }
+.whatsnew-notes > :last-child { margin-bottom: 0; }
+.whatsnew-notes h1, .whatsnew-notes h2, .whatsnew-notes h3,
+.whatsnew-notes h4, .whatsnew-notes h5, .whatsnew-notes h6 {
+  font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;
+  color: var(--text-muted); margin: 14px 0 6px;
+}
+.whatsnew-notes p { margin: 6px 0; }
+.whatsnew-notes ul, .whatsnew-notes ol { margin: 6px 0; padding-left: 20px; }
+.whatsnew-notes li { margin: 3px 0; }
+.whatsnew-notes strong, .whatsnew-notes b { color: var(--text); font-weight: 700; }
+.whatsnew-notes a { color: var(--accent2); text-decoration: none; cursor: pointer; }
+.whatsnew-notes a:hover { text-decoration: underline; }
+.whatsnew-notes code {
+  background: var(--surface2); border: 1px solid var(--border); border-radius: 4px;
+  padding: 1px 5px; font-size: 12px; font-family: ui-monospace, monospace;
+}
+.whatsnew-notes pre { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; overflow-x: auto; }
+.whatsnew-notes pre code { background: none; border: none; padding: 0; }
 
 /* ── Ticker tape ───────────────────────── */
 .ticker-tape {

@@ -20,14 +20,59 @@ export const updaterUI = {
   autoInstall: false,   // restart-to-install automatically once downloaded
 };
 
-// electron-updater's releaseNotes is either a string (the GitHub release body)
-// or an array of { version, note }. Normalize to plain text.
+// electron-updater's releaseNotes is either a string or an array of
+// { version, note }. With the GitHub provider these are HTML (electron-updater
+// converts the Markdown release body), so we keep them as HTML and render via
+// sanitizeNotesHtml — not as escaped plain text (that showed raw <h3>/<li> tags).
 function normalizeNotes(notes) {
   if (!notes) return '';
   if (Array.isArray(notes)) {
-    return notes.map(n => (n && n.note ? `v${n.version}\n${n.note}` : '')).filter(Boolean).join('\n\n');
+    return notes.map(n => (n && n.note ? `<h4>v${esc(String(n.version))}</h4>\n${n.note}` : '')).filter(Boolean).join('\n');
   }
   return String(notes).trim();
+}
+
+// Render a small, safe subset of HTML from the release notes. The notes are
+// remote content (the GitHub release body, fetched by the updater), so we don't
+// trust them blindly: parse into an inert document, keep only basic formatting
+// tags, drop every attribute except a validated http(s) href, and discard
+// script/style/etc. entirely. Returns a sanitized HTML string for innerHTML.
+const NOTES_KEEP = new Set(['H1','H2','H3','H4','H5','H6','P','UL','OL','LI','STRONG','B','EM','I','CODE','PRE','BR','HR','A','BLOCKQUOTE','DEL','SPAN']);
+const NOTES_DROP = new Set(['SCRIPT','STYLE','NOSCRIPT','TEMPLATE','IFRAME','OBJECT','EMBED','LINK','META','IMG']);
+
+export function sanitizeNotesHtml(html) {
+  if (!html) return '';
+  let doc;
+  try { doc = new DOMParser().parseFromString(String(html), 'text/html'); }
+  catch { return ''; }
+
+  const clean = (src, dst) => {
+    for (const child of Array.from(src.childNodes)) {
+      if (child.nodeType === 3) {                       // text node — copy verbatim
+        dst.appendChild(document.createTextNode(child.textContent));
+      } else if (child.nodeType !== 1) {                // comment / other — skip
+        continue;
+      } else if (NOTES_DROP.has(child.tagName)) {       // drop tag *and* its contents
+        continue;
+      } else if (NOTES_KEEP.has(child.tagName)) {       // keep tag, sanitize children
+        const el = document.createElement(child.tagName.toLowerCase());
+        if (child.tagName === 'A') {
+          const href = child.getAttribute('href') || '';
+          // Links are opened via window.api.app.openExternal (delegated click
+          // handler on the modal), so only carry a validated http(s) href.
+          if (/^https?:\/\//i.test(href)) el.setAttribute('href', href);
+        }
+        clean(child, el);
+        dst.appendChild(el);
+      } else {                                          // unknown tag — unwrap, keep children
+        clean(child, dst);
+      }
+    }
+  };
+
+  const out = document.createElement('div');
+  clean(doc.body, out);
+  return out.innerHTML;
 }
 
 // ── Status / progress (shared by the Settings panel and the What's New modal) ─
@@ -137,7 +182,7 @@ export function showWhatsNewModal() {
     <div style="color:var(--text-muted);font-size:13px;margin-bottom:14px">
       ${esc(date)}${date ? ' · ' : ''}You have v${esc(updaterUI.current || '?')}
     </div>
-    <div class="whatsnew-notes">${esc(updaterUI.releaseNotes || '')}</div>
+    <div class="whatsnew-notes">${sanitizeNotesHtml(updaterUI.releaseNotes || '')}</div>
     <div id="wn-status" style="margin-top:12px;font-size:12px;color:var(--text-muted);min-height:16px"></div>
     <div id="wn-progress-wrap" style="display:none;margin-top:4px">
       <div style="background:#222;border-radius:4px;height:8px;overflow:hidden">
@@ -150,6 +195,14 @@ export function showWhatsNewModal() {
       <button class="btn btn-primary" id="wn-download">${ready ? 'Restart &amp; Install' : 'Download &amp; Install'}</button>
     </div>`);
   document.getElementById('wn-later')?.addEventListener('click', hideModal);
+  // Route any link in the rendered notes through the validated external-open IPC
+  // instead of navigating the renderer (or spawning a blank Electron window).
+  document.querySelector('.whatsnew-notes')?.addEventListener('click', (e) => {
+    const a = e.target.closest('a[href]');
+    if (!a) return;
+    e.preventDefault();
+    window.api.app.openExternal(a.getAttribute('href'));
+  });
   document.getElementById('wn-download')?.addEventListener('click', () => {
     if (updaterUI.downloaded) installUpdate();
     else startUpdateDownload(true);
