@@ -11,6 +11,8 @@ in-app "What's New" screen — from that version's section. Keep entries
 user-facing: what changed, not how.
 
 ## [Unreleased]
+
+## [0.18.0] - 2026-06-20
 ### Changed
 - **Gallery is now a view inside Card Collection, not a separate tab.** Card Collection has a **Table / Gallery** toggle (like the Secret Lair Explorer's view switcher) — both share the same binder sidebar, search, and filters, so you can flip between the spreadsheet and the card-image grid without losing your place. The standalone Gallery tab has been removed.
 
