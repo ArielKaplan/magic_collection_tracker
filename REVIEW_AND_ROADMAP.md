@@ -140,15 +140,16 @@ collector asks: *Which drops did I make money on? Should I crack this sealed dro
 keep it? What am I missing from drops I started? Is the new drop worth buying at MSRP?*
 No tool answers any of these. This app is four features away from answering all of them:
 
-1. **Drop P&L ledger.** ✅ **SHIPPED v0.13.0.** Per-drop sortable ledger (💰 P&L view in
-   the SL Explorer): MSRP paid (linked sealed products' cost) → current value (owned
-   singles + still-sealed copies) → gain/loss $/%, with totals and a ★ best-buy marker,
-   plus a per-drop summary banner. The screenshot-and-share feature.
-2. **Crack-or-keep.** ✅ **SHIPPED v0.14.0.** On a drop you hold sealed, the drop page
-   compares keep (sealed market value) vs crack (sum-of-singles, fetched on demand) with
-   a verdict. *Note the build-time reality vs. the "mostly a join" framing:* there was no
-   sealed↔drop link (added a `dropName` field on sealed products) and singles prices for
-   unowned cards needed an on-demand Scryfall fetch.
+1. **Drop P&L ledger.** ✅ **SHIPPED v0.13.0** (cost model refined v0.15.0). Per-drop sortable
+   ledger (💰 P&L view in the SL Explorer): MSRP paid → current value (owned singles +
+   still-sealed copies) → gain/loss $/%, totals, ★ best-buy, per-drop summary banner. **Cost
+   basis defaults to the flat SL MSRP** (~$29.99/$39.99, foil-aware, configurable) since drops
+   are bought whole; a linked sealed product's real price overrides. The screenshot feature.
+2. **Crack-or-keep → Singles vs. Sealed.** ✅ **SHIPPED v0.14.0, generalized v0.15.0.** Drop-detail
+   panel compares the drop as singles (on-demand Scryfall fetch) vs as a sealed box (linked
+   product or TCGCSV index) — crack-or-keep verdict when held sealed, cheapest-to-complete
+   otherwise. *Build-time reality vs. the "mostly a join" framing:* there was no sealed↔drop link
+   (added a `dropName` field) and singles prices for unowned cards needed an on-demand fetch.
 3. **Drop completion + auto want list.** Drop-level "4/7 owned" tiles, then one-click
    "add missing to want list." A want list with prices turns every incomplete drop into
    a shopping list — and is the natural home for price-threshold alerts during refresh.
@@ -306,10 +307,11 @@ and untouched. What changed:
 Still open, unchanged: Phase 2 (vitest), Phase 3 (per-tab Svelte + CSP) — and the updater +
 SL editor keep adding to the inline-`onclick`/window-global surface Phase 3 retires.
 
-## Session handoff (v0.13.0–v0.14.0 — June 18, 2026): headline feature SHIPPED
+## Session handoff (v0.13.0–v0.15.0 — June 18, 2026): headline feature SHIPPED
 
 The **drop P&L + crack-or-keep** headline (strategy items #1–#2 above) is done — the
-release set that makes the app *about* per-purchase P&L. All on `main`, installers published.
+release set that makes the app *about* per-purchase P&L. All on `main`, installers published
+through **v0.15.0**.
 
 - **Drop P&L (v0.13.0):** new **💰 P&L** view in the SL Explorer (third toggle) — sortable
   ledger of drops you've engaged with: MSRP paid vs current value vs gain/loss $/%, totals,
@@ -318,15 +320,21 @@ release set that makes the app *about* per-purchase P&L. All on `main`, installe
 - **The linchpin — sealed↔drop link:** sealed products gained a **`dropName`** column
   (schema + idempotent migration + upsert/replace + an editable "Secret Lair Drop" field on the
   add/edit form, auto-set by `addDropToSealed`). Without this there was no cost-basis join.
-- **Crack-or-keep (v0.14.0):** on a drop you hold sealed, `crackOrKeepBanner` (drop detail page)
-  shows keep (`sealedKeepValue`) vs crack (`sumDropSingles` over `priceSlDropSingles`, an
-  on-demand `fetchScryfallBatch` of the drop's cards, deduped per name/best finish, cached in a
-  module Map — NOT in price history). Opened copies excluded from keep.
-- **Cost-basis caveat for the next session:** P&L is only as good as the data — singles from
-  ManaBox CSV usually carry `purchasePrice 0`, so a drop's MSRP-paid comes almost entirely from
-  the linked sealed product. Users must link sealed products to drops to get real gain/loss.
-- **Tests:** `scripts/smoke-droppnl.js` (P&L math + crack-or-keep aggregation/keep-value).
+- **Crack-or-keep → Singles vs. Sealed (v0.14.0, generalized v0.15.0):** the drop-detail panel
+  is now `dropEconomicsBanner` (renamed from `crackOrKeepBanner`). It shows **As singles**
+  (`sumDropSingles` over `priceSlDropSingles` — on-demand `fetchScryfallBatch`, deduped per
+  name/best finish, cached in a module Map, NOT price history) vs **As sealed box**
+  (`sealedPriceForDrop`: a linked product's price, else `searchTcgcsvLocal` best-match from the
+  synced TCGCSV index). Verdict = crack-or-keep when held sealed (`sealedKeepValue`, opened
+  copies excluded), else cheapest-to-complete for acquisition.
+- **Flat-MSRP cost default (v0.15.0):** because SL is bought as whole drops, `computeDropPnL`
+  cost basis now defaults to a flat MSRP (`slMsrpDefault(foil)` → `collection.settings.slMsrp{Nonfoil,Foil}`,
+  defaults 29.99/39.99, foil auto-detected from owned singles, editable in Settings → "Secret Lair
+  P&L"). A linked sealed product's real purchase price overrides it; defaulted costs render with a
+  `≈` marker + `costIsDefault` flag. This replaced the old behavior of summing per-single purchase
+  prices (which read as misleadingly tiny costs).
+- **Tests:** `scripts/smoke-droppnl.js` (P&L math, flat-MSRP/foil/settings defaults, Singles-vs-Sealed aggregation + keep-value).
 
 Next remaining roadmap item is **portfolio snapshots + drop-level completion %** (strategy
 sequence #1). Phase 2 (vitest) / Phase 3 (Svelte + CSP) still open; this work added more
-P&L/crack-or-keep inline-`onclick` handlers to the window-global surface Phase 3 retires.
+P&L inline-`onclick` handlers to the window-global surface Phase 3 retires.
