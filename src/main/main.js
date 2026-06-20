@@ -72,6 +72,7 @@ function buildMenu() {
         tabItem('Secret Lair Explorer',     'slviewer',   'CmdOrCtrl+5'),
         tabItem('Failed Lookups',           'failures',   'CmdOrCtrl+6'),
         tabItem('Decks',                    'decks',      'CmdOrCtrl+7'),
+        tabItem('Want List',                'wantlist',   'CmdOrCtrl+8'),
         { type: 'separator' },
         { label: 'Toggle Activity Log', accelerator: 'CmdOrCtrl+L', click: () => sendMenu('logs:toggle') },
         { type: 'separator' },
@@ -197,6 +198,10 @@ function registerIpc() {
   ipcMain.handle('sealed:upsert',      (_e, item)      => db.upsertSealed(item));
   ipcMain.handle('sealed:delete',      (_e, id)        => db.deleteSealed(id));
   ipcMain.handle('sealed:replace',     (_e, items)     => db.replaceSealed(items));
+
+  // Want list
+  ipcMain.handle('wantlist:list',      ()              => db.listWantList());
+  ipcMain.handle('wantlist:replace',   (_e, items)     => db.replaceWantList(items));
 
   // Decks
   ipcMain.handle('decks:list',         ()              => db.listDecks());
@@ -419,18 +424,40 @@ async function runDailyBackup() {
   }
 }
 
-app.whenReady().then(() => {
-  db.init(dbPath());
-  registerIpc();
-  createWindow();
-  scheduleStartupUpdateCheck();
-  runDailyBackup();
-
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+// Single-instance lock — CRITICAL for data integrity. Two processes opening the
+// same SQLite (WAL) file and both writing corrupts it ("database disk image is
+// malformed"); this happened twice. Refuse to start a second copy and instead
+// focus the one already running.
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.show();
+      mainWindow.focus();
+    }
   });
-});
 
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit();
-});
+  app.whenReady().then(() => {
+    db.init(dbPath());
+    registerIpc();
+    createWindow();
+    scheduleStartupUpdateCheck();
+    runDailyBackup();
+
+    app.on('activate', () => {
+      if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    });
+  });
+
+  app.on('window-all-closed', () => {
+    if (process.platform !== 'darwin') app.quit();
+  });
+
+  // Clean shutdown: checkpoint + close the DB so the WAL is flushed and can't be
+  // left dangling for a later process to replay. Runs after all windows close.
+  app.on('will-quit', () => {
+    try { db.close(); } catch (e) { /* best effort */ }
+  });
+}

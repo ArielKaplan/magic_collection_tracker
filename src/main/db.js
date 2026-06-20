@@ -10,6 +10,11 @@ function init(dbPath) {
   db = new Database(dbPath);
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
+  // Wait up to 5s for a lock instead of erroring immediately, and fsync the WAL
+  // on every commit. The single-instance lock (main.js) is what actually prevents
+  // the two-writers corruption we hit twice; these are belt-and-suspenders.
+  db.pragma('busy_timeout = 5000');
+  db.pragma('synchronous = FULL');
 
   const schema = fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf-8');
   db.exec(schema);
@@ -158,6 +163,36 @@ function replaceSealed(items) {
   });
   tx();
 }
+
+// ── Want list ──────────────────────────────────────────────────────────────────
+function listWantList() {
+  return db.prepare('SELECT * FROM want_list ORDER BY created_at').all().map(r => ({
+    id: r.id, scryfallId: r.scryfall_id || '', name: r.name,
+    setCode: r.set_code || '', setName: r.set_name || '',
+    collectorNumber: r.collector_number || '', foil: r.foil || 'normal',
+    dropName: r.drop_name || '', maxPrice: r.max_price, note: r.note || '',
+    createdAt: r.created_at,
+  }));
+}
+
+// Authoritative full replace — keeps want_list exactly in sync with the
+// renderer's in-memory list (mirrors replaceSealed). Want list is small & bounded.
+function replaceWantList(items) {
+  const cols = ['id','scryfall_id','name','set_code','set_name','collector_number','foil','drop_name','max_price','note'];
+  const tx = db.transaction(() => {
+    db.prepare('DELETE FROM want_list').run();
+    const stmt = db.prepare(`INSERT INTO want_list (${cols.join(',')}) VALUES (${cols.map(c => '@' + c).join(',')})`);
+    for (const it of items) stmt.run({
+      id: it.id, scryfall_id: it.scryfallId || null, name: it.name,
+      set_code: it.setCode || null, set_name: it.setName || null,
+      collector_number: it.collectorNumber || null, foil: it.foil || 'normal',
+      drop_name: it.dropName || null, max_price: it.maxPrice ?? null, note: it.note || null,
+    });
+  });
+  tx();
+}
+
+function clearWantList() { return db.prepare('DELETE FROM want_list').run().changes; }
 
 // ── Decks ────────────────────────────────────────────────────────────────────
 function listDecks() {
@@ -464,6 +499,16 @@ function backupTo(destPath) {
   return db.backup(destPath);
 }
 
+// Clean shutdown: checkpoint the WAL back into the main file and close the
+// handle, so an abrupt later kill can't leave a dangling/partial WAL to replay.
+// Called from the main process's will-quit handler.
+function close() {
+  if (!db) return;
+  try { db.pragma('wal_checkpoint(TRUNCATE)'); } catch (e) { /* best effort */ }
+  try { db.close(); } catch (e) { /* best effort */ }
+  db = null;
+}
+
 // PRAGMA integrity_check on the live DB. Returns { ok, detail }. A healthy DB
 // returns the single row "ok"; corruption returns one row per problem found.
 function integrityCheck() {
@@ -505,6 +550,7 @@ function resetAll() {
     db.prepare('DELETE FROM sl_drop_cards').run();
     db.prepare('DELETE FROM sl_scryfall_drops').run();
     db.prepare('DELETE FROM portfolio_snapshots').run();
+    db.prepare('DELETE FROM want_list').run();
     db.prepare('DELETE FROM settings').run();
   });
   tx();
@@ -519,6 +565,8 @@ module.exports = {
   listCards, bulkUpsertCards, deleteCard, updateCardScryfallId, clearCards,
   // sealed
   listSealed, upsertSealed, deleteSealed, replaceSealed, clearSealed,
+  // want list
+  listWantList, replaceWantList, clearWantList,
   // decks
   listDecks, upsertDeck, deleteDeck, clearDecks,
   // prices
@@ -533,8 +581,8 @@ module.exports = {
   getSetting, setSetting, getAllSettings, clearSettings,
   // SL
   replaceSlData, getSlData, clearSlData,
-  // backup / integrity
-  backupTo, integrityCheck, integrityCheckFile,
+  // backup / integrity / lifecycle
+  backupTo, integrityCheck, integrityCheckFile, close,
   // nuclear
   resetAll,
 };
