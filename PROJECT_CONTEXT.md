@@ -112,8 +112,10 @@ vite.config.mjs          # Multi-entry build: app-main + svelte-app → renderer
 3. **Sealed Collection** — sealed products, TCGCSV/PriceCharting lookups, sealed/opened status.
 5. **Secret Lair Explorer** — superdrops → drops → cards, ownership indicators + per-drop owned counts; ★ on missing cards that are on the want list.
 6. **Failed Lookups** — pricing failures by reason, retry button for batch errors.
-7. **Decks** — played lists, format legality (DECK_FORMATS), Moxfield/Archidekt/ManaBox/MTGA import/export. Deck value NEVER counts toward collection value.
-8. **Want List** (Ctrl+8) — cards to acquire with optional per-card target price; price-watch flags items at/under target after each refresh (toast + log + green tab badge). Populated from the SL Explorer (missing cards / incomplete drops), the card popup, or Scryfall name search. `want_list` table; `wantlist.js`.
+7. **Decks** — played lists, format legality (DECK_FORMATS), Moxfield/Archidekt/ManaBox/MTGA import/export. Deck value NEVER counts toward collection value. **List/Gallery view toggle** (`ui.decks.view`) + **All/Owned/Missing** ownership filter (`ui.decks.ownFilter`); missing-card actions: 🛒 Buy on TCGPlayer Mass Entry, ★ add to Want List, ⧉ copy (`deckMissingCards`/`buyDeckMissingOnTcg`/`addDeckMissingToWantList`/`copyDeckMissing` in `decks.js`).
+8. **Want List** (Ctrl+8) — cards to acquire with optional per-card target price; **Table/Gallery view toggle**; price-watch flags items at/under target after each refresh (toast + log + green tab badge). Populated from the SL Explorer (missing cards / incomplete drops), the card popup, or Scryfall name search. `want_list` table; `wantlist.js`.
+
+Most list views now also offer a **Gallery (card-image) view** — Card Collection, Want List, Decks (and the SL Explorer's collector view). Sealed/Failed Lookups stay list-only (no per-card image). Convention: `ui.<tab>.view` toggled by inline buttons mirroring the SL Explorer's switcher; the grid reuses the `.gallery-card` styling.
 
 Native chrome: menu bar with accelerators (Ctrl+I import CSV, F5 refresh prices, Ctrl+L activity log, Ctrl+, settings), status bar, slide-in activity log, card hover previews everywhere, right-click context menus on cards/drops/sealed.
 

@@ -216,6 +216,7 @@ export function addWantFromSearch(item, btn) {
 export function renderWantList() {
   const list = collection.wantList || [];
   const s = ui.wantList;
+  const isGallery = s.view === 'gallery';
 
   if (!list.length) {
     return `
@@ -283,6 +284,37 @@ export function renderWantList() {
   }
 
   const groupBtn = `<button class="btn ${s.groupByDrop ? 'btn-primary' : 'btn-ghost'}" style="font-size:12px" onclick="ui.wantList.groupByDrop=!ui.wantList.groupByDrop;render()">Group by drop</button>`;
+  const viewBtn = (id, label) => `<button class="btn ${s.view === id ? 'btn-primary' : 'btn-ghost'}" style="font-size:12px;padding:6px 11px;white-space:nowrap" onclick="ui.wantList.view='${id}';render()">${label}</button>`;
+  const viewToggle = `<div style="display:flex;gap:4px">${viewBtn('table', '▤ Table')}${viewBtn('gallery', '▦ Gallery')}</div>`;
+
+  // Gallery presentation — image grid; click opens the card modal (which has the
+  // ★ want toggle). At-target cards get a gold ring + 🎯 badge.
+  const galleryTiles = rows.map(w => {
+    const id = (w.scryfallId || '').toLowerCase();
+    const img = id ? `https://cards.scryfall.io/normal/front/${id[0]}/${id[1]}/${id}.jpg` : '';
+    const price = wantListCurrentPrice(w);
+    const atTarget = w.maxPrice != null && price != null && price <= w.maxPrice;
+    return `<div class="gallery-card${atTarget ? ' sl-card-wanted' : ''}" onclick="showSlViewerModal('${esc(id)}')" title="${esc(w.name)}${w.maxPrice != null ? ` · target ${fmt(w.maxPrice)}` : ''}">
+      ${img ? `<img src="${esc(img)}" alt="${esc(w.name)}" loading="lazy" onerror="this.closest('.gallery-card').style.display='none'">` : ''}
+      ${atTarget ? `<span class="sl-want-badge" style="background:rgba(123,216,159,.95);color:#0c2a18">🎯</span>` : ''}
+      ${price != null ? `<span class="gallery-price">${fmt(price)}</span>` : ''}
+    </div>`;
+  }).join('');
+
+  const galleryBody = `<div style="flex:1;overflow-y:auto">
+    ${rows.length ? `<div class="gallery-grid">${galleryTiles}</div>` : `<div style="padding:24px;text-align:center;color:var(--text-muted)">No cards match “${esc(s.search)}”.</div>`}
+  </div>`;
+
+  const tableBody = `<div class="table-wrap" style="flex:1;overflow-y:auto">
+    <table>
+      <thead><tr>
+        <th></th><th>Card</th><th>Drop / Set</th>
+        <th style="text-align:right">Current</th><th style="text-align:right">Target</th>
+        <th style="text-align:right">vs. Target</th><th></th>
+      </tr></thead>
+      <tbody>${body || `<tr><td colspan="7" style="padding:24px;text-align:center;color:var(--text-muted)">No cards match “${esc(s.search)}”.</td></tr>`}</tbody>
+    </table>
+  </div>`;
 
   return `
     <div style="padding:16px 18px;height:100%;display:flex;flex-direction:column">
@@ -292,22 +324,14 @@ export function renderWantList() {
           ${summary.count} card${summary.count !== 1 ? 's' : ''} · ${fmt(summary.acquireCost)} to acquire${summary.withTarget ? ` · <span style="color:var(--green);font-weight:600">${summary.atTarget}/${summary.withTarget} at target</span>` : ''}
         </span>
         <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
+          ${viewToggle}
           <input type="text" id="wantSearchInput" placeholder="Search…" value="${esc(s.search || '')}"
             oninput="ui.wantList.search=this.value;render();setTimeout(()=>{const el=document.getElementById('wantSearchInput');if(el){el.focus();el.setSelectionRange(el.value.length,el.value.length)}},0)"
             style="padding:6px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px;font-family:inherit">
-          ${groupBtn}
+          ${isGallery ? '' : groupBtn}
           <button class="btn btn-primary" style="font-size:12px" onclick="showWantSearchModal()">＋ Add card</button>
         </div>
       </div>
-      <div class="table-wrap" style="flex:1;overflow-y:auto">
-        <table>
-          <thead><tr>
-            <th></th><th>Card</th><th>Drop / Set</th>
-            <th style="text-align:right">Current</th><th style="text-align:right">Target</th>
-            <th style="text-align:right">vs. Target</th><th></th>
-          </tr></thead>
-          <tbody>${body || `<tr><td colspan="7" style="padding:24px;text-align:center;color:var(--text-muted)">No cards match “${esc(s.search)}”.</td></tr>`}</tbody>
-        </table>
-      </div>
+      ${isGallery ? galleryBody : tableBody}
     </div>`;
 }

@@ -8,6 +8,7 @@ import { render } from './render.js';
 import { collection, ui } from './state.js';
 import { autoSave } from './storage.js';
 import { esc, fmt, netFetch, toast, uid } from './utils.js';
+import { addToWantList } from './wantlist.js';
 
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -109,6 +110,51 @@ export function deckStats(deck, maps = deckOwnedMaps()) {
     }
   }
   return { total, value, ownedValue, missingValue, ownedCount, missingCount: total - ownedCount };
+}
+
+// Cards you still need: deck entries where owned < needed. `qty` is the shortfall.
+// Powers the "buy / want / copy missing" actions on the deck page.
+export function deckMissingCards(deck, maps = deckOwnedMaps()) {
+  const out = [];
+  for (const dc of deck.cards || []) {
+    const need  = dc.quantity || 1;
+    const owned = Math.min(need, deckCardOwnedQty(dc, maps));
+    const short = need - owned;
+    if (short > 0) out.push({ ...dc, qty: short });
+  }
+  return out;
+}
+
+// Open the missing cards on TCGPlayer's Mass Entry (drops them into the cart /
+// optimizer). Format: "qty name" lines joined by "||".
+export function buyDeckMissingOnTcg(deckId) {
+  const deck = deckById(deckId); if (!deck) return;
+  const missing = deckMissingCards(deck);
+  if (!missing.length) { toast('You already own every card in this deck 🎉', 'info'); return; }
+  const c = missing.map(m => `${m.qty} ${m.name}`).join('||');
+  const url = `https://www.tcgplayer.com/massentry?productline=Magic&c=${encodeURIComponent(c)}`;
+  window.api.app.openExternal(url);
+  toast(`Opening ${missing.length} missing card${missing.length !== 1 ? 's' : ''} on TCGPlayer…`, 'info');
+}
+
+export function addDeckMissingToWantList(deckId) {
+  const deck = deckById(deckId); if (!deck) return;
+  const missing = deckMissingCards(deck);
+  let added = 0;
+  for (const m of missing) {
+    if (addToWantList({ scryfallId: m.scryfallId, name: m.name, setCode: m.setCode, setName: m.setName,
+      collectorNumber: m.collectorNumber, foil: m.foil || 'normal' }, { silent: true })) added++;
+  }
+  render(); autoSave();
+  toast(added ? `★ Added ${added} card${added !== 1 ? 's' : ''} to your want list`
+              : 'Those cards are already on your want list', added ? 'success' : 'info');
+}
+
+export function copyDeckMissing(deckId) {
+  const deck = deckById(deckId); if (!deck) return;
+  const missing = deckMissingCards(deck);
+  if (!missing.length) { toast('Nothing missing to copy', 'info'); return; }
+  copyToClipboard(missing.map(m => `${m.qty} ${m.name}`).join('\n'), `${missing.length} missing card${missing.length !== 1 ? 's' : ''}`);
 }
 
 // Validate a deck against its format's construction rules.
@@ -358,12 +404,33 @@ export function renderDeckDetail(deck) {
   const issues = validateDeck(deck);
   const errors = issues.filter(i => i.level === 'error');
 
+  // Ownership filter (All / Owned / Missing) — "owned" = you have every copy the
+  // deck needs; "missing" = you're short at least one copy.
+  const ownF = ui.decks.ownFilter || 'all';
+  const isFullyOwned = (dc) => Math.min(dc.quantity || 1, deckCardOwnedQty(dc, maps)) >= (dc.quantity || 1);
+  const matchesOwn = (dc) => ownF === 'all' || (ownF === 'owned' ? isFullyOwned(dc) : !isFullyOwned(dc));
+
   const boards = ['commander', 'main', 'side', 'maybe'];
   const sections = boards.map(b => {
-    const cards = (deck.cards || []).filter(c => (c.board || 'main') === b);
+    const cards = (deck.cards || []).filter(c => (c.board || 'main') === b).filter(matchesOwn);
     if (!cards.length) return '';
     return renderDeckBoard(deck, b, cards, maps);
   }).join('');
+
+  // View toggle + ownership filter + actions on the cards you don't own yet.
+  const vBtn = (id, label) => `<button class="btn ${ui.decks.view === id ? 'btn-primary' : 'btn-ghost'}" style="font-size:12px" onclick="ui.decks.view='${id}';render()">${label}</button>`;
+  const oBtn = (id, label) => `<button class="btn ${ownF === id ? 'btn-primary' : 'btn-ghost'}" style="font-size:12px" onclick="ui.decks.ownFilter='${id}';render()">${label}</button>`;
+  const deckControls = `
+    <div class="deck-controls" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:0 0 12px">
+      <div style="display:flex;gap:4px">${vBtn('list', '▤ List')}${vBtn('gallery', '▦ Gallery')}</div>
+      <span style="color:var(--text-muted);font-size:12px;margin-left:4px">Show:</span>
+      <div style="display:flex;gap:4px">${oBtn('all', 'All')}${oBtn('owned', 'Owned')}${oBtn('missing', 'Missing')}</div>
+      ${stats.missingCount ? `<div style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap">
+        <button class="btn btn-ghost" style="font-size:12px" onclick="buyDeckMissingOnTcg('${esc(deck.id)}')" title="Open the missing cards on TCGPlayer Mass Entry (adds them to your cart)">🛒 Buy missing</button>
+        <button class="btn btn-ghost" style="font-size:12px" onclick="addDeckMissingToWantList('${esc(deck.id)}')" title="Add the missing cards to your Want List">★ Want missing</button>
+        <button class="btn btn-ghost" style="font-size:12px" onclick="copyDeckMissing('${esc(deck.id)}')" title="Copy the missing cards as a text list">⧉ Copy</button>
+      </div>` : ''}
+    </div>`;
 
   const legalityHtml = f.minSize == null
     ? `<div class="deck-legality deck-legality-ok"><span>♾</span> Casual deck — no construction rules enforced</div>`
@@ -399,7 +466,11 @@ export function renderDeckDetail(deck) {
 
       ${legalityHtml}
 
-      ${sections || `<div class="empty-state" style="padding:40px"><p>This deck is empty — click <strong>＋ Add Cards</strong> to search your collection and Scryfall, or right-click cards anywhere in the app.</p></div>`}
+      ${(deck.cards || []).length ? deckControls : ''}
+
+      ${sections || ((deck.cards || []).length
+        ? `<div class="empty-state" style="padding:40px"><p>No ${ownF === 'owned' ? 'fully-owned' : 'missing'} cards in this deck.</p></div>`
+        : `<div class="empty-state" style="padding:40px"><p>This deck is empty — click <strong>＋ Add Cards</strong> to search your collection and Scryfall, or right-click cards anywhere in the app.</p></div>`)}
     </div>`;
 }
 
@@ -423,10 +494,11 @@ export function renderDeckBoard(deck, board, cards, maps) {
   }
 
   const limitNote = board === 'side' && f.sideboard ? ` / ${f.sideboard}` : '';
-  return `
-    <div class="deck-board">
-      <div class="deck-board-title">${esc(DECK_BOARDS[board] || board)} <span class="deck-board-count">${qty}${limitNote} · ${fmt(val)}</span></div>
-      <table class="deck-table">
+  const bodyHtml = ui.decks.view === 'gallery'
+    ? `<div class="gallery-grid" style="margin-top:6px">
+        ${cards.slice().sort((a, b) => a.name.localeCompare(b.name)).map(dc => deckGalleryTile(dc, maps)).join('')}
+      </div>`
+    : `<table class="deck-table">
         <tbody>
         ${groups.map(([type, list]) => `
           ${type ? `<tr class="deck-group-row"><td colspan="6">${esc(type)} (${list.reduce((s, c) => s + (c.quantity || 1), 0)})</td></tr>` : ''}
@@ -437,8 +509,31 @@ export function renderDeckBoard(deck, board, cards, maps) {
             .join('')}
         `).join('')}
         </tbody>
-      </table>
+      </table>`;
+  return `
+    <div class="deck-board">
+      <div class="deck-board-title">${esc(DECK_BOARDS[board] || board)} <span class="deck-board-count">${qty}${limitNote} · ${fmt(val)}</span></div>
+      ${bodyHtml}
     </div>`;
+}
+
+// Gallery tile for a deck entry — card image dimmed when you don't own a full
+// playset, with an ownership badge. Click opens the card modal (owned → your
+// copy, unowned → Scryfall details). data-deck-entry keeps the right-click menu.
+function deckGalleryTile(dc, maps) {
+  const need  = dc.quantity || 1;
+  const owned = Math.min(need, deckCardOwnedQty(dc, maps));
+  const id    = (dc.scryfallId || '').toLowerCase();
+  const img   = sidImageUrl(id);
+  const full  = owned >= need;
+  const badgeBg  = full ? 'rgba(27,110,61,.92)' : owned > 0 ? 'rgba(201,155,60,.95)' : 'rgba(179,38,30,.85)';
+  const badgeTxt = full ? `✓ ${need}×` : owned > 0 ? `${owned}/${need}` : `✗ ${need}×`;
+  return `<div class="gallery-card${full ? '' : ' sl-card-missing'}" data-deck-entry="${esc(dc.id)}" ${id ? `onclick="showSlViewerModal('${esc(id)}')"` : ''} title="${esc(dc.name)}">
+    ${img
+      ? `<img src="${esc(img)}" alt="${esc(dc.name)}" loading="lazy" style="${full ? '' : 'filter:grayscale(45%) brightness(.72)'}" onerror="this.closest('.gallery-card').style.display='none'">`
+      : `<div style="aspect-ratio:488/680;display:flex;align-items:center;justify-content:center;padding:8px;text-align:center;font-size:11px;color:var(--text-muted);background:var(--surface2)">${esc(dc.name)}</div>`}
+    <span class="sl-owned-badge" style="background:${badgeBg}">${badgeTxt}</span>
+  </div>`;
 }
 
 export function renderDeckCardRow(dc, maps) {

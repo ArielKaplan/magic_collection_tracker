@@ -13,6 +13,9 @@ user-facing: what changed, not how.
 ## [Unreleased]
 ### Added
 - **Sort controls in the Card Collection Gallery view** — sort the card-image grid by Name, Card #, Value, Rarity, or mana value (CMC); click the active option again to flip the direction. The chosen order carries over to the Table view too.
+- **Gallery view for the Want List** — a Table/Gallery toggle, matching Card Collection. Cards at/under their target get a gold ring + 🎯.
+- **Gallery view for Decks** — a List/Gallery toggle on the deck page; in the grid, cards you don't own a full playset of are dimmed with an ownership badge.
+- **Own / Missing filter + missing-card actions on decks.** Filter a deck to **All / Owned / Missing**, and act on the cards you're short: **🛒 Buy missing** opens them on TCGPlayer Mass Entry (straight into your cart), **★ Want missing** adds them to your Want List, and **⧉ Copy** copies them as a text list.
 
 ## [0.18.0] - 2026-06-20
 ### Changed

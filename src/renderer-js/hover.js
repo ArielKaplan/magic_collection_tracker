@@ -247,8 +247,8 @@ export function attachContentListeners() {
       el.addEventListener('mouseleave', hideCardHoverPreview);
     });
   }
-  // Secret Lair Explorer drop view: tiles have onclick="showSlViewerModal('scryfallId')"
-  if (ui.activeTab === 'slviewer') {
+  // SL Explorer + Want List gallery: tiles have onclick="showSlViewerModal('scryfallId')"
+  if (ui.activeTab === 'slviewer' || ui.activeTab === 'wantlist') {
     document.querySelectorAll('.gallery-card[onclick*="showSlViewerModal"]').forEach(el => {
       const m = el.getAttribute('onclick').match(/showSlViewerModal\('([^']+)'\)/);
       const scryfallId = m ? m[1] : null;
@@ -262,7 +262,8 @@ export function attachContentListeners() {
   if (ui.activeTab === 'decks' && ui.decks.deckId) {
     const deck = deckById(ui.decks.deckId);
     if (deck) {
-      document.querySelectorAll('tr[data-deck-entry]').forEach(el => {
+      // Matches both list rows and gallery tiles (both carry data-deck-entry).
+      document.querySelectorAll('[data-deck-entry]').forEach(el => {
         const dc = deck.cards.find(c => c.id === el.dataset.deckEntry);
         if (!dc || !dc.scryfallId) return;
         el.addEventListener('mouseenter', () => showCardHoverPreview(el, {
