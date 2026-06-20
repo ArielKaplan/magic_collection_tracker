@@ -102,8 +102,12 @@ migration, two urgent fixes, and a decision about what the app *is*.
    right-click can add cards).
 3. **SL drop completion %** — superdrop tiles already show owned bars; push down to drop
    tiles ("4/7 owned").
-4. **Want list + price watch** — wanted flag, shown in Explorer, optional "alert under
-   $X" during the daily refresh.
+4. **Want list + price watch** — ✅ **SHIPPED v0.17.0.** Want List tab (Ctrl+8) with
+   per-card target price; want-list cards join the refresh price-fetch set and
+   `checkWantListThresholds()` flags any at/under target (toast + log + green tab badge).
+   Populated from the SL Explorer (★ "Add missing to want list" on incomplete drops),
+   the card popup, or Scryfall name search; ★ on missing Explorer tiles; dashboard KPI.
+   `want_list` table + `wantlist.js`. See the handoff at the bottom.
 5. **Sold/realized-gains tracking** — `disposed_at` + `sale_price` instead of hard
    delete; makes cost-basis KPI honest.
 6. **Scryfall bulk data option** — one daily `default-cards` download via net:fetch gives
@@ -184,8 +188,10 @@ compelling with a time axis, and the delta-save plumbing makes it ~100 lines.
    which hierarchy edits matter (local editing already shipped v0.11.0).
 4. Phase 2 (vitest) and Phase 3 (per-tab Svelte migration) run alongside any of it.
 
-← *Top remaining product item: **want list + price watch** (REVIEW feature #4) — the
-drop-completion tiles already feed it. Then curation export/import (#3 above).*
+← *Top remaining product item: **curation export/import + community sync** (#3 above /
+strategy item #4) — local SL editing already shipped v0.11.0; export the `sl_overrides`
+blob → friend imports → eventually a GitHub-hosted community SL dataset the app syncs.
+Then sold/realized-gains tracking (REVIEW feature #5).*
 
 ---
 
@@ -382,7 +388,65 @@ remaining half: **collection value over time.**
 Run `npm run release:tag -- minor` to ship as **v0.16.0** (bumps + promotes changelog + tags +
 the workflow builds/publishes the installer + in-app "What's New").
 
-Next remaining product roadmap item is **want list + price watch** (REVIEW feature #4) — the
-drop-completion tiles already feed a "add missing to want list" flow. Then curation
-export/import + community sync (#3). Phase 2 (vitest) / Phase 3 (Svelte + CSP) still open; this
-work added no new inline-`onclick` handlers (the chart is a real Svelte component).
+v0.16.0 shipped, then **v0.16.1** fixed the "What's New" modal showing raw HTML release notes
+(electron-updater hands the GitHub body over as HTML; the modal had been `esc()`-ing it). Fix:
+`sanitizeNotesHtml` in `updaterUI.js` — a tag-allowlist sanitizer (parses into an inert
+document, keeps basic formatting tags, drops every attribute except a validated http(s) href,
+discards script/style/img/handlers); links route through `window.api.app.openExternal`. Test:
+`scripts/smoke-whatsnew.js` (runs the real sanitizer in a Chromium DOM). **Caveat:** release
+notes are rendered by the *installed* client, so the fix only takes effect for versions ≥0.16.1.
+
+## Session handoff (v0.17.0 — June 20, 2026): want list + price watch SHIPPED
+
+REVIEW feature **#4 is done** — the want list, woven into the SL Explorer rather than siloed.
+
+- **Schema/DB:** new `want_list (id PK, scryfall_id, name, set_code, set_name,
+  collector_number, foil, drop_name, max_price, note, created_at)` in `schema.sql`. `db.js`:
+  `listWantList` / `replaceWantList` (authoritative full-replace, mirrors sealed) /
+  `clearWantList`; cleared by `resetAll`. IPC `wantlist:list`/`wantlist:replace`,
+  `window.api.wantlist.*` in preload. `collection.wantList` in state; loaded in `autoLoad`,
+  saved via `replaceWantList` in `autoSave`.
+- **Core module `src/renderer-js/wantlist.js`:** add/remove/dedup (by scryfallId, case-insensitive),
+  `setWantTarget`, `addSlCardToWantList` (uses the baked `SL_SCRYFALL_TO_*` maps),
+  `toggleSlCardWant`, `addDropMissingToWantList` (the incomplete-drop shopping-list flow),
+  `wantListSummary` (count / acquireCost / atTarget / withTarget), `checkWantListThresholds`
+  (the price-watch — toast + log + badge), `updateWantBadge`, `showWantSearchModal` (Scryfall
+  name search), and `renderWantList` (the tab). Exposed on `window` via the main.js loop.
+- **Tab:** `wantlist` tab button in `index.html` (id `wantlistTab` for the badge), dispatch +
+  `updateWantBadge()` in `render.js`, `ui.wantList` state, Ctrl+8 in the native View menu.
+- **Price watch:** want-list `(scryfallId, foil)` pairs join the refresh fetch set in
+  `refreshPrices`; a fallback pass backfills a best-available price for foil-only cards stored
+  as 'normal'; `checkWantListThresholds()` runs after the snapshot. *(prices.js ↔ wantlist.js
+  is another runtime circular import — fine.)*
+- **SL Explorer integration (`modals.js`, `slTab.js`):** "★ Add/Remove want list" in the
+  missing-card context menu; "★ Add missing to want list (N)" in the drop context menu **and**
+  a header button on the drop page; "☆ Add to want list" toggle in the unowned-card popup; a
+  gold ★ on missing tiles that are wanted (`.sl-want-badge` / `.sl-card-wanted`). Acquiring a
+  card via `addSlCardToCollection` auto-removes it from the want list.
+- **Dashboard KPI:** `KpiWantList.svelte` (`kpi-want`, `filterable:false`) — count, cost to
+  acquire, at-target; `window.app.wantListSummary` feeds it.
+- **Tests:** `scripts/smoke-wantlist-db.js` (DB round-trip, authoritative replace, reset) and
+  `scripts/smoke-wantlist.js` (add/dedup/remove, target editing, summary math, threshold
+  detection, SL add-missing). Verified the tab live via screenshot (count + cost + "at target"
+  header, editable targets, "🎯 hit" rows, green tab badge).
+
+**Reliability fix shipped in the same v0.17.0 set — the repeat DB-corruption root cause.**
+`collection.db` hit "database disk image is malformed" twice (06-18, 06-20). Root cause: the app
+had **no `app.requestSingleInstanceLock()`** and never closed the DB on quit, so two copies could
+open the same WAL file and write concurrently (classic SQLITE_CORRUPT) — and an abrupt kill mid-write
+left a dangling WAL. Fixes (main.js + db.js): single-instance lock (`second-instance` focuses the
+existing window); `will-quit` → `db.close()` (`wal_checkpoint(TRUNCATE)` + close, so no dangling WAL);
+`busy_timeout=5000` + `synchronous=FULL`. Verified live: a 2nd instance exits in ~1s without opening
+the DB; after a graceful close the `-wal`/`-shm` are gone (checkpointed in) and integrity = ok. The
+06-20 incident was recovered by restoring the verified-clean same-day backup (see the
+`db-corruption-recovery` memory — **kill all electron + close gracefully before any restore; never
+force-kill**). 06-18 and 06-20 malformed backups sit in `backups/` (06-13/06-12/06-20 are clean).
+
+**Not yet released:** version still `0.16.1`, CHANGELOG entry under `## [Unreleased]`. Run
+`npm run release:tag -- minor` to ship as **v0.17.0**.
+
+Next remaining product roadmap item is the **curation UI export/import + community sync**
+(local SL editing shipped v0.11.0; export the `sl_overrides` blob → import → GitHub-hosted
+community SL dataset). Then sold/realized-gains tracking (REVIEW #5). Phase 2 (vitest) /
+Phase 3 (Svelte + CSP) still open; this work added more inline-`onclick`/window-global surface
+(the want-list table + context-menu entries) that Phase 3 retires.

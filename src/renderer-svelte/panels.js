@@ -20,6 +20,7 @@ import ValueBySet      from './panels/ValueBySet.svelte';
 import CardCountByYear from './panels/CardCountByYear.svelte';
 import CardOfTheDay    from './panels/CardOfTheDay.svelte';
 import PortfolioHistory from './panels/PortfolioHistory.svelte';
+import KpiWantList     from './panels/KpiWantList.svelte';
 
 export const PANELS = [
   // KPIs (compact summary widgets)
@@ -33,6 +34,8 @@ export const PANELS = [
     description: 'Total purchase price of everything in your collection as recorded when you acquired it. ManaBox auto-fills this from the TCGPlayer price at time of acquisition, so it approximates what each card was worth when you got it — not necessarily what you literally paid.' },
   { id: 'kpi-binders', title: 'Binders',            icon: '📂', component: KpiBinders,      defaultSize: { w: 220, h: 120 },
     description: 'Number of distinct binders (named collections or storage locations) in your collection.' },
+  { id: 'kpi-want',    title: 'Want List',          icon: '★', component: KpiWantList,     defaultSize: { w: 220, h: 120 }, filterable: false,
+    description: 'Cards on your want list, the total current price to acquire them all, and how many have dropped to or below your target price. Add cards by right-clicking missing cards (or incomplete drops) in the Secret Lair Explorer.' },
   { id: 'kpi-refresh', title: 'Last Refresh',       icon: '🔄', component: KpiLastRefresh,  defaultSize: { w: 220, h: 120 }, filterable: false,
     description: 'When prices were last fetched from Scryfall (low prices) and TCGCSV (market prices). Prices auto-refresh once per day on first open.' },
 
@@ -81,7 +84,7 @@ export function defaultLayout(canvasW = 1480) {
   // KPIs row(s)
   let x = 12, y = 12;
   let rowMax = 0;
-  for (const id of ['kpi-total', 'kpi-cards', 'kpi-sealed', 'kpi-cost', 'kpi-binders', 'kpi-refresh']) {
+  for (const id of ['kpi-total', 'kpi-cards', 'kpi-sealed', 'kpi-cost', 'kpi-binders', 'kpi-want', 'kpi-refresh']) {
     const def = panelDef(id);
     if (x + def.defaultSize.w > canvasW) { x = 12; y += rowMax + gap; rowMax = 0; }
     out.push({ id, x, y, width: def.defaultSize.w, height: def.defaultSize.h, collapsed: false, visible: true, zIndex: out.length + 1 });

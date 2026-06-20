@@ -24,8 +24,11 @@ sealed products carry a `dropName`; P&L cost basis defaults to flat SL MSRP ~$29
 foil-aware, configurable). Also (v0.12): unowned SL cards show full Scryfall metadata on hover;
 Discord-style in-app updater (top-bar pill + "What's New" modal, notes driven from
 `CHANGELOG.md`); sealed deletions persist (authoritative `replaceSealed`); corruption-aware
-daily backup. See REVIEW_AND_ROADMAP.md handoffs for details. **Next roadmap item: want list +
-price watch** (drop-completion tiles already feed it).
+daily backup. See REVIEW_AND_ROADMAP.md handoffs for details.
+
+**Want list + price watch shipped** (Want List tab + ★ in the Explorer + price-threshold alerts on
+refresh + dashboard KPI; `want_list` table, `wantlist.js`). **Next roadmap item: curation
+export/import + community sync** (local SL editing already shipped v0.11.0).
 
 The user is a prolific MTG collector tracking thousands of cards (~4,750 entries, 6,200+ copies) across many binders. ManaBox CSV is the source of truth for imports.
 
@@ -108,9 +111,10 @@ vite.config.mjs          # Multi-entry build: app-main + svelte-app → renderer
 2. **Card Collection** — table view: filters, column picker, dual pricing (Scryfall low + TCG market), Δ price, sparklines. Search matches name/set/type/oracle.
 3. **Sealed Collection** — sealed products, TCGCSV/PriceCharting lookups, sealed/opened status.
 4. **Gallery** — image grid, hover previews.
-5. **Secret Lair Explorer** — superdrops → drops → cards, ownership indicators + per-drop owned counts.
+5. **Secret Lair Explorer** — superdrops → drops → cards, ownership indicators + per-drop owned counts; ★ on missing cards that are on the want list.
 6. **Failed Lookups** — pricing failures by reason, retry button for batch errors.
 7. **Decks** — played lists, format legality (DECK_FORMATS), Moxfield/Archidekt/ManaBox/MTGA import/export. Deck value NEVER counts toward collection value.
+8. **Want List** (Ctrl+8) — cards to acquire with optional per-card target price; price-watch flags items at/under target after each refresh (toast + log + green tab badge). Populated from the SL Explorer (missing cards / incomplete drops), the card popup, or Scryfall name search. `want_list` table; `wantlist.js`.
 
 Native chrome: menu bar with accelerators (Ctrl+I import CSV, F5 refresh prices, Ctrl+L activity log, Ctrl+, settings), status bar, slide-in activity log, card hover previews everywhere, right-click context menus on cards/drops/sealed.
 
@@ -122,6 +126,7 @@ Native chrome: menu bar with accelerators (Ctrl+I import CSV, F5 refresh prices,
 2. **Refresh Prices** (F5, auto once per day on first open) — Scryfall batches with 429 backoff (2s/4s/8s), then TCGCSV market-price pass. Foil→etched price fallback is load-bearing (don't remove). Deck cards included.
 3. **Price persistence is delta-based**: `storePriceSnapshot`/`storeMarketPriceSnapshot` queue new snapshots; `autoSave()` flushes only the queue (restored on failure). autoSave does NOT rewrite price history.
    - At the end of `refreshPrices`, `recordPortfolioSnapshot()` (analytics.js) writes one `portfolio_snapshots` row for the day (UPSERT on date — last refresh of the day wins) capturing cards/sealed value + cost basis. Loaded into `collection.portfolioSnapshots` on `autoLoad`; the Dashboard "Value Over Time" chart reads it. Snapshots accrue going forward (no retroactive reconstruction — `price_history` has survivorship bias).
+   - Want-list cards (`collection.wantList`) join the refresh price-fetch set so they get priced even though they're unowned; `checkWantListThresholds()` (wantlist.js) then flags any card at/under its `maxPrice`. Want list persists authoritatively like sealed (`replaceWantList`).
 4. **Refresh SL Data** — MTGJSON SLD.json via net:fetch (`json.data.cards`, NOT Object.values), collector-number backfill for foils, stored in SQLite.
 5. **Backups** — main process writes `backups/collection-YYYY-MM-DD.db` once per day on launch, prunes to 10. **Corruption-aware (v0.12.2):** `runDailyBackup` runs `PRAGMA integrity_check` first — if the live DB is malformed it skips the backup AND the prune (so a corrupt copy can't roll a good backup off the rotation), quarantines the bad DB to `backups/corrupt/`, and surfaces a warning to the renderer via `app:backupHealth`; freshly written backups are verified before older ones are pruned.
 
@@ -187,11 +192,11 @@ Change → what to rebuild:
 
 The differentiator is Secret Lair depth, not general collection management. Priorities:
 
-1. **Collection value over time** — `portfolio_snapshots` table, one row per refresh, dashboard line chart.
-2. **General "Add card" to collection** — reuse the deck add-card Scryfall search with a binder picker.
-3. **SL drop completion %** — surface owned/total on drop tiles (superdrop bars exist already).
-4. **Want list + price watch** — wanted flag, Explorer integration, threshold alerts during refresh.
+1. ✅ **Collection value over time** (v0.16.0) — `portfolio_snapshots` table + dashboard "Value Over Time" line chart.
+2. **General "Add card" to collection** — reuse the deck add-card Scryfall search with a binder picker. (Partly covered now: the want list's Scryfall name-search add modal is the same idea — generalize it to add owned cards to a binder.)
+3. ✅ **SL drop completion %** — owned/total on superdrop + drop tiles + drop-detail header.
+4. ✅ **Want list + price watch** (shipped) — Want List tab, ★ in Explorer, target prices, threshold alerts on refresh, dashboard KPI. `want_list` table, `wantlist.js`.
 5. **Sold/realized-gains tracking** — `disposed_at` + `sale_price` instead of hard delete.
-6. **In-app SL superdrop curation UI** (long-planned) — user-editable hierarchy overriding SL_SUPERDROPS, stored in SQLite.
+6. **In-app SL superdrop curation UI** — local editing shipped v0.11.0; remaining: export/import + GitHub-hosted community sync. ← *now the top remaining item.*
 - Decks is feature-complete; don't expand it.
 - Phase 2 of the refactor: vitest for pure modules (csv, deckIO, price fallback, formats). Phase 3: migrate tabs to Svelte one at a time, retiring the window-global bridge.

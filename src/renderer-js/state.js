@@ -33,6 +33,7 @@ export let ui = {
     colPickerOpen: false,
   },
   sealed: { search: '', type: 'all', status: 'all' },
+  wantList: { search: '', groupByDrop: false },
   decks: { deckId: null, search: '' },
   gallery: { binder: '', set: '', cmc: '', search: '', sortField: 'name', sortDir: 'asc', page: 0 },
   slViewer: { superdrop: '', drop: '', page: 0, sort: 'date_desc', search: '', view: 'drops', pnlSort: 'gainpct_desc' },
@@ -50,6 +51,7 @@ export function makeCollection() {
     settings: { pricechartingKey: '' },
     cards: [],
     sealed: [],
+    wantList: [],   // cards the user wants to acquire (see wantlist.js)
     decks: [],
     priceHistory: {},
     marketPriceHistory: {},  // scryfallId|foil → [{date,price}] from TCGCSV (market price)

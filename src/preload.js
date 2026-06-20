@@ -19,6 +19,10 @@ contextBridge.exposeInMainWorld('api', {
     replace: (items) => inv('sealed:replace', items),
     clear:   ()      => inv('sealed:clear'),
   },
+  wantlist: {
+    list:    ()      => inv('wantlist:list'),
+    replace: (items) => inv('wantlist:replace', items),
+  },
   decks: {
     list:    ()      => inv('decks:list'),
     upsert:  (deck)  => inv('decks:upsert', deck),

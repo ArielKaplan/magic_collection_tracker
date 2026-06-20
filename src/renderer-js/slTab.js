@@ -6,6 +6,7 @@ import { render } from './render.js';
 import { searchTcgcsvLocal } from './sealedPricing.js';
 import { collection, ui } from './state.js';
 import { esc, escJs, fmt, netFetch, toast } from './utils.js';
+import { addDropMissingToWantList, isCardWanted } from './wantlist.js';
 
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -286,13 +287,14 @@ function slCardTile(scryfallId, numLabel) {
   const totalQty = ownedCards.reduce((s, c) => s + (c.quantity || 1), 0);
   const val = owned ? cardCurrentValue(ownedCards[0]) : null;
   const note = slCardNote(scryfallId);
+  const wanted = !owned && isCardWanted(scryfallId);
   return `
-    <div class="gallery-card${owned ? ' sl-card-owned' : ' sl-card-missing'}" data-sl-card="${esc(scryfallId)}"
-      onclick="showSlViewerModal('${esc(scryfallId)}')" title="${owned ? `Owned (qty: ${totalQty})` : 'Not in collection'}${numLabel ? ` · #${esc(numLabel)}` : ''}">
+    <div class="gallery-card${owned ? ' sl-card-owned' : ' sl-card-missing'}${wanted ? ' sl-card-wanted' : ''}" data-sl-card="${esc(scryfallId)}"
+      onclick="showSlViewerModal('${esc(scryfallId)}')" title="${owned ? `Owned (qty: ${totalQty})` : (wanted ? 'On your want list' : 'Not in collection')}${numLabel ? ` · #${esc(numLabel)}` : ''}">
       <img src="${esc(img)}" alt="" loading="lazy"
         onerror="this.closest('.gallery-card').style.display='none'"
         style="${owned ? '' : 'filter:grayscale(60%) brightness(0.65)'}">
-      ${owned ? `<span class="sl-owned-badge">✓ ${totalQty}</span>` : `<span class="sl-missing-badge">✗</span>`}
+      ${owned ? `<span class="sl-owned-badge">✓ ${totalQty}</span>` : (wanted ? `<span class="sl-want-badge">★</span>` : `<span class="sl-missing-badge">✗</span>`)}
       ${val != null ? `<span class="gallery-price">${fmt(val)}</span>` : ''}
       ${numLabel ? `<span style="position:absolute;bottom:4px;left:4px;background:rgba(0,0,0,.72);color:#fff;font-size:10px;font-weight:600;padding:1px 5px;border-radius:4px;pointer-events:none">#${esc(numLabel)}</span>` : ''}
       ${note ? `<span title="${esc(note)}" style="position:absolute;top:4px;left:4px;font-size:12px;pointer-events:none">📝</span>` : ''}
@@ -788,6 +790,8 @@ export function renderSlViewer() {
   // Drop selected — show card grid for that drop
   if (sv.drop) {
     const cardIds = SL_DROP_TO_SCRYFALL_IDS[sv.drop] || [];
+    const missingIds = cardIds.filter(id => !ownedIds.has(id));
+    const wantedMissing = missingIds.filter(id => isCardWanted(id)).length;
     const stats = dropOwnedNameStats(sv.drop);
     const PAGE_SIZE = 100;
     const shown = cardIds.slice(0, (sv.page + 1) * PAGE_SIZE);
@@ -814,6 +818,7 @@ export function renderSlViewer() {
           ${drops.length ? dropSelect(drops) : ''}
           <button class="btn btn-ghost" style="font-size:12px" onclick="ui.slViewer.drop='';ui.slViewer.page=0;render()">← Back to Superdrop</button>
           <button class="btn btn-ghost" style="font-size:12px" onclick="editSlDrop('${escJs(sv.drop)}')">${slDropEdited(sv.drop) ? '✎ Edit (customized)' : '✎ Edit grouping / note'}</button>
+          ${missingIds.length ? `<button class="btn btn-ghost" style="font-size:12px" onclick="addDropMissingToWantList('${escJs(sv.drop)}')" title="Add this drop's missing cards to your want list">★ Want ${missingIds.length} missing${wantedMissing ? ` (${wantedMissing} on list)` : ''}</button>` : ''}
           <span style="margin-left:auto;font-size:13px;font-weight:700;color:${stats.owned===stats.total&&stats.total>0?'var(--green)':'var(--text-muted)'}">
             ${stats.owned} / ${stats.total} cards owned (${pct}%)
           </span>
@@ -936,6 +941,7 @@ export async function showSlViewerModal(scryfallId) {
       ${data.prices?.usd ? `<div style="font-size:22px;font-weight:700;color:var(--accent2);margin-bottom:14px">$${data.prices.usd}</div>` : ''}
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
         <a href="${esc(scryfallUrl)}" target="_blank" class="btn btn-ghost" style="font-size:12px;text-decoration:none">View on Scryfall ↗</a>
+        <button class="btn btn-ghost" style="font-size:12px" onclick="toggleSlCardWant('${escJs(scryfallId)}');this.innerHTML=isCardWanted('${escJs(scryfallId)}')?'★ On want list':'☆ Add to want list'">${isCardWanted(scryfallId) ? '★ On want list' : '☆ Add to want list'}</button>
         <button class="btn btn-ghost" style="font-size:12px" onclick="editSlCardNote('${escJs(scryfallId)}')">✎ ${slCardNote(scryfallId) ? 'Edit' : 'Add'} note</button>
       </div>
       ${slCardNote(scryfallId) ? `<div style="margin-top:12px;padding:9px 13px;background:var(--surface);border-left:3px solid var(--accent2);border-radius:6px;font-size:13px;color:var(--text);white-space:pre-wrap">📝 ${esc(slCardNote(scryfallId))}</div>` : ''}`;

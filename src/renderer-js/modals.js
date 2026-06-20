@@ -9,6 +9,7 @@ import { showSlViewerModal } from './slTab.js';
 import { collection, ui } from './state.js';
 import { autoSave } from './storage.js';
 import { esc, toast, uid } from './utils.js';
+import { addDropMissingToWantList, isCardWanted, toggleSlCardWant, wantItemByScryfall } from './wantlist.js';
 
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -231,6 +232,9 @@ export function addSlCardToCollection(scryfallId, binder, opts = {}) {
     misprint: false,
     altered: false,
   });
+  // Acquired it — drop it from the want list if it was on there.
+  const wanted = wantItemByScryfall(scryfallId);
+  if (wanted) collection.wantList = collection.wantList.filter(w => w.id !== wanted.id);
   if (!opts.silent) {
     render(); autoSave();
     toast(`${name} added to ${binder} — prices fill in on next refresh`, 'success');
@@ -246,10 +250,12 @@ export function showSlCardContextMenu(x, y, scryfallId) {
     return;
   }
   const name = (typeof SL_SCRYFALL_TO_NAME !== 'undefined' && SL_SCRYFALL_TO_NAME[scryfallId]) || 'Card';
+  const wanted = isCardWanted(scryfallId);
   showContextMenu(x, y, [
     { header: name },
     { icon: '👁', label: 'View details', action: () => showSlViewerModal(scryfallId) },
     { icon: '📥', label: 'Add to collection in binder', sub: ctxBinderSubmenu(b => addSlCardToCollection(scryfallId, b)) },
+    { icon: wanted ? '☆' : '★', label: wanted ? 'Remove from want list' : 'Add to want list', action: () => toggleSlCardWant(scryfallId) },
     '---',
     { icon: '🌐', label: 'View on Scryfall', action: () => openCardOnScryfall({ name }) },
     { icon: '📋', label: 'Copy name', action: () => copyToClipboard(name, 'Name') },
@@ -288,6 +294,8 @@ export function showSlDropContextMenu(x, y, drop) {
       sub: ctxBinderSubmenu(b => addDropCardsToBinder(drop, missing, b)) },
     { icon: '📂', label: `Add ALL cards to binder (${ids.length})`, disabled: !ids.length,
       sub: ctxBinderSubmenu(b => addDropCardsToBinder(drop, ids, b)) },
+    { icon: '★', label: `Add missing to want list (${missing.length})`, disabled: !missing.length,
+      action: () => addDropMissingToWantList(drop) },
     '---',
     { icon: '📋', label: 'Copy drop name', action: () => copyToClipboard(drop, 'Drop name') },
   ]);

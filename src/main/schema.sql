@@ -44,6 +44,25 @@ CREATE TABLE IF NOT EXISTS sealed (
   updated_at      TEXT DEFAULT (datetime('now'))
 );
 
+-- Want list — cards the user wants to acquire (typically NOT owned). Populated
+-- mostly from the Secret Lair Explorer (missing cards / incomplete drops). An
+-- optional max_price is a price-watch threshold checked after each refresh.
+-- Small & bounded, so the renderer rewrites it wholesale (replaceWantList).
+CREATE TABLE IF NOT EXISTS want_list (
+  id               TEXT PRIMARY KEY,
+  scryfall_id      TEXT,
+  name             TEXT NOT NULL,
+  set_code         TEXT,
+  set_name         TEXT,
+  collector_number TEXT,
+  foil             TEXT DEFAULT 'normal',
+  drop_name        TEXT,
+  max_price        REAL,
+  note             TEXT,
+  created_at       TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_want_scryfall ON want_list(scryfall_id);
+
 -- One snapshot per (scryfall_id, foil, date, source)
 -- source = 'scryfall' (TCGPlayer low via Scryfall) | 'tcgcsv' (TCGPlayer market via TCGCSV)
 CREATE TABLE IF NOT EXISTS price_history (

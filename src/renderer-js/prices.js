@@ -1,6 +1,7 @@
 import { recordPortfolioSnapshot } from './analytics.js';
 import { SCRYFALL_COLLECTION } from './constants.js';
 import { render, updateFailedBadge } from './render.js';
+import { checkWantListThresholds } from './wantlist.js';
 import { collection, ui } from './state.js';
 import { updateStatusBar } from './statusbar.js';
 import { autoSave } from './storage.js';
@@ -270,9 +271,10 @@ export async function refreshPrices() {
 
   // Gather unique (scryfallId, foil) pairs — normalize IDs to lowercase so
   // Scryfall cache lookups always match (Scryfall returns lowercase UUIDs).
-  // Deck cards are included so unowned deck entries get prices too.
+  // Deck cards and want-list cards are included so unowned entries get prices
+  // too (the want list powers price-watch alerts).
   const pairMap = new Map();
-  for (const c of [...collection.cards, ...allDeckCards]) {
+  for (const c of [...collection.cards, ...allDeckCards, ...(collection.wantList || [])]) {
     if (!c.scryfallId) continue;
     const sid = c.scryfallId.trim().toLowerCase();
     pairMap.set(priceKey(sid, c.foil), { scryfallId: sid, foil: c.foil });
@@ -424,6 +426,19 @@ export async function refreshPrices() {
     }
   }
 
+  // Want-list price fallback: a wanted card stored as 'normal' may be a
+  // foil-only printing (no usd). The per-foil loop above leaves it unpriced, so
+  // backfill with the best available finish price — a want list wants *a* price.
+  for (const w of collection.wantList || []) {
+    const sid = (w.scryfallId || '').toLowerCase();
+    if (!sid) continue;
+    const card = scryfallCache.get(sid);
+    if (!card || getCurrentPrice(sid, w.foil) != null) continue;
+    const p = card.prices || {};
+    const best = parseFloat(p.usd ?? p.usd_foil ?? p.usd_etched);
+    if (!isNaN(best)) storePriceSnapshot(sid, w.foil, best);
+  }
+
   collection.failedLookups = failedLookups;
   if (!collection.cardMetadata) collection.cardMetadata = {};
 
@@ -450,6 +465,9 @@ export async function refreshPrices() {
   // Snapshot collection value for the "Value Over Time" chart (one row/day).
   // Done before render() so the dashboard line chart picks up today's point.
   await recordPortfolioSnapshot();
+
+  // Price-watch: surface any want-list card now at/under its target price.
+  checkWantListThresholds();
 
   const parts = [`${pricedCount} of ${pairs.length} printings priced`];
   if (marketCount) parts.push(`${marketCount} market prices`);

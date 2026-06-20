@@ -9,6 +9,7 @@ import { renderSlViewer } from './slTab.js';
 import { collection, ui } from './state.js';
 import { updateStatusBar } from './statusbar.js';
 import { renderTickerTape } from './ticker.js';
+import { renderWantList, updateWantBadge } from './wantlist.js';
 
 
 
@@ -39,6 +40,7 @@ export function render() {
       case 'decks':     content.innerHTML = renderDecks();             break;
       case 'gallery':   content.innerHTML = renderGallery();           break;
       case 'slviewer':  content.innerHTML = renderSlViewer();          break;
+      case 'wantlist':  content.innerHTML = renderWantList();          break;
       case 'failures':  content.innerHTML = renderFailedLookupsTab();  break;
     }
   } catch (e) {
@@ -48,6 +50,7 @@ export function render() {
   attachContentListeners();
   updateRefreshUI();
   updateFailedBadge();
+  updateWantBadge();
   updateStatusBar();
   renderTickerTape();
 

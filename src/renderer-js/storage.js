@@ -35,6 +35,8 @@ export async function autoSave() {
       // Authoritative full replace — keeps the sealed table exactly in sync with
       // memory so a deleted product can never linger (sealed is small & bounded).
       window.api.sealed.replace(collection.sealed || []),
+      // Want list — same authoritative full-replace (small & bounded).
+      window.api.wantlist?.replace?.(collection.wantList || []) ?? Promise.resolve(),
       ...(collection.decks || []).map(d => window.api.decks.upsert(d)),
     ]);
 
@@ -55,7 +57,7 @@ export async function autoSave() {
 
 export async function autoLoad() {
   try {
-    const [cardRows, sealedRows, deckRows, prices, metadata, failures, settings, snapshots] = await Promise.all([
+    const [cardRows, sealedRows, deckRows, prices, metadata, failures, settings, snapshots, wantRows] = await Promise.all([
       window.api.cards.list(),
       window.api.sealed.list(),
       window.api.decks.list(),
@@ -64,6 +66,7 @@ export async function autoLoad() {
       window.api.failures.list(),
       window.api.settings.all(),
       window.api.portfolio?.list?.() ?? Promise.resolve([]),
+      window.api.wantlist?.list?.() ?? Promise.resolve([]),
     ]);
 
     if (!cardRows.length && !sealedRows.length && !deckRows.length && !Object.keys(prices).length) return false;
@@ -108,6 +111,7 @@ export async function autoLoad() {
     collection.cardMetadata  = metadata;
     collection.failedLookups = failures;
     collection.portfolioSnapshots = Array.isArray(snapshots) ? snapshots : [];
+    collection.wantList = Array.isArray(wantRows) ? wantRows : [];
     collection.settings = settings.settings_blob
       ? JSON.parse(settings.settings_blob)
       : { pricechartingKey: '' };

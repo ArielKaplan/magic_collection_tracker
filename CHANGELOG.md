@@ -11,6 +11,10 @@ in-app "What's New" screen — from that version's section. Keep entries
 user-facing: what changed, not how.
 
 ## [Unreleased]
+### Reliability
+- **Fixed a database-corruption risk.** The app now refuses to run a second copy of itself (a second window just focuses the one already open) and closes the database cleanly on exit. Two copies writing the same database file at once was the most likely cause of the rare "database is malformed" errors; this closes that hole.
+### Added
+- **Want list + price watch.** A new **Want List** tab (Ctrl+8) tracks cards you're hunting, with an optional target price per card. After each price refresh, any card at or below its target is flagged — with a toast, an activity-log entry, and a green count badge on the tab. Add cards by right-clicking a missing card or an incomplete drop in the Secret Lair Explorer (★ "Add missing to want list" turns any unfinished drop into a shopping list), from the card's detail popup, or by searching Scryfall by name. Missing cards on your want list show a ★ in the Explorer, and a new dashboard "Want List" KPI shows the count, total cost to acquire, and how many have hit your target. Acquiring a card removes it from the list automatically.
 
 ## [0.16.1] - 2026-06-20
 ### Fixed
