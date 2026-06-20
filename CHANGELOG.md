@@ -11,6 +11,8 @@ in-app "What's New" screen — from that version's section. Keep entries
 user-facing: what changed, not how.
 
 ## [Unreleased]
+### Added
+- **Sort controls in the Card Collection Gallery view** — sort the card-image grid by Name, Card #, Value, Rarity, or mana value (CMC); click the active option again to flip the direction. The chosen order carries over to the Table view too.
 
 ## [0.18.0] - 2026-06-20
 ### Changed

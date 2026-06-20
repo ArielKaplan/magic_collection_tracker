@@ -64,6 +64,21 @@ export function renderCards() {
   const viewBtn = (id, label) => `<button class="btn ${s.view === id ? 'btn-primary' : 'btn-ghost'}" style="font-size:12px;padding:7px 12px;white-space:nowrap" onclick="ui.cards.view='${id}';ui.cards.page=1;render()">${label}</button>`;
   const viewToggle = `<div style="display:flex;gap:4px;margin-right:2px">${viewBtn('table', '▤ Table')}${viewBtn('gallery', '▦ Gallery')}</div>`;
 
+  // Gallery sort bar — the grid has no column headers, so sorting gets its own
+  // controls. Writes to the shared ui.cards.sortField/sortDir (filteredCards
+  // handles name/collectorNumber/currentPrice/rarity/cmc) so the order carries
+  // across both views. Clicking the active field flips the direction.
+  const gSort = (field, label) => {
+    const active = s.sortField === field;
+    const nextDir = active && s.sortDir === 'asc' ? 'desc' : 'asc';
+    const arrow = active ? (s.sortDir === 'asc' ? ' ↑' : ' ↓') : '';
+    return `<button class="btn ${active ? 'btn-primary' : 'btn-ghost'}" style="font-size:12px;padding:5px 10px" onclick="ui.cards.sortField='${field}';ui.cards.sortDir='${nextDir}';ui.cards.page=1;render()">${label}${arrow}</button>`;
+  };
+  const gallerySortBar = `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:12px">
+    <span style="font-size:12px;color:var(--text-muted)">Sort:</span>
+    ${gSort('name', 'Name')}${gSort('collectorNumber', 'Card #')}${gSort('currentPrice', 'Value')}${gSort('rarity', 'Rarity')}${gSort('cmc', 'CMC')}
+  </div>`;
+
   // Gallery presentation of the same filtered+sorted set (reuses showGalleryModal
   // + the gallery-card styling; cards without a Scryfall id were filtered out above).
   const galleryBody = pageSlice.length
@@ -182,7 +197,7 @@ export function renderCards() {
           ${filtered.length.toLocaleString()} entries · ${filteredQty.toLocaleString()} copies · Value: <strong>${fmt(filteredValue)}</strong>${isGallery && working.length !== filtered.length ? ` · <span style="color:var(--text-dim)">${working.length.toLocaleString()} shown</span>` : ''}
         </div>
 
-        ${isGallery ? galleryBody : tableBody}
+        ${isGallery ? gallerySortBar + galleryBody : tableBody}
         ${renderPagination(page, totalPages, working.length)}
       </div>
     </div>`;
@@ -317,6 +332,15 @@ export function filteredCards() {
     } else if (sortField === 'rarity') {
       av = RARITY_ORDER[a.rarity] ?? 0;
       bv = RARITY_ORDER[b.rarity] ?? 0;
+    } else if (sortField === 'collectorNumber') {
+      // Numeric collector-number sort (string compare would put "10" before "2").
+      av = parseInt(a.collectorNumber, 10) || 0;
+      bv = parseInt(b.collectorNumber, 10) || 0;
+    } else if (sortField === 'cmc') {
+      av = collection.cardMetadata?.[a.scryfallId]?.cmc ?? 999;
+      bv = collection.cardMetadata?.[b.scryfallId]?.cmc ?? 999;
+    } else if (sortField === 'name') {
+      av = a.name.toLowerCase(); bv = b.name.toLowerCase();
     } else {
       av = a[sortField] ?? '';
       bv = b[sortField] ?? '';
