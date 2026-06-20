@@ -31,6 +31,48 @@ export function totalSealedValue() {
   return has ? t : null;
 }
 
+// Recorded purchase price of everything owned (cards + sealed). Mirrors the
+// Cost Basis KPI so the portfolio snapshot's cost line matches the dashboard.
+export function totalCostBasis() {
+  let t = 0;
+  for (const c of collection.cards)  t += (c.purchasePrice || 0) * (c.quantity || 1);
+  for (const i of collection.sealed) t += (i.purchasePrice || 0) * (i.quantity || 1);
+  return t;
+}
+
+// Persist one daily snapshot of collection value (UPSERT keyed on the local
+// date). Called at the end of a price refresh so we accrue a value-over-time
+// series going forward. Skips days with no priced value at all so a fully
+// failed refresh can't drop a bogus $0 point onto the chart.
+export async function recordPortfolioSnapshot() {
+  const cardsValue  = totalCardsValue();
+  const sealedValue = totalSealedValue();
+  if (cardsValue == null && sealedValue == null) return;
+
+  const d = new Date();
+  const date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const snap = {
+    date,
+    cardsValue:  cardsValue  ?? 0,
+    sealedValue: sealedValue ?? 0,
+    costBasis:   totalCostBasis(),
+    cardCount:   collection.cards.reduce((s, c) => s + (c.quantity || 1), 0),
+  };
+
+  try {
+    await window.api.portfolio?.record(snap);
+    // Keep the in-memory series in sync so the dashboard chart refreshes without
+    // a reload (render() bumps collectionVersion → the Svelte panel re-reads it).
+    if (!Array.isArray(collection.portfolioSnapshots)) collection.portfolioSnapshots = [];
+    const arr = collection.portfolioSnapshots;
+    const idx = arr.findIndex(s => s.date === date);
+    if (idx >= 0) arr[idx] = snap; else arr.push(snap);
+    arr.sort((a, b) => a.date.localeCompare(b.date));
+  } catch (err) {
+    window.logger?.warn?.('Portfolio', `Snapshot failed: ${err.message}`);
+  }
+}
+
 export function binderValueMap() {
   const map = new Map();
   for (const c of collection.cards) {

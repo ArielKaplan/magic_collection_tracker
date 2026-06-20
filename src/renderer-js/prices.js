@@ -1,3 +1,4 @@
+import { recordPortfolioSnapshot } from './analytics.js';
 import { SCRYFALL_COLLECTION } from './constants.js';
 import { render, updateFailedBadge } from './render.js';
 import { collection, ui } from './state.js';
@@ -445,6 +446,10 @@ export async function refreshPrices() {
   collection.lastPriceRefresh = new Date().toISOString();
   ui.refreshing = false;
   ui.refreshProgress = 0;
+
+  // Snapshot collection value for the "Value Over Time" chart (one row/day).
+  // Done before render() so the dashboard line chart picks up today's point.
+  await recordPortfolioSnapshot();
 
   const parts = [`${pricedCount} of ${pairs.length} printings priced`];
   if (marketCount) parts.push(`${marketCount} market prices`);

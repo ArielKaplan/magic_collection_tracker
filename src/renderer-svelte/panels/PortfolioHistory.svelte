@@ -1,0 +1,124 @@
+<script>
+  import { onMount, onDestroy } from 'svelte';
+  import { Chart, registerables } from 'chart.js';
+  import { collectionVersion } from '../stores.js';
+
+  Chart.register(...registerables);
+
+  // Collection-wide series — not binder-filterable (snapshots aren't stored
+  // per binder), so `filter` is accepted (every panel gets it) but ignored.
+  // eslint-disable-next-line no-unused-vars
+  export let filter = null;
+
+  let canvas;
+  let chart = null;
+  let mounted = false;
+  let count = 0;
+
+  $: if (mounted) { $collectionVersion; drawChart(); }
+
+  onMount(() => { mounted = true; drawChart(); });
+  onDestroy(() => { if (chart) { chart.destroy(); chart = null; } });
+
+  function snapshots() {
+    const arr = window.collection?.portfolioSnapshots || [];
+    return [...arr].sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+  }
+
+  function shortDate(d) {
+    // d is YYYY-MM-DD (local). Parse as local, not UTC, to avoid off-by-one.
+    const [y, m, day] = (d || '').split('-').map(Number);
+    if (!y) return d;
+    return new Date(y, (m || 1) - 1, day || 1)
+      .toLocaleDateString([], { month: 'short', day: 'numeric' });
+  }
+
+  function drawChart() {
+    if (!canvas) return;
+    if (chart) { chart.destroy(); chart = null; }
+
+    const snaps = snapshots();
+    count = snaps.length;
+    if (!snaps.length) return;
+
+    const labels = snaps.map(s => shortDate(s.date));
+    const total  = snaps.map(s => (s.cardsValue || 0) + (s.sealedValue || 0));
+    const cards  = snaps.map(s => s.cardsValue || 0);
+    const sealed = snaps.map(s => s.sealedValue || 0);
+    const cost   = snaps.map(s => s.costBasis || 0);
+
+    const tickColor = '#a3a1aa';
+    const gridColor = 'rgba(255,255,255,0.05)';
+    const fmt = v => window.app?.fmt?.(v) ?? `$${(v ?? 0).toFixed(2)}`;
+
+    const line = (label, data, color, opts = {}) => ({
+      label, data,
+      borderColor: color,
+      backgroundColor: color + '22',
+      borderWidth: 2,
+      pointRadius: snaps.length > 30 ? 0 : 2,
+      pointHoverRadius: 4,
+      tension: 0.25,
+      ...opts,
+    });
+
+    chart = new Chart(canvas, {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [
+          line('Total',  total,  '#c89b3c', { fill: true, borderWidth: 2.5 }),
+          line('Cards',  cards,  '#5b9cf6'),
+          line('Sealed', sealed, '#f08030'),
+          line('Cost basis', cost, '#7a7692', { borderDash: [5, 4], borderWidth: 1.5, fill: false }),
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: { duration: 200 },
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: {
+            display: true,
+            position: 'top',
+            align: 'end',
+            labels: { color: tickColor, font: { size: 10, family: 'Inter, Segoe UI, sans-serif' }, boxWidth: 10, padding: 8, usePointStyle: true },
+          },
+          tooltip: {
+            callbacks: { label: ctx => ` ${ctx.dataset.label}: ${fmt(ctx.parsed.y)}` },
+          },
+        },
+        scales: {
+          x: {
+            ticks: { color: tickColor, font: { size: 10 }, maxRotation: 0, autoSkip: true, maxTicksLimit: 8 },
+            grid: { color: 'transparent' },
+            border: { color: 'rgba(255,255,255,0.08)' },
+          },
+          y: {
+            ticks: { color: tickColor, font: { size: 10 }, callback: v => fmt(v) },
+            grid: { color: gridColor },
+            border: { color: 'rgba(255,255,255,0.08)' },
+          },
+        },
+      },
+    });
+  }
+</script>
+
+{#if count === 0}
+  <p class="empty">No value history yet. Refresh prices (F5) to start tracking your collection value over time — one point is recorded per day.</p>
+{:else}
+  {#if count === 1}<p class="hint">Tracking started today — the line fills in as more daily snapshots are recorded.</p>{/if}
+  <div class="chart-wrap" class:with-hint={count === 1}>
+    <canvas bind:this={canvas}></canvas>
+  </div>
+{/if}
+
+<style>
+  .chart-wrap { width: 100%; height: 100%; min-height: 140px; display: flex; align-items: stretch; }
+  .chart-wrap.with-hint { height: calc(100% - 22px); }
+  canvas { width: 100% !important; height: 100% !important; }
+  .empty { color: var(--text-muted, #4a4668); font-size: 12px; padding: 8px 0; line-height: 1.5; }
+  .hint { color: var(--text-muted, #4a4668); font-size: 10.5px; margin: 0 0 4px; }
+</style>

@@ -55,7 +55,7 @@ export async function autoSave() {
 
 export async function autoLoad() {
   try {
-    const [cardRows, sealedRows, deckRows, prices, metadata, failures, settings] = await Promise.all([
+    const [cardRows, sealedRows, deckRows, prices, metadata, failures, settings, snapshots] = await Promise.all([
       window.api.cards.list(),
       window.api.sealed.list(),
       window.api.decks.list(),
@@ -63,6 +63,7 @@ export async function autoLoad() {
       window.api.metadata.all(),
       window.api.failures.list(),
       window.api.settings.all(),
+      window.api.portfolio?.list?.() ?? Promise.resolve([]),
     ]);
 
     if (!cardRows.length && !sealedRows.length && !deckRows.length && !Object.keys(prices).length) return false;
@@ -106,6 +107,7 @@ export async function autoLoad() {
     }
     collection.cardMetadata  = metadata;
     collection.failedLookups = failures;
+    collection.portfolioSnapshots = Array.isArray(snapshots) ? snapshots : [];
     collection.settings = settings.settings_blob
       ? JSON.parse(settings.settings_blob)
       : { pricechartingKey: '' };

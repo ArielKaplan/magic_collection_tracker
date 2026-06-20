@@ -210,6 +210,10 @@ function registerIpc() {
   ipcMain.handle('prices:bulkStore',   (_e, snaps)     => db.bulkStorePrices(snaps));
   ipcMain.handle('prices:all',         ()              => db.getAllPriceHistory());
 
+  // Portfolio snapshots (collection value over time)
+  ipcMain.handle('portfolio:record',   (_e, snap)      => db.recordPortfolioSnapshot(snap));
+  ipcMain.handle('portfolio:list',     ()              => db.getPortfolioSnapshots());
+
   // Metadata
   ipcMain.handle('metadata:bulkUpsert', (_e, entries)  => db.bulkUpsertMetadata(entries));
   ipcMain.handle('metadata:all',        ()             => db.getAllMetadata());

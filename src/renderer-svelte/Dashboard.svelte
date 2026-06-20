@@ -23,10 +23,12 @@
     if (raw) { try { parsed = JSON.parse(raw); } catch {} }
     const initial = (parsed && Array.isArray(parsed) && parsed.length) ? parsed : defaultLayout();
     // Ensure every defined panel has a state row (so newly-added panel types
-    // appear after a code update without the user needing to reset)
+    // appear after a code update without the user needing to reset). They're
+    // added visible — a new panel type is a new feature worth surfacing; the
+    // user can hide it. Auto-layout (on by default) tiles it into the canvas.
     for (const def of PANELS) {
       if (!initial.find(p => p.id === def.id)) {
-        initial.push({ id: def.id, x: 12, y: 12, width: def.defaultSize.w, height: def.defaultSize.h, collapsed: false, visible: false, zIndex: initial.length + 1 });
+        initial.push({ id: def.id, x: 12, y: 12, width: def.defaultSize.w, height: def.defaultSize.h, collapsed: false, visible: true, zIndex: initial.length + 1 });
       }
     }
     // Clamp into bounds — panels dragged to negative coords would render

@@ -32,6 +32,10 @@ contextBridge.exposeInMainWorld('api', {
     all:         ()          => inv('prices:all'),
     clear:       ()          => inv('prices:clear'),
   },
+  portfolio: {
+    record:  (snap) => inv('portfolio:record', snap),
+    list:    ()     => inv('portfolio:list'),
+  },
   metadata: {
     bulkUpsert:  (entries)   => inv('metadata:bulkUpsert', entries),
     all:         ()          => inv('metadata:all'),

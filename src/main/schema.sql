@@ -126,6 +126,20 @@ CREATE TABLE IF NOT EXISTS deck_cards (
 );
 CREATE INDEX IF NOT EXISTS idx_deck_cards_deck ON deck_cards(deck_id);
 
+-- Collection value over time — one row per calendar day, written after each
+-- price refresh (the day's last refresh wins via UPSERT). We snapshot going
+-- forward rather than reconstructing from price_history, which has survivorship
+-- bias (it only knows about cards still owned today). Powers the dashboard
+-- "Value Over Time" line chart.
+CREATE TABLE IF NOT EXISTS portfolio_snapshots (
+  date          TEXT PRIMARY KEY,        -- YYYY-MM-DD (local date)
+  cards_value   REAL,
+  sealed_value  REAL,
+  cost_basis    REAL,
+  card_count    INTEGER,
+  created_at    TEXT DEFAULT (datetime('now'))
+);
+
 -- Key-value bag for misc settings (eBay creds, last_price_refresh, sl_data_updated_at, etc.)
 CREATE TABLE IF NOT EXISTS settings (
   key    TEXT PRIMARY KEY,

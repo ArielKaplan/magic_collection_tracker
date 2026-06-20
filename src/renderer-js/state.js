@@ -54,7 +54,8 @@ export function makeCollection() {
     priceHistory: {},
     marketPriceHistory: {},  // scryfallId|foil → [{date,price}] from TCGCSV (market price)
     cardMetadata: {},  // scryfallId → { colors, type_line, cmc, color_identity }
-    failedLookups: []  // populated on each price refresh
+    failedLookups: [],  // populated on each price refresh
+    portfolioSnapshots: []  // [{date, cardsValue, sealedValue, costBasis, cardCount}] — value over time
   };
 }
 

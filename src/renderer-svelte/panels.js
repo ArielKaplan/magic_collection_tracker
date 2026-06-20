@@ -19,6 +19,7 @@ import CardCountBySet  from './panels/CardCountBySet.svelte';
 import ValueBySet      from './panels/ValueBySet.svelte';
 import CardCountByYear from './panels/CardCountByYear.svelte';
 import CardOfTheDay    from './panels/CardOfTheDay.svelte';
+import PortfolioHistory from './panels/PortfolioHistory.svelte';
 
 export const PANELS = [
   // KPIs (compact summary widgets)
@@ -36,6 +37,8 @@ export const PANELS = [
     description: 'When prices were last fetched from Scryfall (low prices) and TCGCSV (market prices). Prices auto-refresh once per day on first open.' },
 
   // Content panels
+  { id: 'portfolio-history', title: 'Value Over Time', icon: '📈', component: PortfolioHistory, defaultSize: { w: 720, h: 300 }, filterable: false,
+    description: 'Your collection\'s market value over time — total, cards, and sealed, against your cost basis (dashed). One snapshot is recorded per day each time prices refresh (prices auto-refresh once daily on first open), so the line builds up going forward.' },
   { id: 'cotd',        title: 'Card of the Day',    icon: '🎴', component: CardOfTheDay,    defaultSize: { w: 280, h: 380 }, filterable: false,
     description: 'A randomly highlighted card from your collection, chosen fresh each day. Click the reroll button to pick a different card.' },
   { id: 'top-movers',  title: 'Top Movers',         icon: '📈', component: TopMovers,       defaultSize: { w: 460, h: 320 },
@@ -89,6 +92,7 @@ export function defaultLayout(canvasW = 1480) {
   // Content panels — flow into rows, wrapping when canvas width is hit
   x = 12; y += rowMax + gap; rowMax = 0;
   const contentIds = [
+    'portfolio-history',              // wide — headline value-over-time chart
     'cotd', 'top-movers', 'val-binder',
     'top10', 'val-color', 'val-type',
     'val-rarity', 'stats',

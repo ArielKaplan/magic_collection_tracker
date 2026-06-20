@@ -14,15 +14,18 @@ Lives at: `C:\Users\Akapl\Documents\Secret Lair Tracker Desktop\`
 Git: https://github.com/ArielKaplan/magic_collection_tracker (branch: `main`)
 Current version: see `package.json` (0.15.x as of June 2026)
 
-Recent (v0.12–0.15, June 2026): **drop P&L + crack-or-keep shipped** (the headline — 💰 P&L
-view in the SL Explorer + per-drop "Singles vs. Sealed" panel; sealed products carry a
-`dropName`). v0.15.0 made P&L cost basis default to the flat Secret Lair MSRP (~$29.99/$39.99,
-foil-aware, configurable in Settings) and generalized crack-or-keep into Singles-vs-Sealed for
-set-completion decisions. Also (v0.12): unowned SL cards show full Scryfall metadata on hover;
+Recent (v0.12–0.16, June 2026): **portfolio snapshots shipped** (v0.16 — "Value Over Time"
+dashboard line chart: total/cards/sealed vs. cost basis, one snapshot per day recorded at the
+end of each price refresh; `portfolio_snapshots` table). The drop-level completion % half of
+that roadmap item was already done — landing superdrop tiles, drop tiles, and the drop-detail
+header all show `X / Y owned` + progress bars. Before that, the **drop P&L + crack-or-keep**
+headline (v0.13–0.15 — 💰 P&L view in the SL Explorer + per-drop "Singles vs. Sealed" panel;
+sealed products carry a `dropName`; P&L cost basis defaults to flat SL MSRP ~$29.99/$39.99,
+foil-aware, configurable). Also (v0.12): unowned SL cards show full Scryfall metadata on hover;
 Discord-style in-app updater (top-bar pill + "What's New" modal, notes driven from
 `CHANGELOG.md`); sealed deletions persist (authoritative `replaceSealed`); corruption-aware
-daily backup. See REVIEW_AND_ROADMAP.md handoffs for details. **Next roadmap item: portfolio
-snapshots + drop-level completion %.**
+daily backup. See REVIEW_AND_ROADMAP.md handoffs for details. **Next roadmap item: want list +
+price watch** (drop-completion tiles already feed it).
 
 The user is a prolific MTG collector tracking thousands of cards (~4,750 entries, 6,200+ copies) across many binders. ManaBox CSV is the source of truth for imports.
 
@@ -101,7 +104,7 @@ vite.config.mjs          # Multi-entry build: app-main + svelte-app → renderer
 
 ## Tabs (Ctrl+1…7)
 
-1. **Dashboard** — Svelte canvas, 18 drag/resize panels, per-panel binder filter, custom chart builder. Layout in `settings.dashboard_layout_v2`.
+1. **Dashboard** — Svelte canvas, 19 drag/resize panels (incl. "Value Over Time" line chart), per-panel binder filter, custom chart builder. Layout in `settings.dashboard_layout_v2`.
 2. **Card Collection** — table view: filters, column picker, dual pricing (Scryfall low + TCG market), Δ price, sparklines. Search matches name/set/type/oracle.
 3. **Sealed Collection** — sealed products, TCGCSV/PriceCharting lookups, sealed/opened status.
 4. **Gallery** — image grid, hover previews.
@@ -118,6 +121,7 @@ Native chrome: menu bar with accelerators (Ctrl+I import CSV, F5 refresh prices,
 1. **Import CSV** (Ctrl+I) — ManaBox export through the column-mapping wizard. Dedup on manaboxId + scryfallId + foil.
 2. **Refresh Prices** (F5, auto once per day on first open) — Scryfall batches with 429 backoff (2s/4s/8s), then TCGCSV market-price pass. Foil→etched price fallback is load-bearing (don't remove). Deck cards included.
 3. **Price persistence is delta-based**: `storePriceSnapshot`/`storeMarketPriceSnapshot` queue new snapshots; `autoSave()` flushes only the queue (restored on failure). autoSave does NOT rewrite price history.
+   - At the end of `refreshPrices`, `recordPortfolioSnapshot()` (analytics.js) writes one `portfolio_snapshots` row for the day (UPSERT on date — last refresh of the day wins) capturing cards/sealed value + cost basis. Loaded into `collection.portfolioSnapshots` on `autoLoad`; the Dashboard "Value Over Time" chart reads it. Snapshots accrue going forward (no retroactive reconstruction — `price_history` has survivorship bias).
 4. **Refresh SL Data** — MTGJSON SLD.json via net:fetch (`json.data.cards`, NOT Object.values), collector-number backfill for foils, stored in SQLite.
 5. **Backups** — main process writes `backups/collection-YYYY-MM-DD.db` once per day on launch, prunes to 10. **Corruption-aware (v0.12.2):** `runDailyBackup` runs `PRAGMA integrity_check` first — if the live DB is malformed it skips the backup AND the prune (so a corrupt copy can't roll a good backup off the rotation), quarantines the bad DB to `backups/corrupt/`, and surfaces a warning to the renderer via `app:backupHealth`; freshly written backups are verified before older ones are pruned.
 

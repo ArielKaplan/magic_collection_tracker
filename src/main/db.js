@@ -280,6 +280,43 @@ function getAllPriceHistory() {
   return { scryfall, tcgcsv };
 }
 
+// ── Portfolio snapshots (collection value over time) ───────────────────────────
+// One row per calendar day; the day's most recent refresh overwrites earlier
+// ones (UPSERT on date) so a chart never shows multiple points for one day.
+function recordPortfolioSnapshot(snap) {
+  db.prepare(`
+    INSERT INTO portfolio_snapshots (date, cards_value, sealed_value, cost_basis, card_count, created_at)
+    VALUES (@date, @cards_value, @sealed_value, @cost_basis, @card_count, datetime('now'))
+    ON CONFLICT(date) DO UPDATE SET
+      cards_value=excluded.cards_value, sealed_value=excluded.sealed_value,
+      cost_basis=excluded.cost_basis, card_count=excluded.card_count,
+      created_at=datetime('now')
+  `).run({
+    date:         snap.date,
+    cards_value:  snap.cardsValue  ?? null,
+    sealed_value: snap.sealedValue ?? null,
+    cost_basis:   snap.costBasis   ?? null,
+    card_count:   snap.cardCount   ?? null,
+  });
+}
+
+function getPortfolioSnapshots() {
+  return db.prepare(`
+    SELECT date, cards_value, sealed_value, cost_basis, card_count
+    FROM portfolio_snapshots ORDER BY date ASC
+  `).all().map(r => ({
+    date:         r.date,
+    cardsValue:   r.cards_value,
+    sealedValue:  r.sealed_value,
+    costBasis:    r.cost_basis,
+    cardCount:    r.card_count,
+  }));
+}
+
+function clearPortfolioSnapshots() {
+  return db.prepare('DELETE FROM portfolio_snapshots').run().changes;
+}
+
 // ── Metadata ─────────────────────────────────────────────────────────────────
 function bulkUpsertMetadata(entries) {
   const stmt = db.prepare(`
@@ -467,6 +504,7 @@ function resetAll() {
     db.prepare('DELETE FROM failed_lookups').run();
     db.prepare('DELETE FROM sl_drop_cards').run();
     db.prepare('DELETE FROM sl_scryfall_drops').run();
+    db.prepare('DELETE FROM portfolio_snapshots').run();
     db.prepare('DELETE FROM settings').run();
   });
   tx();
@@ -485,6 +523,8 @@ module.exports = {
   listDecks, upsertDeck, deleteDeck, clearDecks,
   // prices
   getCurrentPrice, getPriceHistory, bulkStorePrices, getAllPriceHistory, clearPriceHistory,
+  // portfolio snapshots
+  recordPortfolioSnapshot, getPortfolioSnapshots, clearPortfolioSnapshots,
   // metadata
   bulkUpsertMetadata, getAllMetadata, clearMetadata,
   // failures

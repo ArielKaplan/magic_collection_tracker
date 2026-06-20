@@ -91,10 +91,11 @@ migration, two urgent fixes, and a decision about what the app *is*.
 
 ### Feature recommendations from the review (ranked value-per-effort)
 
-1. **Collection value over time** — `portfolio_snapshots (date, cards_value,
-   sealed_value, cost_basis)`, one row per refresh, dashboard line chart. The data is
-   already being collected; reconstructing retroactively from price_history has
-   survivorship bias, so snapshot going forward. ~100 lines.
+1. **Collection value over time** — ✅ **SHIPPED v0.16.0.** `portfolio_snapshots (date,
+   cards_value, sealed_value, cost_basis, card_count)`, one row per *day* (UPSERT — last
+   refresh of the day wins), recorded at the end of `refreshPrices`; Dashboard "Value Over
+   Time" line chart (total/cards/sealed vs. cost basis). Snapshots accrue going forward —
+   no retroactive reconstruction (price_history has survivorship bias).
 2. **General "Add card" to collection** — the deck add-cards modal already searches
    Scryfall (`deckIO.js` / `decks.js`); reuse with a binder picker. Closes the "bought
    three singles at the LGS" gap (currently only CSV import / JSON merge / SL Explorer
@@ -173,13 +174,18 @@ compelling with a time axis, and the delta-save plumbing makes it ~100 lines.
 - **Don't chase ManaBox's scanning.** ManaBox is the ingestion pipeline; let it stay one.
 
 **Agreed sequence:**
-1. Next release: **portfolio snapshots + drop-level completion** (small, visible, both
-   build on what exists). ← *now the top remaining item.*
+1. ~~Next release: **portfolio snapshots + drop-level completion**~~ ✅ **SHIPPED.**
+   Drop-level completion was already done (landing/drop tiles + drop-detail header all show
+   `X / Y owned` + progress bars). Portfolio snapshots shipped **v0.16.0** — see the handoff
+   at the bottom.
 2. ~~Headline release: **drop P&L + crack-or-keep**~~ ✅ **SHIPPED (v0.13.0 + v0.14.0).**
    The release that makes the app *about* something.
 3. Then the **curation UI** export/import + community sync, once the drop views prove
    which hierarchy edits matter (local editing already shipped v0.11.0).
 4. Phase 2 (vitest) and Phase 3 (per-tab Svelte migration) run alongside any of it.
+
+← *Top remaining product item: **want list + price watch** (REVIEW feature #4) — the
+drop-completion tiles already feed it. Then curation export/import (#3 above).*
 
 ---
 
@@ -335,6 +341,48 @@ through **v0.15.0**.
   prices (which read as misleadingly tiny costs).
 - **Tests:** `scripts/smoke-droppnl.js` (P&L math, flat-MSRP/foil/settings defaults, Singles-vs-Sealed aggregation + keep-value).
 
-Next remaining roadmap item is **portfolio snapshots + drop-level completion %** (strategy
-sequence #1). Phase 2 (vitest) / Phase 3 (Svelte + CSP) still open; this work added more
-P&L inline-`onclick` handlers to the window-global surface Phase 3 retires.
+## Session handoff (v0.16.0 — June 20, 2026): portfolio snapshots SHIPPED
+
+Strategy sequence item **#1 is now fully done.** Its drop-level-completion half was already
+shipped (the SL Explorer landing tiles, drop tiles, and drop-detail header all show
+`X / Y owned` + progress bars — done during the v0.11/P&L work). This session added the
+remaining half: **collection value over time.**
+
+- **Schema:** new `portfolio_snapshots (date PK, cards_value, sealed_value, cost_basis,
+  card_count, created_at)` in `src/main/schema.sql`. No migration needed — `db.exec(schema)`
+  runs the idempotent `CREATE TABLE IF NOT EXISTS` on every init. Cleared by `resetAll`.
+- **DB layer (`src/main/db.js`):** `recordPortfolioSnapshot(snap)` (UPSERT on `date` — the
+  day's last refresh wins, so the chart never shows two points for one day),
+  `getPortfolioSnapshots()` (camelCased, date-ascending), `clearPortfolioSnapshots()`.
+- **IPC/bridge:** `portfolio:record` / `portfolio:list` in `src/main/main.js`;
+  `window.api.portfolio.{record,list}` in `preload.js`.
+- **Recording (`src/renderer-js/analytics.js`):** `recordPortfolioSnapshot()` computes
+  cards value (`totalCardsValue`), sealed value (`totalSealedValue`), `totalCostBasis()`
+  (cards+sealed purchase price, mirrors the Cost Basis KPI), and total copies; writes one
+  row keyed on the **local** date and keeps `collection.portfolioSnapshots` in sync in
+  memory. **Skips** when nothing is priced (no bogus $0 point). Called at the end of
+  `refreshPrices` (prices.js) before `render()`. *(Note: analytics.js ↔ prices.js is now a
+  circular import — fine, runtime function refs only, per the module conventions.)*
+- **Load:** `autoLoad` (storage.js) fetches the series into `collection.portfolioSnapshots`;
+  field added to `makeCollection()` in state.js.
+- **Dashboard chart:** `src/renderer-svelte/panels/PortfolioHistory.svelte` — a Chart.js
+  line chart (total / cards / sealed solid + cost basis dashed), reads
+  `window.collection.portfolioSnapshots`, reactive on `collectionVersion` (bumped by
+  `render()`). Registered as panel `portfolio-history` ("Value Over Time", `filterable:false`,
+  720×300) in `panels.js` and placed first in the content flow of `defaultLayout`.
+- **Existing-user visibility:** `Dashboard.svelte`'s layout-merge now appends newly-added
+  panel types as `visible: true` (was `false`) so a new panel actually appears for users with
+  a saved `dashboard_layout_v2` — realizing the merge comment's stated intent.
+- **Tests:** `scripts/smoke-portfolio-db.js` (DB round-trip, daily UPSERT, null fields,
+  resetAll) and `scripts/smoke-portfolio.js` (renderer compute/skip/in-memory upsert).
+  Verified live: the daily auto-refresh wrote one real snapshot to the user's DB
+  (cards ≈ $26.2k, sealed $291.50, cost ≈ $18.5k, 6,269 copies).
+
+**Not yet released:** version still `0.15.0`, the CHANGELOG entry sits under `## [Unreleased]`.
+Run `npm run release:tag -- minor` to ship as **v0.16.0** (bumps + promotes changelog + tags +
+the workflow builds/publishes the installer + in-app "What's New").
+
+Next remaining product roadmap item is **want list + price watch** (REVIEW feature #4) — the
+drop-completion tiles already feed a "add missing to want list" flow. Then curation
+export/import + community sync (#3). Phase 2 (vitest) / Phase 3 (Svelte + CSP) still open; this
+work added no new inline-`onclick` handlers (the chart is a real Svelte component).
