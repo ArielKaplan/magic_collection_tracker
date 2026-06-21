@@ -6,6 +6,44 @@ import { esc, fmt } from './utils.js';
 
 
 // ─────────────────────────────────────────────────────────────────────────────
+// OWNERSHIP — sold cards/products linger in the tables (status='sold') to power
+// realized P&L, but must never count toward owned value, cost basis, or stats.
+// Everything that asks "what do I have / what's it worth" goes through these.
+// ─────────────────────────────────────────────────────────────────────────────
+export function ownedCards()  { return collection.cards.filter(c => c.status !== 'sold'); }
+export function soldCards()   { return collection.cards.filter(c => c.status === 'sold'); }
+export function ownedSealed()  { return (collection.sealed || []).filter(i => i.status !== 'sold'); }
+export function soldSealed()   { return (collection.sealed || []).filter(i => i.status === 'sold'); }
+
+// Net realized gain on one disposed entry: proceeds − fees − what it cost.
+// `salePrice` is the total proceeds for the whole entry (all copies sold).
+export function entryRealized(entry) {
+  const proceeds = entry.salePrice || 0;
+  const fees     = entry.saleFees || 0;
+  const cost     = (entry.purchasePrice || 0) * (entry.quantity || 1);
+  return { proceeds, fees, cost, gain: proceeds - fees - cost };
+}
+
+// Aggregate realized gains across sold cards + sold sealed, with a per-year
+// breakdown (keyed on the disposal year). Powers the Realized Gains KPI/panel.
+export function realizedGains() {
+  const sold = [...soldCards(), ...soldSealed()];
+  const totals = { proceeds: 0, fees: 0, cost: 0, gain: 0, count: 0 };
+  const byYear = new Map();   // 'YYYY' → { proceeds, fees, cost, gain, count }
+  for (const e of sold) {
+    const r = entryRealized(e);
+    totals.proceeds += r.proceeds; totals.fees += r.fees;
+    totals.cost += r.cost;         totals.gain += r.gain;
+    totals.count++;
+    const year = (e.disposedAt || '').slice(0, 4) || 'Unknown';
+    const y = byYear.get(year) || { proceeds: 0, fees: 0, cost: 0, gain: 0, count: 0 };
+    y.proceeds += r.proceeds; y.fees += r.fees; y.cost += r.cost; y.gain += r.gain; y.count++;
+    byYear.set(year, y);
+  }
+  return { ...totals, byYear };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // VALUE CALCULATIONS
 // ─────────────────────────────────────────────────────────────────────────────
 export function cardCurrentValue(card) {
@@ -15,7 +53,7 @@ export function cardCurrentValue(card) {
 
 export function totalCardsValue() {
   let t = 0, has = false;
-  for (const c of collection.cards) {
+  for (const c of ownedCards()) {
     const v = cardCurrentValue(c);
     if (v != null) { t += v; has = true; }
   }
@@ -24,7 +62,7 @@ export function totalCardsValue() {
 
 export function totalSealedValue() {
   let t = 0, has = false;
-  for (const i of collection.sealed) {
+  for (const i of ownedSealed()) {
     const h = i.priceHistory;
     if (h?.length) { t += h[h.length - 1].price * i.quantity; has = true; }
   }
@@ -33,10 +71,11 @@ export function totalSealedValue() {
 
 // Recorded purchase price of everything owned (cards + sealed). Mirrors the
 // Cost Basis KPI so the portfolio snapshot's cost line matches the dashboard.
+// Sold entries are excluded — their cost belongs to realized P&L, not cost basis.
 export function totalCostBasis() {
   let t = 0;
-  for (const c of collection.cards)  t += (c.purchasePrice || 0) * (c.quantity || 1);
-  for (const i of collection.sealed) t += (i.purchasePrice || 0) * (i.quantity || 1);
+  for (const c of ownedCards())  t += (c.purchasePrice || 0) * (c.quantity || 1);
+  for (const i of ownedSealed()) t += (i.purchasePrice || 0) * (i.quantity || 1);
   return t;
 }
 
@@ -49,6 +88,16 @@ export async function recordPortfolioSnapshot() {
   const sealedValue = totalSealedValue();
   if (cardsValue == null && sealedValue == null) return;
 
+  // Secret Lair slice — Σ computeDropPnL() value/cost (resolved via the window
+  // bridge to avoid an analytics↔slTab import cycle; it's call-time only).
+  // null when no SL drops are engaged, so non-SL users get no bogus $0 SL line.
+  let slValue = null, slCost = null;
+  const slRows = (typeof window !== 'undefined' && window.computeDropPnL) ? window.computeDropPnL() : [];
+  if (slRows.length) {
+    slValue = slRows.reduce((s, r) => s + (r.value || 0), 0);
+    slCost  = slRows.reduce((s, r) => s + (r.cost  || 0), 0);
+  }
+
   const d = new Date();
   const date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   const snap = {
@@ -56,7 +105,9 @@ export async function recordPortfolioSnapshot() {
     cardsValue:  cardsValue  ?? 0,
     sealedValue: sealedValue ?? 0,
     costBasis:   totalCostBasis(),
-    cardCount:   collection.cards.reduce((s, c) => s + (c.quantity || 1), 0),
+    cardCount:   ownedCards().reduce((s, c) => s + (c.quantity || 1), 0),
+    slValue,
+    slCost,
   };
 
   try {
@@ -75,7 +126,7 @@ export async function recordPortfolioSnapshot() {
 
 export function binderValueMap() {
   const map = new Map();
-  for (const c of collection.cards) {
+  for (const c of ownedCards()) {
     const v = cardCurrentValue(c) ?? (c.purchasePrice * c.quantity);
     const e = map.get(c.binderName) || { value: 0, qty: 0 };
     map.set(c.binderName, { value: e.value + v, qty: e.qty + c.quantity });
@@ -85,7 +136,7 @@ export function binderValueMap() {
 
 export function topMovers(limit = 10) {
   const out = [];
-  for (const c of collection.cards) {
+  for (const c of ownedCards()) {
     const h  = getPriceHistory(c.scryfallId, c.foil);
     const ch = getPriceChange(h);
     if (ch) out.push({ card: c, change: ch });
@@ -137,7 +188,7 @@ export function resolveColor(scryfallId) {
 
 export function analyzeByColor() {
   const result = {};
-  for (const card of collection.cards) {
+  for (const card of ownedCards()) {
     const color = resolveColor(card.scryfallId);
     if (!color) continue;
     const val = cardCurrentValue(card) ?? (card.purchasePrice * card.quantity);
@@ -150,7 +201,7 @@ export function analyzeByColor() {
 
 export function analyzeByType() {
   const result = {};
-  for (const card of collection.cards) {
+  for (const card of ownedCards()) {
     const m = cardMeta(card.scryfallId);
     if (!m) continue;
     const type = parseMainType(m.type_line);
@@ -166,7 +217,7 @@ export function analyzeByManaValue() {
   const keys   = ['0','1','2','3','4','5','6+'];
   const values = Object.fromEntries(keys.map(k => [k, 0]));
   const qtys   = Object.fromEntries(keys.map(k => [k, 0]));
-  for (const card of collection.cards) {
+  for (const card of ownedCards()) {
     const m = cardMeta(card.scryfallId);
     if (!m || m.cmc == null) continue;
     // Skip lands from mana curve (they skew everything to 0)
@@ -186,7 +237,7 @@ export function hasMetadata() {
 // ── Set analytics ─────────────────────────────────────────────────────────────
 export function analyzeBySet() {
   const sets = new Map(); // setCode → { setName, qty, value }
-  for (const c of collection.cards) {
+  for (const c of ownedCards()) {
     const key = c.setCode || '???';
     if (!sets.has(key)) sets.set(key, { setName: c.setName || key, qty: 0, value: 0 });
     const s = sets.get(key);
@@ -204,7 +255,7 @@ export function analyzeByYear() {
   // Most reliable: setCode → release year lookup via a simple heuristic.
   // We'll bucket by the first 4-digit year found in setName, else 'Unknown'.
   const years = new Map();
-  for (const c of collection.cards) {
+  for (const c of ownedCards()) {
     const match = (c.setName || '').match(/\b(19|20)\d{2}\b/);
     const year  = match ? match[0] : 'Unknown';
     if (!years.has(year)) years.set(year, { qty: 0, value: 0 });
@@ -218,7 +269,7 @@ export function analyzeByYear() {
 
 // ── Top 10 most valuable individual card entries ───────────────────────────────
 export function topValueCards(n = 10) {
-  return collection.cards
+  return ownedCards()
     .map(c => ({ card: c, value: cardCurrentValue(c) ?? 0 }))
     .filter(x => x.value > 0)
     .sort((a, b) => b.value - a.value)
@@ -227,12 +278,13 @@ export function topValueCards(n = 10) {
 
 // ── Card of the Day ───────────────────────────────────────────────────────────
 export function getCardOfTheDay() {
-  if (!collection.cards.length) return null;
+  const cards = ownedCards();
+  if (!cards.length) return null;
   const d = new Date();
   const dateSeed = d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate();
   const raw = (dateSeed + (ui.cotdOffset || 0)) * 2654435761;
-  const idx = Math.abs(raw) % collection.cards.length;
-  return collection.cards[idx];
+  const idx = Math.abs(raw) % cards.length;
+  return cards[idx];
 }
 
 export function renderCardOfTheDay() {
@@ -360,7 +412,7 @@ export function renderTop10ValueCards() {
 
 export function renderRarityPanel() {
   const rm = { mythic: { qty: 0, val: 0 }, rare: { qty: 0, val: 0 }, uncommon: { qty: 0, val: 0 }, common: { qty: 0, val: 0 } };
-  for (const c of collection.cards) {
+  for (const c of ownedCards()) {
     const r = c.rarity || 'common';
     if (!rm[r]) rm[r] = { qty: 0, val: 0 };
     rm[r].qty += c.quantity;
@@ -473,17 +525,18 @@ export function noMetaMsg() {
 
 // ─────────────────────────────────────────────────────────────────────────────
 export function renderStatsPanel() {
-  if (!collection.cards.length)
+  const cards = ownedCards();
+  if (!cards.length)
     return '<p style="color:var(--text-muted);font-size:13px;padding:10px 0">Import cards to see stats.</p>';
 
-  const total    = collection.cards.length;
-  const totalQty = collection.cards.reduce((s, c) => s + c.quantity, 0);
-  const priced   = collection.cards.filter(c => getCurrentPrice(c.scryfallId, c.foil) != null).length;
-  const foils    = collection.cards.filter(c => c.foil !== 'normal').reduce((s, c) => s + c.quantity, 0);
-  const langs    = new Set(collection.cards.map(c => c.language)).size;
-  const misprints = collection.cards.filter(c => c.misprint).length;
-  const altered  = collection.cards.filter(c => c.altered).length;
-  const sets     = new Set(collection.cards.map(c => c.setCode)).size;
+  const total    = cards.length;
+  const totalQty = cards.reduce((s, c) => s + c.quantity, 0);
+  const priced   = cards.filter(c => getCurrentPrice(c.scryfallId, c.foil) != null).length;
+  const foils    = cards.filter(c => c.foil !== 'normal').reduce((s, c) => s + c.quantity, 0);
+  const langs    = new Set(cards.map(c => c.language)).size;
+  const misprints = cards.filter(c => c.misprint).length;
+  const altered  = cards.filter(c => c.altered).length;
+  const sets     = new Set(cards.map(c => c.setCode)).size;
 
   const rows = [
     ['Entries', total.toLocaleString()],

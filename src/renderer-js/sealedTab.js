@@ -1,3 +1,4 @@
+import { entryRealized } from './analytics.js';
 import { PRODUCT_TYPES } from './constants.js';
 import { showExportModal } from './exportModal.js';
 import { getCurrentPrice, getPriceChange, sparkline } from './prices.js';
@@ -13,22 +14,26 @@ export function renderSealed() {
   const filtered = collection.sealed.filter(item => {
     if (s.search && !item.name.toLowerCase().includes(s.search.toLowerCase())) return false;
     if (s.type !== 'all' && item.productType !== s.type) return false;
-    if (s.status !== 'all' && item.status !== s.status) return false;
+    // 'all' means the live collection (sealed + opened) — sold products only show
+    // under the explicit Sold filter so realized records don't clutter the shelf.
+    if (s.status === 'all') { if (item.status === 'sold') return false; }
+    else if (item.status !== s.status) return false;
     return true;
   });
 
-  const totalVal = collection.sealed.reduce((sum, i) => {
+  const owned = collection.sealed.filter(i => i.status !== 'sold');
+  const totalVal = owned.reduce((sum, i) => {
     const h = i.priceHistory;
     return sum + (h?.length ? h[h.length - 1].price : i.purchasePrice) * i.quantity;
   }, 0);
-  const totalQty = collection.sealed.reduce((s, i) => s + i.quantity, 0);
+  const totalQty = owned.reduce((s, i) => s + i.quantity, 0);
 
   return `
     <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px;margin-bottom:18px">
       <div>
         <h2 style="font-size:20px;font-weight:700">Sealed Product</h2>
         <div style="color:var(--text-dim);font-size:13px;margin-top:4px">
-          ${collection.sealed.length} products · ${totalQty} items · Total value: <strong style="color:var(--text)">${fmt(totalVal)}</strong>
+          ${owned.length} products · ${totalQty} items · Total value: <strong style="color:var(--text)">${fmt(totalVal)}</strong>
         </div>
       </div>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
@@ -52,9 +57,10 @@ export function renderSealed() {
         ${PRODUCT_TYPES.map(t => `<option value="${t}" ${s.type === t ? 'selected' : ''}>${t}</option>`).join('')}
       </select>
       <select id="sealedStatusFilter">
-        <option value="all" ${s.status === 'all' ? 'selected' : ''}>All Status</option>
+        <option value="all" ${s.status === 'all' ? 'selected' : ''}>Sealed + Opened</option>
         <option value="sealed" ${s.status === 'sealed' ? 'selected' : ''}>Sealed</option>
         <option value="opened" ${s.status === 'opened' ? 'selected' : ''}>Opened</option>
+        <option value="sold" ${s.status === 'sold' ? 'selected' : ''}>Sold</option>
       </select>
     </div>
 
@@ -74,6 +80,34 @@ export function renderSealed() {
 }
 
 export function renderSealedItem(item) {
+  // Sold product — a realized record, not a live shelf item.
+  if (item.status === 'sold') {
+    const r  = entryRealized(item);
+    const pct = r.cost > 0 ? (r.gain / r.cost) * 100 : null;
+    const gc  = r.gain >= 0 ? 'price-up' : 'price-down';
+    return `
+    <div class="sealed-item" data-id="${item.id}" style="opacity:.92">
+      <div class="sealed-header">
+        <div class="sealed-name">${esc(item.name)}</div>
+        <div class="sealed-badges">
+          <span class="badge badge-type">${esc(item.productType)}</span>
+          <span class="badge" style="background:rgba(120,120,120,.18);color:var(--text-dim)">✓ Sold${item.disposedAt ? ` · ${esc(item.disposedAt)}` : ''}</span>
+          ${item.quantity > 1 ? `<span style="color:var(--text-dim);font-size:13px">×${item.quantity}</span>` : ''}
+        </div>
+      </div>
+      <div class="sealed-prices">
+        <div class="sealed-price-item"><div class="sp-label">Cost Basis</div><div class="sp-value">${fmt(r.cost)}</div></div>
+        <div class="sealed-price-item"><div class="sp-label">Proceeds</div><div class="sp-value">${fmt(r.proceeds)}${r.fees ? ` <span style="color:var(--text-dim);font-size:12px">− ${fmt(r.fees)} fees</span>` : ''}</div></div>
+        <div class="sealed-price-item"><div class="sp-label">Net Realized</div><div class="sp-value ${gc}">${r.gain >= 0 ? '+' : ''}${fmt(r.gain)}${pct != null ? ` <span style="font-size:12px">(${pct >= 0 ? '+' : ''}${pct.toFixed(0)}%)</span>` : ''}</div></div>
+      </div>
+      ${item.saleNote ? `<div style="margin-top:10px;font-size:12px;color:var(--text-dim);font-style:italic">${esc(item.saleNote)}</div>` : ''}
+      <div class="sealed-actions">
+        <button class="btn btn-sm" data-action="undo-sale" data-id="${item.id}">↩ Undo sale</button>
+        <button class="btn btn-sm btn-danger" data-action="delete-sealed" data-id="${item.id}">Delete record</button>
+      </div>
+    </div>`;
+  }
+
   const hist       = item.priceHistory || [];
   const curPrice   = hist.length ? hist[hist.length - 1].price : item.purchasePrice;
   const change     = getPriceChange(hist);
@@ -130,6 +164,7 @@ export function renderSealedItem(item) {
         ${item.linkedScryfallIds?.length
           ? `<button class="btn btn-sm" data-action="toggle-cards" data-id="${item.id}">Cards (${item.linkedScryfallIds.length})</button>`
           : ''}
+        <button class="btn btn-sm" data-action="sell-sealed" data-id="${item.id}">💵 Sell</button>
         <button class="btn btn-sm btn-danger" data-action="delete-sealed" data-id="${item.id}">Delete</button>
       </div>
 

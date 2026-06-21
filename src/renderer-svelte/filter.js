@@ -13,10 +13,13 @@ export function isFilterActive(filter) {
 }
 
 export function filterCards(cards, filter) {
-  if (!isFilterActive(filter)) return cards;
+  // Sold cards linger in the collection for realized P&L but are never part of
+  // the live dashboard — drop them before any binder filtering.
+  const owned = cards.filter(c => c.status !== 'sold');
+  if (!isFilterActive(filter)) return owned;
   const inc = new Set(filter.binders.include || []);
   const exc = new Set(filter.binders.exclude || []);
-  return cards.filter(c => {
+  return owned.filter(c => {
     const b = c.binderName || '';
     if (inc.size > 0 && !inc.has(b)) return false;
     if (exc.has(b)) return false;

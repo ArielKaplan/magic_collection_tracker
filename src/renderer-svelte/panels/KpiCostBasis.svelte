@@ -5,7 +5,7 @@
   $: $collectionVersion;
   $: cards = filterCards(window.collection?.cards || [], filter);
   $: costCards  = cards.reduce((s, c) => s + (c.purchasePrice || 0) * (c.quantity || 1), 0);
-  $: costSealed = (window.collection?.sealed || []).reduce((s, i) => s + (i.purchasePrice || 0) * (i.quantity || 1), 0);
+  $: costSealed = (window.collection?.sealed || []).filter(i => i.status !== 'sold').reduce((s, i) => s + (i.purchasePrice || 0) * (i.quantity || 1), 0);
   $: total = costCards + costSealed;
 </script>
 

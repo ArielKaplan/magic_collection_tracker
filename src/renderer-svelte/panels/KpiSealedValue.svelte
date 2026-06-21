@@ -5,7 +5,7 @@
   export let filter = null;
   $: $collectionVersion;
   $: sv = window.app?.totalSealedValue() ?? 0;
-  $: qty = (window.collection?.sealed || []).reduce((s, i) => s + (i.quantity || 1), 0);
+  $: qty = (window.collection?.sealed || []).filter(i => i.status !== 'sold').reduce((s, i) => s + (i.quantity || 1), 0);
 </script>
 
 <div class="kpi">

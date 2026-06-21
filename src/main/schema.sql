@@ -19,6 +19,14 @@ CREATE TABLE IF NOT EXISTS cards (
   language                 TEXT DEFAULT 'en',
   misprint                 INTEGER DEFAULT 0,
   altered                  INTEGER DEFAULT 0,
+  -- Disposition / realized-gains tracking. A card stays in this table after it's
+  -- sold (status='sold') so it can power realized P&L — it just stops counting
+  -- toward owned value/cost-basis. status='owned' is the live collection.
+  status                   TEXT NOT NULL DEFAULT 'owned',  -- owned | sold
+  disposed_at              TEXT,        -- YYYY-MM-DD the entry was sold
+  sale_price               REAL,        -- total proceeds for this entry (all copies)
+  sale_fees                REAL DEFAULT 0,
+  sale_note                TEXT,
   created_at               TEXT DEFAULT (datetime('now')),
   updated_at               TEXT DEFAULT (datetime('now'))
 );
@@ -37,9 +45,15 @@ CREATE TABLE IF NOT EXISTS sealed (
   quantity        INTEGER DEFAULT 1,
   purchase_price  REAL DEFAULT 0,
   current_value   REAL,
-  status          TEXT DEFAULT 'sealed',
+  status          TEXT DEFAULT 'sealed',   -- sealed | opened | sold
   notes           TEXT,
   drop_name       TEXT,
+  -- Disposition / realized-gains tracking (mirrors cards). status='sold' keeps
+  -- the row for realized P&L but drops it from owned value/cost-basis.
+  disposed_at     TEXT,
+  sale_price      REAL,
+  sale_fees       REAL DEFAULT 0,
+  sale_note       TEXT,
   created_at      TEXT DEFAULT (datetime('now')),
   updated_at      TEXT DEFAULT (datetime('now'))
 );
@@ -156,6 +170,11 @@ CREATE TABLE IF NOT EXISTS portfolio_snapshots (
   sealed_value  REAL,
   cost_basis    REAL,
   card_count    INTEGER,
+  -- Secret Lair slice of the same snapshot — current value (owned SL singles at
+  -- market + still-sealed SL drops) vs cost (flat-MSRP default + linked sealed),
+  -- i.e. Σ computeDropPnL(). Powers the "Secret Lair Index" over-time chart.
+  sl_value      REAL,
+  sl_cost       REAL,
   created_at    TEXT DEFAULT (datetime('now'))
 );
 

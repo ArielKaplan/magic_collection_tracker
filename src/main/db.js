@@ -32,6 +32,26 @@ function init(dbPath) {
   try { db.exec('ALTER TABLE sealed ADD COLUMN drop_name TEXT'); }
   catch (e) { /* column already exists */ }
 
+  // Disposition / realized-gains columns (v0.20.0). Sold cards/products stay in
+  // their table (status='sold') to power realized P&L; ALTER throws "duplicate
+  // column" once migrated — that's expected.
+  for (const stmt of [
+    "ALTER TABLE cards ADD COLUMN status TEXT NOT NULL DEFAULT 'owned'",
+    'ALTER TABLE cards ADD COLUMN disposed_at TEXT',
+    'ALTER TABLE cards ADD COLUMN sale_price REAL',
+    'ALTER TABLE cards ADD COLUMN sale_fees REAL DEFAULT 0',
+    'ALTER TABLE cards ADD COLUMN sale_note TEXT',
+    'ALTER TABLE sealed ADD COLUMN disposed_at TEXT',
+    'ALTER TABLE sealed ADD COLUMN sale_price REAL',
+    'ALTER TABLE sealed ADD COLUMN sale_fees REAL DEFAULT 0',
+    'ALTER TABLE sealed ADD COLUMN sale_note TEXT',
+    // Secret Lair Index slice of each portfolio snapshot (v0.21.0).
+    'ALTER TABLE portfolio_snapshots ADD COLUMN sl_value REAL',
+    'ALTER TABLE portfolio_snapshots ADD COLUMN sl_cost REAL',
+  ]) {
+    try { db.exec(stmt); } catch (e) { /* column already exists */ }
+  }
+
   // Migrate price_history to include source column + updated PK if needed
   const phCols = db.prepare('PRAGMA table_info(price_history)').all().map(c => c.name);
   if (!phCols.includes('source')) {
@@ -59,7 +79,8 @@ function init(dbPath) {
 const cardCols = [
   'id','scryfall_id','manabox_id','name','set_code','set_name','collector_number',
   'foil','rarity','quantity','binder_name','binder_type','purchase_price',
-  'purchase_price_currency','condition','language','misprint','altered'
+  'purchase_price_currency','condition','language','misprint','altered',
+  'status','disposed_at','sale_price','sale_fees','sale_note'
 ];
 const insertCardStmt = () => db.prepare(`
   INSERT INTO cards (${cardCols.join(',')})
@@ -71,7 +92,9 @@ const insertCardStmt = () => db.prepare(`
     binder_name=excluded.binder_name, purchase_price=excluded.purchase_price,
     condition=excluded.condition, language=excluded.language,
     misprint=excluded.misprint, altered=excluded.altered,
-    updated_at=datetime('now')
+    status=excluded.status, disposed_at=excluded.disposed_at,
+    sale_price=excluded.sale_price, sale_fees=excluded.sale_fees,
+    sale_note=excluded.sale_note, updated_at=datetime('now')
 `);
 
 function listCards() {
@@ -101,6 +124,11 @@ function bulkUpsertCards(cards) {
         language:                 c.language || 'en',
         misprint:                 c.misprint ? 1 : 0,
         altered:                  c.altered ? 1 : 0,
+        status:                   c.status === 'sold' ? 'sold' : 'owned',
+        disposed_at:              c.disposedAt || null,
+        sale_price:               c.salePrice ?? null,
+        sale_fees:                c.saleFees ?? 0,
+        sale_note:                c.saleNote || null,
       });
     }
   });
@@ -124,23 +152,28 @@ function listSealed() {
     priceHistory: r.price_history ? JSON.parse(r.price_history) : [],
   }));
 }
+const sealedCols = ['id','name','product_type','set_code','set_name','quantity','purchase_price','current_value','status','notes','drop_name','disposed_at','sale_price','sale_fees','sale_note','price_history'];
+const sealedRow = (item) => ({
+  id: item.id, name: item.name, product_type: item.productType || null,
+  set_code: item.setCode || null, set_name: item.setName || null,
+  quantity: item.quantity || 1, purchase_price: item.purchasePrice ?? 0,
+  current_value: item.currentValue ?? null, status: item.status || 'sealed',
+  notes: item.notes || null, drop_name: item.dropName || null,
+  disposed_at: item.disposedAt || null, sale_price: item.salePrice ?? null,
+  sale_fees: item.saleFees ?? 0, sale_note: item.saleNote || null,
+  price_history: item.priceHistory?.length ? JSON.stringify(item.priceHistory) : null,
+});
 function upsertSealed(item) {
-  const cols = ['id','name','product_type','set_code','set_name','quantity','purchase_price','current_value','status','notes','drop_name','price_history'];
-  db.prepare(`INSERT INTO sealed (${cols.join(',')})
-    VALUES (${cols.map(c => '@' + c).join(',')})
+  db.prepare(`INSERT INTO sealed (${sealedCols.join(',')})
+    VALUES (${sealedCols.map(c => '@' + c).join(',')})
     ON CONFLICT(id) DO UPDATE SET
       name=excluded.name, product_type=excluded.product_type, set_code=excluded.set_code,
       set_name=excluded.set_name, quantity=excluded.quantity,
       purchase_price=excluded.purchase_price, current_value=excluded.current_value,
       status=excluded.status, notes=excluded.notes, drop_name=excluded.drop_name,
-      price_history=excluded.price_history, updated_at=datetime('now')`).run({
-    id: item.id, name: item.name, product_type: item.productType || null,
-    set_code: item.setCode || null, set_name: item.setName || null,
-    quantity: item.quantity || 1, purchase_price: item.purchasePrice ?? 0,
-    current_value: item.currentValue ?? null, status: item.status || 'sealed',
-    notes: item.notes || null, drop_name: item.dropName || null,
-    price_history: item.priceHistory?.length ? JSON.stringify(item.priceHistory) : null,
-  });
+      disposed_at=excluded.disposed_at, sale_price=excluded.sale_price,
+      sale_fees=excluded.sale_fees, sale_note=excluded.sale_note,
+      price_history=excluded.price_history, updated_at=datetime('now')`).run(sealedRow(item));
 }
 function deleteSealed(id) { return db.prepare('DELETE FROM sealed WHERE id=?').run(id).changes; }
 
@@ -148,18 +181,10 @@ function deleteSealed(id) { return db.prepare('DELETE FROM sealed WHERE id=?').r
 // of truth, so a removed product can never linger (mirrors replaceFailedLookups).
 // Sealed is small and bounded, so rewriting it on each save is cheap.
 function replaceSealed(items) {
-  const cols = ['id','name','product_type','set_code','set_name','quantity','purchase_price','current_value','status','notes','drop_name','price_history'];
   const tx = db.transaction(() => {
     db.prepare('DELETE FROM sealed').run();
-    const stmt = db.prepare(`INSERT INTO sealed (${cols.join(',')}) VALUES (${cols.map(c => '@' + c).join(',')})`);
-    for (const item of items) stmt.run({
-      id: item.id, name: item.name, product_type: item.productType || null,
-      set_code: item.setCode || null, set_name: item.setName || null,
-      quantity: item.quantity || 1, purchase_price: item.purchasePrice ?? 0,
-      current_value: item.currentValue ?? null, status: item.status || 'sealed',
-      notes: item.notes || null, drop_name: item.dropName || null,
-      price_history: item.priceHistory?.length ? JSON.stringify(item.priceHistory) : null,
-    });
+    const stmt = db.prepare(`INSERT INTO sealed (${sealedCols.join(',')}) VALUES (${sealedCols.map(c => '@' + c).join(',')})`);
+    for (const item of items) stmt.run(sealedRow(item));
   });
   tx();
 }
@@ -320,11 +345,12 @@ function getAllPriceHistory() {
 // ones (UPSERT on date) so a chart never shows multiple points for one day.
 function recordPortfolioSnapshot(snap) {
   db.prepare(`
-    INSERT INTO portfolio_snapshots (date, cards_value, sealed_value, cost_basis, card_count, created_at)
-    VALUES (@date, @cards_value, @sealed_value, @cost_basis, @card_count, datetime('now'))
+    INSERT INTO portfolio_snapshots (date, cards_value, sealed_value, cost_basis, card_count, sl_value, sl_cost, created_at)
+    VALUES (@date, @cards_value, @sealed_value, @cost_basis, @card_count, @sl_value, @sl_cost, datetime('now'))
     ON CONFLICT(date) DO UPDATE SET
       cards_value=excluded.cards_value, sealed_value=excluded.sealed_value,
       cost_basis=excluded.cost_basis, card_count=excluded.card_count,
+      sl_value=excluded.sl_value, sl_cost=excluded.sl_cost,
       created_at=datetime('now')
   `).run({
     date:         snap.date,
@@ -332,12 +358,14 @@ function recordPortfolioSnapshot(snap) {
     sealed_value: snap.sealedValue ?? null,
     cost_basis:   snap.costBasis   ?? null,
     card_count:   snap.cardCount   ?? null,
+    sl_value:     snap.slValue     ?? null,
+    sl_cost:      snap.slCost      ?? null,
   });
 }
 
 function getPortfolioSnapshots() {
   return db.prepare(`
-    SELECT date, cards_value, sealed_value, cost_basis, card_count
+    SELECT date, cards_value, sealed_value, cost_basis, card_count, sl_value, sl_cost
     FROM portfolio_snapshots ORDER BY date ASC
   `).all().map(r => ({
     date:         r.date,
@@ -345,6 +373,8 @@ function getPortfolioSnapshots() {
     sealedValue:  r.sealed_value,
     costBasis:    r.cost_basis,
     cardCount:    r.card_count,
+    slValue:      r.sl_value,
+    slCost:       r.sl_cost,
   }));
 }
 

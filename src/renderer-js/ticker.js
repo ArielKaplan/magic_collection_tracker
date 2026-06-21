@@ -46,6 +46,7 @@ export function renderTickerTape() {
   }));
   if (items.length < 12) {
     const valuable = collection.cards
+      .filter(c => c.status !== 'sold')
       .filter(passes)
       .map(c => ({ c, v: cardCurrentValue(c) ?? 0 }))
       .filter(x => x.v > 0)

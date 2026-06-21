@@ -5,7 +5,7 @@
   $: $collectionVersion;
   $: cards = filterCards(window.collection?.cards || [], filter);
   $: binders = new Set(cards.map(c => c.binderName || '')).size;
-  $: sealed = (window.collection?.sealed || []).length;
+  $: sealed = (window.collection?.sealed || []).filter(i => i.status !== 'sold').length;
 </script>
 
 <div class="kpi">

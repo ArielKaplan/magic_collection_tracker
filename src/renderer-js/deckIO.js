@@ -146,6 +146,7 @@ export async function resolveDeckEntries(entries) {
   // Index the collection by name for owned-card linking
   const byName = new Map();
   for (const c of collection.cards) {
+    if (c.status === 'sold') continue;   // sold copies are no longer owned
     const n = c.name.toLowerCase();
     if (!byName.has(n)) byName.set(n, []);
     byName.get(n).push(c);

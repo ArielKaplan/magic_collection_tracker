@@ -14,9 +14,10 @@ export function updateStatusBar() {
   const issuesEl    = document.getElementById('sb-issues');
   if (!cardCountEl) return; // status bar not in DOM (shouldn't happen)
 
-  const totalCards   = collection.cards.reduce((s, c) => s + (c.quantity || 1), 0);
+  const owned        = collection.cards.filter(c => c.status !== 'sold');
+  const totalCards   = owned.reduce((s, c) => s + (c.quantity || 1), 0);
   const totalValue   = (totalCardsValue() ?? 0) + (totalSealedValue() ?? 0);
-  cardCountEl.textContent = `${totalCards.toLocaleString()} cards · ${collection.cards.length.toLocaleString()} entries`;
+  cardCountEl.textContent = `${totalCards.toLocaleString()} cards · ${owned.length.toLocaleString()} entries`;
   valueEl.textContent     = fmt(totalValue);
 
   if (ui.refreshing) {

@@ -21,6 +21,9 @@ import CardCountByYear from './panels/CardCountByYear.svelte';
 import CardOfTheDay    from './panels/CardOfTheDay.svelte';
 import PortfolioHistory from './panels/PortfolioHistory.svelte';
 import KpiWantList     from './panels/KpiWantList.svelte';
+import KpiRealizedGains from './panels/KpiRealizedGains.svelte';
+import RealizedGains   from './panels/RealizedGains.svelte';
+import SecretLairIndex from './panels/SecretLairIndex.svelte';
 
 export const PANELS = [
   // KPIs (compact summary widgets)
@@ -36,12 +39,18 @@ export const PANELS = [
     description: 'Number of distinct binders (named collections or storage locations) in your collection.' },
   { id: 'kpi-want',    title: 'Want List',          icon: '★', component: KpiWantList,     defaultSize: { w: 220, h: 120 }, filterable: false,
     description: 'Cards on your want list, the total current price to acquire them all, and how many have dropped to or below your target price. Add cards by right-clicking missing cards (or incomplete drops) in the Secret Lair Explorer.' },
+  { id: 'kpi-realized', title: 'Realized Gains',     icon: '💵', component: KpiRealizedGains, defaultSize: { w: 220, h: 120 }, filterable: false,
+    description: 'Net profit/loss you have actually locked in by selling cards or sealed products — total proceeds minus fees minus what those items cost you. Record a sale by right-clicking a card or sealed product → "Sell / dispose".' },
   { id: 'kpi-refresh', title: 'Last Refresh',       icon: '🔄', component: KpiLastRefresh,  defaultSize: { w: 220, h: 120 }, filterable: false,
     description: 'When prices were last fetched from Scryfall (low prices) and TCGCSV (market prices). Prices auto-refresh once per day on first open.' },
 
   // Content panels
   { id: 'portfolio-history', title: 'Value Over Time', icon: '📈', component: PortfolioHistory, defaultSize: { w: 720, h: 300 }, filterable: false,
     description: 'Your collection\'s market value over time — total, cards, and sealed, against your cost basis (dashed). One snapshot is recorded per day each time prices refresh (prices auto-refresh once daily on first open), so the line builds up going forward.' },
+  { id: 'realized-gains', title: 'Realized Gains by Year', icon: '🧾', component: RealizedGains, defaultSize: { w: 360, h: 300 }, filterable: false,
+    description: 'Net realized profit/loss broken down by the year you sold each card or sealed product (proceeds − fees − cost). Builds up as you record sales via right-click → "Sell / dispose".' },
+  { id: 'sl-index',    title: 'Secret Lair Index',   icon: '📈', component: SecretLairIndex, defaultSize: { w: 720, h: 300 }, filterable: false,
+    description: 'Your Secret Lair holdings as an asset class: total return (unrealized + realized) on what you paid, plotted over time — SL market value vs. the MSRP you paid. One point accrues per day prices refresh. Full breakdown lives in the Secret Lair Explorer → 📈 Index.' },
   { id: 'cotd',        title: 'Card of the Day',    icon: '🎴', component: CardOfTheDay,    defaultSize: { w: 280, h: 380 }, filterable: false,
     description: 'A randomly highlighted card from your collection, chosen fresh each day. Click the reroll button to pick a different card.' },
   { id: 'top-movers',  title: 'Top Movers',         icon: '📈', component: TopMovers,       defaultSize: { w: 460, h: 320 },
@@ -84,7 +93,7 @@ export function defaultLayout(canvasW = 1480) {
   // KPIs row(s)
   let x = 12, y = 12;
   let rowMax = 0;
-  for (const id of ['kpi-total', 'kpi-cards', 'kpi-sealed', 'kpi-cost', 'kpi-binders', 'kpi-want', 'kpi-refresh']) {
+  for (const id of ['kpi-total', 'kpi-cards', 'kpi-sealed', 'kpi-cost', 'kpi-realized', 'kpi-binders', 'kpi-want', 'kpi-refresh']) {
     const def = panelDef(id);
     if (x + def.defaultSize.w > canvasW) { x = 12; y += rowMax + gap; rowMax = 0; }
     out.push({ id, x, y, width: def.defaultSize.w, height: def.defaultSize.h, collapsed: false, visible: true, zIndex: out.length + 1 });
@@ -96,6 +105,8 @@ export function defaultLayout(canvasW = 1480) {
   x = 12; y += rowMax + gap; rowMax = 0;
   const contentIds = [
     'portfolio-history',              // wide — headline value-over-time chart
+    'sl-index',                       // wide — Secret Lair as an asset class
+    'realized-gains',
     'cotd', 'top-movers', 'val-binder',
     'top10', 'val-color', 'val-type',
     'val-rarity', 'stats',
