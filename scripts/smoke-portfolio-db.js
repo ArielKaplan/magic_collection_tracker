@@ -18,13 +18,15 @@ const check = (label, cond, detail) => {
 };
 
 // record + list round-trip, returned ascending by date
-db.recordPortfolioSnapshot({ date: '2026-06-20', cardsValue: 100, sealedValue: 40, costBasis: 90, cardCount: 12 });
+db.recordPortfolioSnapshot({ date: '2026-06-20', cardsValue: 100, sealedValue: 40, costBasis: 90, cardCount: 12, slValue: 60, slCost: 45 });
 db.recordPortfolioSnapshot({ date: '2026-06-18', cardsValue: 80,  sealedValue: 30, costBasis: 90, cardCount: 12 });
 let list = db.getPortfolioSnapshots();
 check('two snapshots listed', list.length === 2, list.map(s => s.date));
 check('sorted ascending by date', list[0].date === '2026-06-18' && list[1].date === '2026-06-20', list.map(s => s.date));
 check('fields round-trip (camelCase)',
   list[1].cardsValue === 100 && list[1].sealedValue === 40 && list[1].costBasis === 90 && list[1].cardCount === 12, list[1]);
+check('SL slice round-trips', list[1].slValue === 60 && list[1].slCost === 45, list[1]);
+check('missing SL slice stored as null', list[0].slValue === null && list[0].slCost === null, list[0]);
 
 // daily UPSERT — re-recording the same date overwrites (last refresh wins), no dupe row
 db.recordPortfolioSnapshot({ date: '2026-06-20', cardsValue: 125, sealedValue: 45, costBasis: 90, cardCount: 13 });

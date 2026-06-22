@@ -22,7 +22,7 @@ export let ui = {
     view: 'table',   // 'table' | 'gallery' — the Gallery view lives here now
     binder: { include: [], exclude: [] },
     search: '', foil: 'all', rarity: 'all',
-    condition: 'all', language: 'all',
+    condition: 'all', language: 'all', status: 'owned',  // owned | sold | all
     sortField: 'name', sortDir: 'asc',
     page: 1, perPage: 50,
     columns: {

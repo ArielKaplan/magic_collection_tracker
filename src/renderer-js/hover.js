@@ -4,7 +4,7 @@ import { CONDITION_FULL, FOIL_LABEL } from './constants.js';
 import { showDeckExportModal, showDeckImportModal } from './deckIO.js';
 import { deckById, deckFormat, deckOwnedMaps, deleteDeck, renderDeckTile, showDeckAddCardModal, showNewDeckModal } from './decks.js';
 import { showGalleryModal } from './gallery.js';
-import { promptText } from './modals.js';
+import { promptText, showSellSealedModal, undoSealedSale } from './modals.js';
 import { openAddProductFlow } from './productPicker.js';
 import { render } from './render.js';
 import { showAddSealedModal, showUpdatePriceModal } from './sealedModals.js';
@@ -382,7 +382,7 @@ export function attachContentListeners() {
   const csClear = document.getElementById('cardSearchClear');
   if (csClear) csClear.addEventListener('click', () => { ui.cards.search = ''; ui.cards.page = 1; render(); });
 
-  [['foilFilter', 'foil'], ['rarityFilter', 'rarity'], ['conditionFilter', 'condition'], ['langFilter', 'language']].forEach(([id, key]) => {
+  [['statusFilter', 'status'], ['foilFilter', 'foil'], ['rarityFilter', 'rarity'], ['conditionFilter', 'condition'], ['langFilter', 'language']].forEach(([id, key]) => {
     const el = document.getElementById(id);
     if (el) el.addEventListener('change', e => { ui.cards[key] = e.target.value; ui.cards.page = 1; render(); });
   });
@@ -482,6 +482,14 @@ export function attachContentListeners() {
       else if (action === 'toggle-cards') {
         const el = document.getElementById(`sc-${id}`);
         if (el) el.classList.toggle('open');
+      }
+      else if (action === 'sell-sealed') {
+        const item = collection.sealed.find(i => i.id === id);
+        if (item) showSellSealedModal(item);
+      }
+      else if (action === 'undo-sale') {
+        const item = collection.sealed.find(i => i.id === id);
+        if (item) undoSealedSale(item);
       }
       else if (action === 'delete-sealed') {
         if (confirm('Delete this product from your collection?')) {

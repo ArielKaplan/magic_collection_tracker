@@ -33,7 +33,7 @@ export function wantListCurrentPrice(item) {
 // Is this wanted card already owned? (so the list can flag "acquired".)
 function isOwned(scryfallId) {
   const id = (scryfallId || '').toLowerCase();
-  return !!id && collection.cards.some(c => (c.scryfallId || '').toLowerCase() === id);
+  return !!id && collection.cards.some(c => c.status !== 'sold' && (c.scryfallId || '').toLowerCase() === id);
 }
 
 // ── Mutations ────────────────────────────────────────────────────────────────
@@ -98,7 +98,7 @@ export function toggleSlCardWant(scryfallId) {
 // "Add all missing to want list" for a drop — the incomplete-drop shopping list.
 export function addDropMissingToWantList(drop) {
   const ids = (typeof SL_DROP_TO_SCRYFALL_IDS !== 'undefined' && SL_DROP_TO_SCRYFALL_IDS[drop]) || [];
-  const ownedIds = new Set(collection.cards.map(c => (c.scryfallId || '').toLowerCase()).filter(Boolean));
+  const ownedIds = new Set(collection.cards.filter(c => c.status !== 'sold').map(c => (c.scryfallId || '').toLowerCase()).filter(Boolean));
   let added = 0;
   for (const id of ids) {
     const lid = (id || '').toLowerCase();

@@ -1,14 +1,17 @@
 import { showEditScryfallModal } from './cardsTab.js';
 import { addOwnedCardToDeck, ctxDeckSubmenu, deckById, showDeckCardContextMenu, showDeckTileContextMenu } from './decks.js';
+import { entryRealized } from './analytics.js';
+import { FOIL_LABEL } from './constants.js';
 import { showGalleryModal } from './gallery.js';
 import { hideCardHoverPreview } from './hover.js';
+import { getCurrentPrice } from './prices.js';
 import { showProductPicker } from './productPicker.js';
 import { render } from './render.js';
 import { showAddSealedModal, showUpdatePriceModal } from './sealedModals.js';
 import { showSlViewerModal } from './slTab.js';
 import { collection, ui } from './state.js';
 import { autoSave } from './storage.js';
-import { esc, toast, uid } from './utils.js';
+import { esc, fmt, toast, today, uid } from './utils.js';
 import { addDropMissingToWantList, isCardWanted, toggleSlCardWant, wantItemByScryfall } from './wantlist.js';
 
 
@@ -166,11 +169,186 @@ export function changeCardQty(card, delta) {
 
 export async function deleteCardEntry(card) {
   const qty = card.quantity || 1;
-  if (!confirm(`Delete “${card.name}” (${qty} cop${qty !== 1 ? 'ies' : 'y'}) from your collection?`)) return;
+  if (!confirm(`Delete “${card.name}” (${qty} cop${qty !== 1 ? 'ies' : 'y'}) from your collection?\n\nUse this only to fix a mistake — to record a sale, use “Sell / dispose” instead so it counts toward realized gains.`)) return;
   collection.cards = collection.cards.filter(c => c.id !== card.id);
   try { await window.api.cards.remove(card.id); } catch {}
   render(); autoSave();
   toast(`${card.name} removed`, 'info');
+}
+
+// ── Sell / dispose — records a realized sale instead of hard-deleting ─────────
+// Selling part of an entry splits it: the remaining copies stay owned, the sold
+// copies become a separate status='sold' entry that carries the sale details.
+export function showSellCardModal(card) {
+  const maxQty   = card.quantity || 1;
+  const unit     = getCurrentPrice(card.scryfallId, card.foil);            // current market, per copy
+  const suggested = unit != null ? (unit * maxQty).toFixed(2) : '';
+  showModal(`
+    <h2>💵 Sell / dispose</h2>
+    <div style="margin-bottom:16px">
+      <div style="font-size:15px;font-weight:700;margin-bottom:4px">${esc(card.name)}</div>
+      <div style="font-size:12px;color:var(--text-dim)">${esc(card.setName)} · ${esc(card.setCode)} #${esc(card.collectorNumber)} · ${FOIL_LABEL[card.foil] || card.foil} · ${esc(card.binderName)}</div>
+      <div style="font-size:12px;color:var(--text-muted);margin-top:4px">Cost basis ${fmt((card.purchasePrice || 0) * maxQty)}${unit != null ? ` · current market ${fmt(unit * maxQty)}` : ''}</div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div class="form-group" style="margin:0">
+        <label>Copies sold</label>
+        <input type="number" id="sell-qty" min="1" max="${maxQty}" step="1" value="${maxQty}" ${maxQty === 1 ? 'disabled' : ''}>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:4px">of ${maxQty} owned</div>
+      </div>
+      <div class="form-group" style="margin:0">
+        <label>Total proceeds ($)</label>
+        <input type="number" id="sell-price" min="0" step="0.01" value="${suggested}" placeholder="0.00">
+      </div>
+      <div class="form-group" style="margin:0">
+        <label>Fees / shipping ($)</label>
+        <input type="number" id="sell-fees" min="0" step="0.01" value="0" placeholder="0.00">
+      </div>
+      <div class="form-group" style="margin:0">
+        <label>Date sold</label>
+        <input type="date" id="sell-date" value="${esc(today())}">
+      </div>
+    </div>
+    <div class="form-group" style="margin-top:12px">
+      <label>Note (optional)</label>
+      <input type="text" id="sell-note" placeholder="e.g. sold on TCGplayer, traded to a friend…">
+    </div>
+    <div id="sell-preview" style="font-size:13px;color:var(--text-muted);margin-top:12px;min-height:18px"></div>
+    <div style="display:flex;gap:10px;margin-top:18px">
+      <button class="btn btn-primary" id="sell-confirm">Record sale</button>
+      <button class="btn btn-ghost" id="sell-cancel">Cancel</button>
+    </div>
+  `);
+
+  const $ = id => document.getElementById(id);
+  const updatePreview = () => {
+    const qty   = Math.min(maxQty, Math.max(1, parseInt($('sell-qty').value, 10) || 1));
+    const price = parseFloat($('sell-price').value) || 0;
+    const fees  = parseFloat($('sell-fees').value)  || 0;
+    const cost  = (card.purchasePrice || 0) * qty;
+    const gain  = price - fees - cost;
+    const c     = gain >= 0 ? 'var(--green)' : '#f87171';
+    $('sell-preview').innerHTML = `Net realized on ${qty} cop${qty !== 1 ? 'ies' : 'y'}: <strong style="color:${c}">${gain >= 0 ? '+' : ''}${fmt(gain)}</strong> <span style="color:var(--text-dim)">(proceeds ${fmt(price)} − fees ${fmt(fees)} − cost ${fmt(cost)})</span>`;
+  };
+  ['sell-qty', 'sell-price', 'sell-fees'].forEach(id => $(id)?.addEventListener('input', updatePreview));
+  updatePreview();
+
+  $('sell-confirm').addEventListener('click', () => {
+    const qty   = Math.min(maxQty, Math.max(1, parseInt($('sell-qty').value, 10) || 1));
+    const price = parseFloat($('sell-price').value);
+    if (isNaN(price) || price < 0) { toast('Enter the total proceeds (0 or more)', 'error'); return; }
+    const fees  = Math.max(0, parseFloat($('sell-fees').value) || 0);
+    const date  = $('sell-date').value || today();
+    const note  = $('sell-note').value.trim();
+    const sale  = { status: 'sold', disposedAt: date, salePrice: price, saleFees: fees, saleNote: note };
+
+    if (qty >= maxQty) {
+      Object.assign(card, sale);                       // whole entry sold
+    } else {
+      card.quantity -= qty;                            // remaining copies stay owned
+      collection.cards.push({ ...card, id: uid(), quantity: qty, ...sale });
+    }
+    const { gain } = entryRealized({ ...sale, purchasePrice: card.purchasePrice, quantity: qty });
+    hideModal(); render(); autoSave();
+    toast(`Sold ${qty} × ${card.name} — net ${gain >= 0 ? '+' : ''}${fmt(gain)} realized`, 'success');
+    window.logger?.success?.('Sold', `${qty} × ${card.name} for ${fmt(price)} (net ${gain >= 0 ? '+' : ''}${fmt(gain)})`);
+  });
+  $('sell-cancel').addEventListener('click', hideModal);
+  $('sell-price').focus();
+  $('sell-price').select();
+}
+
+export function undoCardSale(card) {
+  Object.assign(card, { status: 'owned', disposedAt: '', salePrice: null, saleFees: 0, saleNote: '' });
+  render(); autoSave();
+  toast(`${card.name} restored to your collection`, 'info');
+}
+
+// ── Sell / dispose a sealed product (mirrors showSellCardModal) ───────────────
+export function showSellSealedModal(item) {
+  const maxQty = item.quantity || 1;
+  const hist   = item.priceHistory || [];
+  const unit   = hist.length ? hist[hist.length - 1].price : null;
+  const suggested = unit != null ? (unit * maxQty).toFixed(2) : '';
+  showModal(`
+    <h2>💵 Sell / dispose</h2>
+    <div style="margin-bottom:16px">
+      <div style="font-size:15px;font-weight:700;margin-bottom:4px">${esc(item.name)}</div>
+      <div style="font-size:12px;color:var(--text-dim)">${esc(item.productType || 'Sealed')}${item.dropName ? ` · ${esc(item.dropName)}` : ''}</div>
+      <div style="font-size:12px;color:var(--text-muted);margin-top:4px">Cost basis ${fmt((item.purchasePrice || 0) * maxQty)}${unit != null ? ` · current market ${fmt(unit * maxQty)}` : ''}</div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div class="form-group" style="margin:0">
+        <label>Units sold</label>
+        <input type="number" id="sell-qty" min="1" max="${maxQty}" step="1" value="${maxQty}" ${maxQty === 1 ? 'disabled' : ''}>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:4px">of ${maxQty} owned</div>
+      </div>
+      <div class="form-group" style="margin:0">
+        <label>Total proceeds ($)</label>
+        <input type="number" id="sell-price" min="0" step="0.01" value="${suggested}" placeholder="0.00">
+      </div>
+      <div class="form-group" style="margin:0">
+        <label>Fees / shipping ($)</label>
+        <input type="number" id="sell-fees" min="0" step="0.01" value="0" placeholder="0.00">
+      </div>
+      <div class="form-group" style="margin:0">
+        <label>Date sold</label>
+        <input type="date" id="sell-date" value="${esc(today())}">
+      </div>
+    </div>
+    <div class="form-group" style="margin-top:12px">
+      <label>Note (optional)</label>
+      <input type="text" id="sell-note" placeholder="e.g. sold sealed on eBay…">
+    </div>
+    <div id="sell-preview" style="font-size:13px;color:var(--text-muted);margin-top:12px;min-height:18px"></div>
+    <div style="display:flex;gap:10px;margin-top:18px">
+      <button class="btn btn-primary" id="sell-confirm">Record sale</button>
+      <button class="btn btn-ghost" id="sell-cancel">Cancel</button>
+    </div>
+  `);
+
+  const $ = id => document.getElementById(id);
+  const updatePreview = () => {
+    const qty   = Math.min(maxQty, Math.max(1, parseInt($('sell-qty').value, 10) || 1));
+    const price = parseFloat($('sell-price').value) || 0;
+    const fees  = parseFloat($('sell-fees').value)  || 0;
+    const cost  = (item.purchasePrice || 0) * qty;
+    const gain  = price - fees - cost;
+    const c     = gain >= 0 ? 'var(--green)' : '#f87171';
+    $('sell-preview').innerHTML = `Net realized on ${qty} unit${qty !== 1 ? 's' : ''}: <strong style="color:${c}">${gain >= 0 ? '+' : ''}${fmt(gain)}</strong> <span style="color:var(--text-dim)">(proceeds ${fmt(price)} − fees ${fmt(fees)} − cost ${fmt(cost)})</span>`;
+  };
+  ['sell-qty', 'sell-price', 'sell-fees'].forEach(id => $(id)?.addEventListener('input', updatePreview));
+  updatePreview();
+
+  $('sell-confirm').addEventListener('click', () => {
+    const qty   = Math.min(maxQty, Math.max(1, parseInt($('sell-qty').value, 10) || 1));
+    const price = parseFloat($('sell-price').value);
+    if (isNaN(price) || price < 0) { toast('Enter the total proceeds (0 or more)', 'error'); return; }
+    const fees  = Math.max(0, parseFloat($('sell-fees').value) || 0);
+    const date  = $('sell-date').value || today();
+    const note  = $('sell-note').value.trim();
+    const sale  = { status: 'sold', disposedAt: date, salePrice: price, saleFees: fees, saleNote: note };
+
+    if (qty >= maxQty) {
+      Object.assign(item, sale);
+    } else {
+      item.quantity -= qty;
+      collection.sealed.push({ ...item, id: uid(), quantity: qty, ...sale });
+    }
+    const gain = price - fees - (item.purchasePrice || 0) * qty;
+    hideModal(); render(); autoSave();
+    toast(`Sold ${qty} × ${item.name} — net ${gain >= 0 ? '+' : ''}${fmt(gain)} realized`, 'success');
+    window.logger?.success?.('Sold', `${qty} × ${item.name} (sealed) for ${fmt(price)} (net ${gain >= 0 ? '+' : ''}${fmt(gain)})`);
+  });
+  $('sell-cancel').addEventListener('click', hideModal);
+  $('sell-price').focus();
+  $('sell-price').select();
+}
+
+export function undoSealedSale(item) {
+  Object.assign(item, { status: 'sealed', disposedAt: '', salePrice: null, saleFees: 0, saleNote: '' });
+  render(); autoSave();
+  toast(`${item.name} restored to your sealed collection`, 'info');
 }
 
 export function openCardOnScryfall(card) {
@@ -189,6 +367,20 @@ export function copyToClipboard(text, what = 'Copied') {
 
 export function showCardContextMenu(x, y, card) {
   const qty = card.quantity || 1;
+  // Sold entries get a slimmed menu — they're a realized-gains record, not a live card.
+  if (card.status === 'sold') {
+    showContextMenu(x, y, [
+      { header: `${card.name} — sold` },
+      { icon: '👁', label: 'View details', action: () => showGalleryModal(card.id) },
+      { icon: '↩', label: 'Undo sale (back to collection)', action: () => undoCardSale(card) },
+      '---',
+      { icon: '🌐', label: 'View on Scryfall', action: () => openCardOnScryfall(card) },
+      { icon: '📋', label: 'Copy name', action: () => copyToClipboard(card.name, 'Name') },
+      '---',
+      { icon: '🗑', label: 'Delete record', danger: true, action: () => deleteCardEntry(card) },
+    ]);
+    return;
+  }
   showContextMenu(x, y, [
     { header: card.name },
     { icon: '👁', label: 'View details', action: () => showGalleryModal(card.id) },
@@ -202,10 +394,11 @@ export function showCardContextMenu(x, y, card) {
     { icon: '－', label: 'Remove a copy', disabled: qty <= 1, action: () => changeCardQty(card, -1) },
     { icon: '✎', label: 'Edit Scryfall ID', action: () => showEditScryfallModal(card.id) },
     '---',
+    { icon: '💵', label: qty > 1 ? `Sell / dispose (${qty} copies)…` : 'Sell / dispose…', action: () => showSellCardModal(card) },
     { icon: '🌐', label: 'View on Scryfall', action: () => openCardOnScryfall(card) },
     { icon: '📋', label: 'Copy name', action: () => copyToClipboard(card.name, 'Name') },
     '---',
-    { icon: '🗑', label: qty > 1 ? `Delete entry (${qty} copies)` : 'Delete entry', danger: true, action: () => deleteCardEntry(card) },
+    { icon: '🗑', label: 'Delete entry (mistake)', danger: true, action: () => deleteCardEntry(card) },
   ]);
 }
 
@@ -243,7 +436,7 @@ export function addSlCardToCollection(scryfallId, binder, opts = {}) {
 }
 
 export function showSlCardContextMenu(x, y, scryfallId) {
-  const owned = collection.cards.filter(c => c.scryfallId === scryfallId);
+  const owned = collection.cards.filter(c => c.scryfallId === scryfallId && c.status !== 'sold');
   if (owned.length) {
     // Owned printing — full card menu (acts on the first matching entry)
     showCardContextMenu(x, y, owned[0]);
@@ -283,7 +476,7 @@ export function addDropToSealed(drop) {
 
 export function showSlDropContextMenu(x, y, drop) {
   const ids = (typeof SL_DROP_TO_SCRYFALL_IDS !== 'undefined' && SL_DROP_TO_SCRYFALL_IDS[drop]) || [];
-  const ownedIds = new Set(collection.cards.map(c => c.scryfallId).filter(Boolean));
+  const ownedIds = new Set(collection.cards.filter(c => c.status !== 'sold').map(c => c.scryfallId).filter(Boolean));
   const missing = ids.filter(id => !ownedIds.has(id));
   showContextMenu(x, y, [
     { header: drop },
@@ -316,6 +509,24 @@ export function showSuperdropContextMenu(x, y, superdrop) {
 
 // ── Sealed product actions ───────────────────────────────────────────────────
 export function showSealedContextMenu(x, y, item) {
+  // Sold product — realized record, slimmed menu.
+  if (item.status === 'sold') {
+    showContextMenu(x, y, [
+      { header: `${item.name} — sold` },
+      { icon: '↩', label: 'Undo sale (back to collection)', action: () => undoSealedSale(item) },
+      '---',
+      { icon: '📋', label: 'Copy name', action: () => copyToClipboard(item.name, 'Name') },
+      '---',
+      { icon: '🗑', label: 'Delete record', danger: true, action: async () => {
+          if (!confirm(`Delete the sold record for “${item.name}”?`)) return;
+          collection.sealed = collection.sealed.filter(i => i.id !== item.id);
+          try { await window.api.sealed.remove(item.id); } catch {}
+          render(); autoSave();
+          toast('Record removed', 'info');
+        } },
+    ]);
+    return;
+  }
   const sealed = item.status === 'sealed';
   showContextMenu(x, y, [
     { header: item.name },
@@ -328,10 +539,11 @@ export function showSealedContextMenu(x, y, item) {
     { icon: '－', label: 'Remove one', disabled: (item.quantity || 1) <= 1,
       action: () => { item.quantity = Math.max(1, (item.quantity || 1) - 1); render(); autoSave(); toast(`${item.name}: ×${item.quantity}`, 'success'); } },
     '---',
+    { icon: '💵', label: 'Sell / dispose…', action: () => showSellSealedModal(item) },
     { icon: '📋', label: 'Copy name', action: () => copyToClipboard(item.name, 'Name') },
     '---',
-    { icon: '🗑', label: 'Delete product', danger: true, action: async () => {
-        if (!confirm(`Delete “${item.name}” from your sealed collection?`)) return;
+    { icon: '🗑', label: 'Delete product (mistake)', danger: true, action: async () => {
+        if (!confirm(`Delete “${item.name}” from your sealed collection?\n\nUse this only to fix a mistake — to record a sale, use “Sell / dispose”.`)) return;
         collection.sealed = collection.sealed.filter(i => i.id !== item.id);
         try { await window.api.sealed.remove(item.id); } catch {}
         render(); autoSave();

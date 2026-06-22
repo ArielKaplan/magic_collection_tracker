@@ -10,7 +10,7 @@
   }, 0);
   $: tot = cardsValue + (window.app?.totalSealedValue() ?? 0);
   $: cost = cards.reduce((s, c) => s + (c.purchasePrice || 0) * (c.quantity || 1), 0)
-         +  (window.collection?.sealed || []).reduce((s, i) => s + (i.purchasePrice || 0) * (i.quantity || 1), 0);
+         +  (window.collection?.sealed || []).filter(i => i.status !== 'sold').reduce((s, i) => s + (i.purchasePrice || 0) * (i.quantity || 1), 0);
   $: gain = tot - cost;
   $: gainPct = cost > 0 ? (gain / cost) * 100 : null;
 </script>

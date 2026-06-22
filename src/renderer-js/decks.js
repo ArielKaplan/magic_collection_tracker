@@ -73,6 +73,7 @@ export function deckCopyExempt(dc) {
 export function deckOwnedMaps() {
   const bySid = new Map(), byName = new Map();
   for (const c of collection.cards) {
+    if (c.status === 'sold') continue;   // sold cards aren't owned for deck purposes
     if (c.scryfallId) bySid.set(c.scryfallId, (bySid.get(c.scryfallId) || 0) + c.quantity);
     const n = (c.name || '').toLowerCase();
     if (n) byName.set(n, (byName.get(n) || 0) + c.quantity);
@@ -622,6 +623,7 @@ export function showDeckAddCardModal(deckId) {
     // Aggregate owned matches by printing (scryfallId|foil)
     const seen = new Map();
     for (const c of collection.cards) {
+      if (c.status === 'sold') continue;
       if (!c.name.toLowerCase().includes(ql)) continue;
       const key = `${c.scryfallId}|${c.foil}`;
       const e = seen.get(key);
@@ -715,9 +717,9 @@ export function showDeckTileContextMenu(x, y, deck) {
 
 export function showDeckCardContextMenu(x, y, deck, dc) {
   const f = deckFormat(deck);
-  const ownedCard = (dc.cardId && collection.cards.find(c => c.id === dc.cardId))
-                 || (dc.scryfallId && collection.cards.find(c => c.scryfallId === dc.scryfallId))
-                 || collection.cards.find(c => c.name.toLowerCase() === dc.name.toLowerCase());
+  const ownedCard = (dc.cardId && collection.cards.find(c => c.id === dc.cardId && c.status !== 'sold'))
+                 || (dc.scryfallId && collection.cards.find(c => c.scryfallId === dc.scryfallId && c.status !== 'sold'))
+                 || collection.cards.find(c => c.status !== 'sold' && c.name.toLowerCase() === dc.name.toLowerCase());
   const saveAndRender = () => { render(); autoSave(); };
   const boardItems = ['main', 'side', 'maybe', ...(f.commanders ? ['commander'] : [])]
     .filter(b => b !== dc.board)

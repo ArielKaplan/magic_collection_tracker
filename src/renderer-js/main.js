@@ -26,7 +26,7 @@ import * as NS_settings from './settings.js';
 import * as NS_updaterUI from './updaterUI.js';
 import * as NS_hover from './hover.js';
 import * as NS_wantlist from './wantlist.js';
-import { analyzeByColor, analyzeByManaValue, analyzeByType, binderValueMap, cardCurrentValue, renderCardCountBySet, renderCardCountByYear, renderCardOfTheDay, renderColorPanel, renderManaValuePanel, renderRarityPanel, renderStatsPanel, renderTop10ValueCards, renderTypePanel, renderValueBySet, topMovers, totalCardsValue, totalSealedValue } from './analytics.js';
+import { analyzeByColor, analyzeByManaValue, analyzeByType, binderValueMap, cardCurrentValue, realizedGains, renderCardCountBySet, renderCardCountByYear, renderCardOfTheDay, renderColorPanel, renderManaValuePanel, renderRarityPanel, renderStatsPanel, renderTop10ValueCards, renderTypePanel, renderValueBySet, topMovers, totalCardsValue, totalSealedValue } from './analytics.js';
 import { FOIL_LABEL } from './constants.js';
 import { showDeckImportModal } from './deckIO.js';
 import { findCollectionCardById, hideCardHoverPreview, showCardHoverPreview } from './hover.js';
@@ -35,7 +35,7 @@ import { hideModal } from './modals.js';
 import { refreshPrices } from './prices.js';
 import { render } from './render.js';
 import { showSettings } from './settings.js';
-import { loadSlOverrides, refreshSlData } from './slTab.js';
+import { computeSlIndex, loadSlOverrides, refreshSlData } from './slTab.js';
 import { collection, ui } from './state.js';
 import { showAbout } from './statusbar.js';
 import { autoLoad, importCsvFile, loadCollectionFile, saveCollection } from './storage.js';
@@ -138,7 +138,7 @@ async function init() {
   window.app = {
     fmt, fmtPct, esc, FOIL_LABEL,
     cardCurrentValue, totalCardsValue, totalSealedValue,
-    binderValueMap, topMovers,
+    binderValueMap, topMovers, realizedGains, computeSlIndex,
     wantListSummary: NS_wantlist.wantListSummary,
     valueByColor: analyzeByColor,
     valueByType: analyzeByType,

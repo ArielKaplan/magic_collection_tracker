@@ -1,4 +1,4 @@
-import { cardCurrentValue } from './analytics.js';
+import { cardCurrentValue, entryRealized } from './analytics.js';
 import { CONDITION_FULL, CONDITION_SHORT, FOIL_LABEL, RARITY_ORDER } from './constants.js';
 import { showExportModal } from './exportModal.js';
 import { hideModal, showModal } from './modals.js';
@@ -24,7 +24,8 @@ export function renderCards() {
   const allBinders = [...new Set(collection.cards.map(c => c.binderName))].filter(Boolean).sort();
   const langs      = [...new Set(collection.cards.map(c => c.language))].sort();
   const filtered   = filteredCards();
-  const isGallery  = ui.cards.view === 'gallery';
+  const isSold     = ui.cards.status === 'sold';
+  const isGallery  = ui.cards.view === 'gallery' && !isSold;  // Sold view is always a ledger table
   // Gallery can only show printings that have a Scryfall image; the table shows all.
   const working    = isGallery ? filtered.filter(c => c.scryfallId) : filtered;
   const totalPages = Math.max(1, Math.ceil(working.length / ui.cards.perPage));
@@ -124,6 +125,31 @@ export function renderCards() {
           </table>
         </div>`;
 
+  // Sold ledger — realized P&L per disposed entry (proceeds − fees − cost).
+  const soldTableBody = `<div class="table-wrap">
+          <table>
+            <thead><tr>
+              ${th('name', 'Name')}<th>Set</th><th>Foil</th>
+              <th style="text-align:center">Qty</th><th style="text-align:right">Cost</th>
+              <th style="text-align:right">Proceeds</th><th style="text-align:right">Fees</th>
+              <th style="text-align:right">Net Gain</th><th style="text-align:right">%</th>
+              <th style="text-align:right">Sold</th><th>Note</th>
+            </tr></thead>
+            <tbody>
+              ${pageSlice.length
+                ? pageSlice.map(renderSoldRow).join('')
+                : '<tr><td colspan="11" style="text-align:center;color:var(--text-dim);padding:40px">No sold cards yet. Right-click a card → 💵 Sell / dispose to record a sale.</td></tr>'}
+            </tbody>
+          </table>
+        </div>`;
+
+  // Realized totals across the filtered sold set (whole entries, not just the page).
+  const realizedTot = filtered.reduce((a, c) => {
+    const r = entryRealized(c);
+    a.proceeds += r.proceeds; a.cost += r.cost; a.gain += r.gain; return a;
+  }, { proceeds: 0, cost: 0, gain: 0 });
+  const gainColor = realizedTot.gain >= 0 ? 'var(--green)' : '#f87171';
+
   return `
     <button class="binder-toggle-fab" id="binder-toggle-fab" title="Toggle Binders (B)">Binders</button>
     <div class="cards-layout">
@@ -131,8 +157,8 @@ export function renderCards() {
         <div class="binder-sidebar-title">Binders</div>
         ${[['all', 'All Binders'], ...allBinders.map(b => [b, b])].map(([val, label], i) => {
           const qty = val === 'all'
-            ? collection.cards.reduce((s, c) => s + c.quantity, 0)
-            : collection.cards.filter(c => c.binderName === val).reduce((s, c) => s + c.quantity, 0);
+            ? collection.cards.reduce((s, c) => s + (c.status !== 'sold' ? c.quantity : 0), 0)
+            : collection.cards.filter(c => c.status !== 'sold' && c.binderName === val).reduce((s, c) => s + c.quantity, 0);
           const dotColors = ['#c89b3c','#5b9cf6','#3dba6f','#9b7bfa','#f08030','#e05555','#f5c842','#60c8c8','#e87ca0','#7bc85b'];
           const dot = val === 'all' ? '#7a7692' : dotColors[(i - 1) % dotColors.length];
           const binderState = val === 'all'
@@ -153,7 +179,7 @@ export function renderCards() {
       <div>
         <div class="filter-bar">
           <div style="display:flex;gap:6px;align-items:center">
-            ${viewToggle}
+            ${isSold ? '' : viewToggle}
             <input type="text" id="cardSearch" placeholder="Search name, set, type, or oracle text… (Enter to search)" value="${esc(s.search)}" style="flex:1;min-width:200px">
             <button class="btn" id="cardSearchBtn" style="padding:7px 14px;font-size:13px">Search</button>
             ${s.search ? `<button class="btn btn-ghost" id="cardSearchClear" style="padding:7px 10px;font-size:13px" title="Clear search">✕</button>` : ''}
@@ -168,6 +194,11 @@ export function renderCards() {
             </div>`}
             <button class="btn" onclick="showExportModal('cards')" style="padding:7px 12px;font-size:12px;white-space:nowrap" title="Export cards to CSV, JSON, Markdown, or text">⤓ Export</button>
           </div>
+          <select id="statusFilter" title="Owned cards, cards you've sold, or both">
+            <option value="owned" ${s.status === 'owned' ? 'selected' : ''}>Owned</option>
+            <option value="sold" ${s.status === 'sold' ? 'selected' : ''}>Sold</option>
+            <option value="all" ${s.status === 'all' ? 'selected' : ''}>Owned + Sold</option>
+          </select>
           <select id="foilFilter">
             <option value="all" ${s.foil === 'all' ? 'selected' : ''}>All Foil Types</option>
             <option value="normal" ${s.foil === 'normal' ? 'selected' : ''}>Normal</option>
@@ -194,10 +225,12 @@ export function renderCards() {
         </div>
 
         <div class="results-info">
-          ${filtered.length.toLocaleString()} entries · ${filteredQty.toLocaleString()} copies · Value: <strong>${fmt(filteredValue)}</strong>${isGallery && working.length !== filtered.length ? ` · <span style="color:var(--text-dim)">${working.length.toLocaleString()} shown</span>` : ''}
+          ${isSold
+            ? `${filtered.length.toLocaleString()} sold ${filtered.length === 1 ? 'entry' : 'entries'} · ${filteredQty.toLocaleString()} copies · Proceeds: <strong>${fmt(realizedTot.proceeds)}</strong> · Net realized: <strong style="color:${gainColor}">${realizedTot.gain >= 0 ? '+' : ''}${fmt(realizedTot.gain)}</strong>`
+            : `${filtered.length.toLocaleString()} entries · ${filteredQty.toLocaleString()} copies · Value: <strong>${fmt(filteredValue)}</strong>${isGallery && working.length !== filtered.length ? ` · <span style="color:var(--text-dim)">${working.length.toLocaleString()} shown</span>` : ''}`}
         </div>
 
-        ${isGallery ? gallerySortBar + galleryBody : tableBody}
+        ${isGallery ? gallerySortBar + galleryBody : (isSold ? soldTableBody : tableBody)}
         ${renderPagination(page, totalPages, working.length)}
       </div>
     </div>`;
@@ -238,6 +271,29 @@ export function renderCardRow(card) {
     ${col('trend', `<td>${sparkline(hist)}</td>`)}
     ${col('flags', `<td>${flags}</td>`)}
     ${col('binderName', `<td style="color:var(--text-dim);font-size:11.5px">${esc(card.binderName || '—')}</td>`)}
+  </tr>`;
+}
+
+// A row in the Sold ledger. The entry carries data-card-id so the global
+// right-click dispatch still reaches it (→ "Undo sale" / delete).
+export function renderSoldRow(card) {
+  const r = entryRealized(card);
+  const pct = r.cost > 0 ? (r.gain / r.cost) * 100 : null;
+  const gc  = r.gain >= 0 ? 'var(--green)' : '#f87171';
+  const foilBadge = card.foil !== 'normal'
+    ? `<span class="badge badge-${card.foil}">${FOIL_LABEL[card.foil]}</span>` : '<span style="color:var(--text-dim)">—</span>';
+  return `<tr data-card-id="${esc(card.id)}" class="card-row-hover">
+    <td style="font-weight:500;max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${esc(card.name)}">${esc(card.name)}</td>
+    <td style="color:var(--text-dim);white-space:nowrap">${esc(card.setCode)} <span style="font-size:11px">#${esc(card.collectorNumber)}</span></td>
+    <td>${foilBadge}</td>
+    <td style="text-align:center">${card.quantity}</td>
+    <td style="text-align:right;color:var(--text-dim)">${fmt(r.cost)}</td>
+    <td style="text-align:right;font-weight:600">${fmt(r.proceeds)}</td>
+    <td style="text-align:right;color:var(--text-dim)">${r.fees ? fmt(r.fees) : '—'}</td>
+    <td style="text-align:right;font-weight:700;color:${gc}">${r.gain >= 0 ? '+' : ''}${fmt(r.gain)}</td>
+    <td style="text-align:right;font-weight:600;color:${gc}">${pct != null ? `${pct >= 0 ? '+' : ''}${pct.toFixed(0)}%` : '—'}</td>
+    <td style="text-align:right;color:var(--text-dim);white-space:nowrap;font-size:12px">${esc(card.disposedAt || '—')}</td>
+    <td style="color:var(--text-dim);font-size:11.5px;max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${esc(card.saleNote || '')}">${esc(card.saleNote || '')}</td>
   </tr>`;
 }
 
@@ -302,6 +358,11 @@ export function showEditScryfallModal(cardId) {
 export function filteredCards() {
   const s = ui.cards;
   let cards = collection.cards;
+  // Owned vs. sold. Sold entries stay in the collection for realized P&L but are
+  // hidden from the default (Owned) view; the Sold view shows only them.
+  const status = s.status || 'owned';
+  if (status === 'owned')      cards = cards.filter(c => c.status !== 'sold');
+  else if (status === 'sold')  cards = cards.filter(c => c.status === 'sold');
   const binderInc = new Set(s.binder.include || []);
   const binderExc = new Set(s.binder.exclude || []);
   if (binderInc.size > 0) cards = cards.filter(c => binderInc.has(c.binderName || ''));

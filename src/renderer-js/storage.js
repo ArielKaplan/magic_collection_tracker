@@ -90,12 +90,21 @@ export async function autoLoad() {
       language: r.language || 'en',
       misprint: !!r.misprint,
       altered: !!r.altered,
+      status: r.status === 'sold' ? 'sold' : 'owned',
+      disposedAt: r.disposed_at || '',
+      salePrice: r.sale_price ?? null,
+      saleFees: r.sale_fees ?? 0,
+      saleNote: r.sale_note || '',
     }));
     collection.sealed = sealedRows.map(r => ({
       id: r.id, name: r.name, productType: r.product_type, setCode: r.set_code,
       setName: r.set_name, quantity: r.quantity, purchasePrice: r.purchase_price,
       currentValue: r.current_value, status: r.status, notes: r.notes,
       dropName: r.drop_name || '',
+      disposedAt: r.disposed_at || '',
+      salePrice: r.sale_price ?? null,
+      saleFees: r.sale_fees ?? 0,
+      saleNote: r.sale_note || '',
       priceHistory: r.priceHistory || [],
     }));
     collection.decks = deckRows || [];

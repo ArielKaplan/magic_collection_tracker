@@ -1,4 +1,4 @@
-import { cardCurrentValue } from './analytics.js';
+import { cardCurrentValue, entryRealized, ownedCards, ownedSealed, soldCards, soldSealed } from './analytics.js';
 import { showGalleryModal } from './gallery.js';
 import { hideModal, showModal } from './modals.js';
 import { fetchScryfallBatch } from './prices.js';
@@ -282,10 +282,10 @@ function slCollectorSortKey(num) {
 function slCardTile(scryfallId, numLabel) {
   const id = scryfallId.toLowerCase();
   const img = `https://cards.scryfall.io/normal/front/${id[0]}/${id[1]}/${id}.jpg`;
-  const ownedCards = collection.cards.filter(c => c.scryfallId === scryfallId);
-  const owned = ownedCards.length > 0;
-  const totalQty = ownedCards.reduce((s, c) => s + (c.quantity || 1), 0);
-  const val = owned ? cardCurrentValue(ownedCards[0]) : null;
+  const ownedPrintings = ownedCards().filter(c => c.scryfallId === scryfallId);
+  const owned = ownedPrintings.length > 0;
+  const totalQty = ownedPrintings.reduce((s, c) => s + (c.quantity || 1), 0);
+  const val = owned ? cardCurrentValue(ownedPrintings[0]) : null;
   const note = slCardNote(scryfallId);
   const wanted = !owned && isCardWanted(scryfallId);
   return `
@@ -338,7 +338,8 @@ export function computeDropPnL() {
   };
 
   // Owned singles → primary drop (SLD cards almost always map to exactly one).
-  for (const c of collection.cards) {
+  // Sold copies have left the collection, so they no longer count toward value.
+  for (const c of ownedCards()) {
     if (!c.scryfallId) continue;
     const drops = SL_SCRYFALL_TO_DROPS[c.scryfallId];
     if (!drops || !drops.length) continue;
@@ -350,7 +351,7 @@ export function computeDropPnL() {
   }
 
   // Linked sealed products: a real purchase price is the actual cost basis.
-  for (const s of (collection.sealed || [])) {
+  for (const s of ownedSealed()) {
     if (!s.dropName) continue;
     const r = get(s.dropName);
     const qty = s.quantity || 1;
@@ -393,6 +394,190 @@ export function sortSlPnl(field) {
   const [curField, curDir] = (ui.slViewer.pnlSort || '').split('_');
   ui.slViewer.pnlSort = `${field}_${curField === field && curDir === 'desc' ? 'asc' : 'desc'}`;
   render();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SECRET LAIR INDEX — your Secret Lair holdings treated as an asset class.
+// Aggregates the per-drop P&L ledger into a portfolio headline (cost → value →
+// unrealized + realized → total return), a best/worst leaderboard, an ROI
+// distribution, and a sealed crack-vs-keep rollup. Pure compute over
+// computeDropPnL() + realized sold-SL items; the over-time curve lives in the
+// SecretLairIndex dashboard panel (fed by portfolio_snapshots.sl_value/sl_cost).
+// ─────────────────────────────────────────────────────────────────────────────
+function isSlSoldCard(c) {
+  return c.scryfallId && typeof SL_SCRYFALL_TO_DROPS !== 'undefined' && !!SL_SCRYFALL_TO_DROPS[c.scryfallId];
+}
+function isSlSoldSealed(s) {
+  return !!s.dropName || s.productType === 'Secret Lair';
+}
+
+// Drops you currently hold at least one *sealed* (unopened) copy of.
+function sealedHeldDrops() {
+  const set = new Set();
+  for (const s of ownedSealed()) {
+    if (s.dropName && s.status === 'sealed') set.add(s.dropName);
+  }
+  return [...set];
+}
+
+export function computeSlIndex() {
+  const rows  = computeDropPnL();                       // owned-only, per drop
+  const cost  = rows.reduce((s, r) => s + (r.cost  || 0), 0);
+  const value = rows.reduce((s, r) => s + (r.value || 0), 0);
+  const unrealized    = value - cost;
+  const unrealizedPct = cost > 0 ? (unrealized / cost) * 100 : null;
+
+  // Realized SL P&L — sold singles that map to an SL drop + sold sealed linked
+  // to a drop (or marked as a Secret Lair product).
+  let realized = 0, realizedCount = 0;
+  for (const c of soldCards())  { if (isSlSoldCard(c))   { realized += entryRealized(c).gain; realizedCount++; } }
+  for (const s of soldSealed()) { if (isSlSoldSealed(s)) { realized += entryRealized(s).gain; realizedCount++; } }
+
+  const totalReturn    = unrealized + realized;
+  const totalCost      = cost;                          // cost basis of what you still hold
+  const totalReturnPct = totalCost > 0 ? (totalReturn / totalCost) * 100 : null;
+
+  // Best / worst by ROI% (drops with a computable percentage), de-duplicated so
+  // a tiny collection doesn't show the same drop as both best and worst.
+  const ranked  = rows.filter(r => r.gainPct != null).sort((a, b) => b.gainPct - a.gainPct);
+  const best    = ranked.slice(0, 3);
+  const bestSet = new Set(best.map(r => r.drop));
+  const worst   = ranked.slice().reverse().filter(r => !bestSet.has(r.drop)).slice(0, 2);
+
+  // ROI distribution buckets.
+  const buckets = [
+    { label: 'Loss',    cls: 'neg', test: p => p < 0,             count: 0 },
+    { label: '0–50%',   cls: 'pos', test: p => p >= 0 && p < 50,  count: 0 },
+    { label: '50–100%', cls: 'pos', test: p => p >= 50 && p < 100, count: 0 },
+    { label: '100%+',   cls: 'pos', test: p => p >= 100,          count: 0 },
+  ];
+  let withPct = 0;
+  for (const r of rows) {
+    if (r.gainPct == null) continue;
+    withPct++;
+    const b = buckets.find(x => x.test(r.gainPct));
+    if (b) b.count++;
+  }
+  const winners = rows.filter(r => r.gainPct != null && r.gainPct >= 0).length;
+
+  // Sealed crack-vs-keep rollup — uses already-priced singles from the in-memory
+  // cache (the "Price sealed singles" button fills it on demand; no auto-fetch).
+  const heldDrops = sealedHeldDrops();
+  let keepTotal = 0, crackTotal = 0, pricedCount = 0;
+  for (const drop of heldDrops) {
+    const k = sealedKeepValue(drop);
+    if (k && k.value != null) keepTotal += k.value;
+    const cached = slDropSinglesCache.get(drop);
+    if (cached) { crackTotal += cached.value; pricedCount++; }
+  }
+
+  return {
+    dropCount: rows.length, cost, value, unrealized, unrealizedPct,
+    realized, realizedCount, totalReturn, totalReturnPct,
+    best, worst, buckets, withPct, winners,
+    crackVsKeep: { heldCount: heldDrops.length, pricedCount, keepTotal, crackTotal, drops: heldDrops },
+  };
+}
+
+// Price every held-sealed drop's singles (sequential, on demand) so the
+// crack-vs-keep rollup can compare. Bound to the Index view's button.
+export async function priceAllSealedDropsSingles() {
+  for (const drop of sealedHeldDrops()) {
+    if (slDropSinglesCache.has(drop)) continue;
+    await priceSlDropSingles(drop);   // each call re-renders on completion
+  }
+}
+
+// The Index view body (headline → leaderboard → distribution → crack-vs-keep).
+function renderSlIndexBody(idx) {
+  if (idx.dropCount === 0) {
+    return `<div style="padding:40px;text-align:center;color:var(--text-muted)">
+      No Secret Lair P&amp;L yet.<br>Own singles from a drop, or add a sealed drop with its purchase price, to see your index.
+    </div>`;
+  }
+  const gc   = (n) => n == null ? 'var(--text-muted)' : (n >= 0 ? 'var(--green)' : '#f87171');
+  const sign = (n) => n >= 0 ? '+' : '';
+  const pct  = (n) => n == null ? '' : `${sign(n)}${n.toFixed(0)}%`;
+
+  const card = (label, valueHtml, subHtml = '', accent = false) => `
+    <div style="flex:1 1 130px;min-width:120px;background:${accent ? 'var(--green-dim)' : 'var(--surface)'};border:1px solid var(--border);border-radius:8px;padding:12px 14px">
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:4px">${label}</div>
+      <div style="font-size:22px;font-weight:800;letter-spacing:-.02em">${valueHtml}</div>
+      ${subHtml ? `<div style="font-size:11px;margin-top:2px">${subHtml}</div>` : ''}
+    </div>`;
+
+  const headline = `
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px">
+      ${card('MSRP paid', fmt(idx.cost))}
+      ${card('Current value', fmt(idx.value))}
+      ${card('Unrealized', `<span style="color:${gc(idx.unrealized)}">${sign(idx.unrealized)}${fmt(idx.unrealized)}</span>`,
+              `<span style="color:${gc(idx.unrealizedPct)}">${pct(idx.unrealizedPct)}</span>`)}
+      ${card('Realized', `<span style="color:${gc(idx.realized)}">${idx.realizedCount ? sign(idx.realized) + fmt(idx.realized) : '—'}</span>`,
+              `<span style="color:var(--text-muted)">${idx.realizedCount} sale${idx.realizedCount === 1 ? '' : 's'}</span>`)}
+      ${card('Total SL return', `<span style="color:${gc(idx.totalReturn)}">${sign(idx.totalReturn)}${fmt(idx.totalReturn)}</span>`,
+              `<span style="color:${gc(idx.totalReturnPct)}">${pct(idx.totalReturnPct)} on cost</span>`, true)}
+    </div>`;
+
+  const dropLink = (r) => `<a class="bc-link" onclick="ui.slViewer.view='drops';ui.slViewer.drop='${escJs(r.drop)}';ui.slViewer.page=0;render()" style="font-weight:600">${esc(r.drop)}</a>`;
+  const lbRow = (r) => `
+    <div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;padding:5px 0">
+      <div style="min-width:0">
+        <div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:230px">${dropLink(r)}</div>
+        <div style="font-size:11px;color:var(--text-muted)">${esc(r.superdrop || 'Standalone')}</div>
+      </div>
+      <div style="text-align:right;white-space:nowrap">
+        <span style="font-weight:700;color:${gc(r.gainPct)}">${pct(r.gainPct)}</span>
+        <div style="font-size:11px;color:var(--text-muted)">${sign(r.gain)}${fmt(r.gain)}</div>
+      </div>
+    </div>`;
+
+  const leaderboard = `
+    <div style="flex:1 1 280px;min-width:240px;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px 14px">
+      <div style="font-size:13px;font-weight:700;margin-bottom:8px">🏆 Best &amp; worst drops</div>
+      ${idx.best.map(lbRow).join('')}
+      ${idx.worst.length ? `<div style="border-top:1px solid var(--border);margin:6px 0"></div>${idx.worst.map(lbRow).join('')}` : ''}
+    </div>`;
+
+  const maxBucket = Math.max(1, ...idx.buckets.map(b => b.count));
+  const distRow = (b) => `
+    <div style="display:flex;align-items:center;gap:8px;margin:7px 0">
+      <span style="font-size:12px;width:62px;color:var(--text-muted)">${b.label}</span>
+      <div style="flex:1;height:10px;background:var(--surface2);border-radius:5px;overflow:hidden">
+        <div style="width:${(b.count / maxBucket * 100).toFixed(0)}%;height:100%;background:${b.cls === 'neg' ? '#f87171' : 'var(--green)'};opacity:${b.cls === 'neg' ? .7 : .85}"></div>
+      </div>
+      <span style="font-size:12px;width:20px;text-align:right">${b.count}</span>
+    </div>`;
+  const distribution = `
+    <div style="flex:1 1 280px;min-width:240px;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px 14px">
+      <div style="font-size:13px;font-weight:700;margin-bottom:8px">📊 ROI distribution</div>
+      ${idx.buckets.map(distRow).join('')}
+      <div style="font-size:11px;color:var(--text-muted);margin-top:8px">${idx.dropCount} drops engaged · ${idx.winners} up, ${idx.withPct - idx.winners} down</div>
+    </div>`;
+
+  // Crack-vs-keep rollup across sealed-held drops.
+  const cvk = idx.crackVsKeep;
+  let crackKeep = '';
+  if (cvk.heldCount > 0) {
+    const allPriced = cvk.pricedCount >= cvk.heldCount;
+    const verdict = !allPriced ? ''
+      : cvk.crackTotal > cvk.keepTotal
+        ? `<span style="margin-left:auto;color:var(--green);font-weight:600">Cracking wins by ${fmt(cvk.crackTotal - cvk.keepTotal)}</span>`
+        : `<span style="margin-left:auto;color:var(--accent2);font-weight:600">Keeping wins by ${fmt(cvk.keepTotal - cvk.crackTotal)}</span>`;
+    crackKeep = `
+      <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin-top:14px;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px 16px">
+        <span style="font-size:13px;font-weight:700">📦 ${cvk.heldCount} sealed drop${cvk.heldCount === 1 ? '' : 's'} held</span>
+        <span style="font-size:13px;color:var(--text-muted)">Keep <strong style="color:var(--text)">${fmt(cvk.keepTotal)}</strong></span>
+        <span style="font-size:13px;color:var(--text-muted)">Crack ${cvk.pricedCount ? `<strong style="color:var(--text)">${fmt(cvk.crackTotal)}</strong>` : '<span style="color:var(--text-muted)">— not priced</span>'}</span>
+        ${allPriced ? verdict : `<button class="btn btn-ghost" style="font-size:12px;margin-left:auto" onclick="priceAllSealedDropsSingles()">Price sealed singles (${cvk.heldCount - cvk.pricedCount} left)</button>`}
+      </div>`;
+  }
+
+  return `${headline}
+    <div style="display:flex;gap:12px;flex-wrap:wrap">${leaderboard}${distribution}</div>
+    ${crackKeep}
+    <div style="font-size:11px;color:var(--text-muted);margin-top:14px;text-align:center">
+      📈 The Secret Lair value-over-time chart lives on your Dashboard (“Secret Lair Index” panel).
+    </div>`;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -460,7 +645,7 @@ export async function priceSlDropSingles(drop) {
 // Best-effort current sealed-box price for a drop: a linked sealed product's
 // price if you have one, otherwise the closest match in the synced TCGCSV index.
 function sealedPriceForDrop(drop) {
-  for (const s of (collection.sealed || [])) {
+  for (const s of ownedSealed()) {
     if (s.dropName === drop) { const mv = sealedMarketValue(s); if (mv != null) return { price: mv, source: 'linked' }; }
   }
   try {
@@ -523,12 +708,12 @@ export function renderSlViewer() {
   const hasSl = typeof SL_SUPERDROPS !== 'undefined' && typeof SL_DROP_TO_SCRYFALL_IDS !== 'undefined';
   if (!hasSl) return `<div style="padding:40px;text-align:center;color:var(--text-muted)">Secret Lair data not loaded.</div>`;
 
-  const ownedIds = new Set(collection.cards.map(c => c.scryfallId).filter(Boolean));
+  const ownedIds = new Set(ownedCards().map(c => c.scryfallId).filter(Boolean));
   // SLD-set names the user owns somewhere — only used as a *drop count* fallback
   // for the rare case where a drop's card list contains a name that has no
   // scryfallIds tagged to it at all (MTGJSON data gap).
   const ownedSldNames = new Set(
-    collection.cards
+    ownedCards()
       .filter(c => (c.setCode || '').toUpperCase() === 'SLD' && c.name)
       .map(c => c.name)
   );
@@ -672,7 +857,7 @@ export function renderSlViewer() {
   function viewToggle() {
     const v = sv.view || 'drops';
     const b = (id, label) => `<button class="btn ${v === id ? 'btn-primary' : 'btn-ghost'}" style="font-size:12px" onclick="ui.slViewer.view='${id}';ui.slViewer.page=0;render()">${label}</button>`;
-    return `<div style="display:flex;gap:8px;margin-bottom:12px">${b('drops', '📦 By Superdrop')}${b('collector', '🔢 By Collector №')}${b('pnl', '💰 P&L')}</div>`;
+    return `<div style="display:flex;gap:8px;margin-bottom:12px">${b('drops', '📦 By Superdrop')}${b('collector', '🔢 By Collector №')}${b('pnl', '💰 P&L')}${b('index', '📈 Index')}</div>`;
   }
 
   // Collector-number view — flat gallery of every SLD printing, ordered by number
@@ -699,7 +884,7 @@ export function renderSlViewer() {
     // One merged control bar: view toggle + search + owned count, all on a single row.
     const headerBar = `
       <div style="display:flex;gap:10px;align-items:center;padding:8px 12px;background:var(--surface);border:1px solid var(--border);border-radius:8px">
-        <div style="display:flex;gap:6px;flex-shrink:0">${tb('drops', '📦 By Superdrop')}${tb('collector', '🔢 By Collector №')}${tb('pnl', '💰 P&L')}</div>
+        <div style="display:flex;gap:6px;flex-shrink:0">${tb('drops', '📦 By Superdrop')}${tb('collector', '🔢 By Collector №')}${tb('pnl', '💰 P&L')}${tb('index', '📈 Index')}</div>
         <input type="text" id="slSearchInput" placeholder="Search by collector number, card name, or note…"
           value="${esc(sv.search || '')}"
           oninput="ui.slViewer.search=this.value;render();setTimeout(()=>{const el=document.getElementById('slSearchInput');if(el){el.focus();el.setSelectionRange(el.value.length,el.value.length)}},0)"
@@ -723,6 +908,16 @@ export function renderSlViewer() {
       </div>`;
   }
 
+  // Secret Lair Index — portfolio headline + leaderboard + distribution
+  if (sv.view === 'index') {
+    const tbi = (id, label) => `<button class="btn ${sv.view === id ? 'btn-primary' : 'btn-ghost'}" style="font-size:12px;white-space:nowrap" onclick="ui.slViewer.view='${id}';ui.slViewer.page=0;render()">${label}</button>`;
+    const idxHeader = `
+      <div style="display:flex;gap:6px;align-items:center;padding:8px 12px;margin-bottom:14px;background:var(--surface);border:1px solid var(--border);border-radius:8px">
+        ${tbi('drops', '📦 By Superdrop')}${tbi('collector', '🔢 By Collector №')}${tbi('pnl', '💰 P&L')}${tbi('index', '📈 Index')}
+      </div>`;
+    return idxHeader + renderSlIndexBody(computeSlIndex());
+  }
+
   // P&L ledger — per-drop MSRP paid vs current value, sortable
   if (sv.view === 'pnl') {
     const rows = sortPnlRows(computeDropPnL());
@@ -740,7 +935,7 @@ export function renderSlViewer() {
 
     const headerBar = `
       <div style="display:flex;gap:10px;align-items:center;padding:8px 12px;background:var(--surface);border:1px solid var(--border);border-radius:8px">
-        <div style="display:flex;gap:6px;flex-shrink:0">${tb('drops', '📦 By Superdrop')}${tb('collector', '🔢 By Collector №')}${tb('pnl', '💰 P&L')}</div>
+        <div style="display:flex;gap:6px;flex-shrink:0">${tb('drops', '📦 By Superdrop')}${tb('collector', '🔢 By Collector №')}${tb('pnl', '💰 P&L')}${tb('index', '📈 Index')}</div>
         <span style="margin-left:auto;font-size:12px;color:var(--text-muted)">
           ${rows.length} drop${rows.length !== 1 ? 's' : ''} · paid <strong style="color:var(--text)">${money(tot.cost)}</strong> · now <strong style="color:var(--text)">${money(tot.value)}</strong> ·
           <strong style="color:${gcol(totGain)}">${totGain >= 0 ? '+' : ''}${fmt(totGain)}${totPct != null ? ` (${pct(totPct)})` : ''}</strong>
@@ -896,9 +1091,9 @@ export async function showSlViewerModal(scryfallId) {
   // Strict per-printing ownership — only direct scryfallId match counts. If
   // user owns a different printing of the same card name, that's not "this
   // card" and the modal should show Scryfall details + "Not owned".
-  const ownedCards = collection.cards.filter(c => c.scryfallId === scryfallId);
-  if (ownedCards.length > 0) {
-    showGalleryModal(ownedCards[0].id);
+  const ownedPrintings = ownedCards().filter(c => c.scryfallId === scryfallId);
+  if (ownedPrintings.length > 0) {
+    showGalleryModal(ownedPrintings[0].id);
     return;
   }
 
