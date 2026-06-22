@@ -11,6 +11,8 @@ in-app "What's New" screen — from that version's section. Keep entries
 user-facing: what changed, not how.
 
 ## [Unreleased]
+
+## [0.20.0] - 2026-06-22
 ### Added
 - **The Secret Lair Index — your drops as an asset class.** A new **📈 Index** view in the Secret Lair Explorer treats your Secret Lair holdings as an investment: **MSRP paid → current value → unrealized gain → realized gain → total return** (holdings + flips combined, the v0.20.0 sell data folded in), plus a **best & worst drops** leaderboard, an **ROI distribution** (how many drops are up vs. down and by how much), and a **crack-vs-keep** rollup across the drops you hold sealed. A matching **Secret Lair Index** dashboard panel charts your SL market value vs. the MSRP you paid **over time** (one point per day prices refresh). It's the question no other tool answers: *has Secret Lair actually paid off for me?*
 - **Realized gains — sell tracking.** Cards and sealed products can now be **sold** instead of deleted: right-click → **💵 Sell / dispose** records the proceeds, fees, date, and a note (sell part of a stack and the rest stays in your collection). Sold items leave your value and cost-basis totals but live on as a realized-P&L record. A new **Sold** view in the Card Collection (status dropdown) shows the ledger — proceeds, fees, net gain, and % per sale — and the Sealed tab gets a **Sold** filter. Two new dashboard panels: a **Realized Gains** KPI (lifetime net locked in) and **Realized Gains by Year**. "Undo sale" puts anything back. Deleting is still there for fixing mistakes, but it no longer hides a sale from your P&L.
