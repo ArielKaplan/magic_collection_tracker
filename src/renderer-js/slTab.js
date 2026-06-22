@@ -40,6 +40,19 @@ function rebuildSlGrouping() {
   for (const [drop, info] of Object.entries(SL_DROP_TO_SUPERDROP)) {
     if (!(drop in home)) home[drop] = info.superdrop;
   }
+  // Group finish variants ("Garden Buds Rainbow Foil") under their base drop's
+  // superdrop so the Explorer shows foil and non-foil versions together rather
+  // than scattering the foil SKUs into "Recent Additions". Only names ending in a
+  // recognized foil phrase regroup, so distinct drops that merely share a prefix
+  // (e.g. "City Styles 2: Dressed to Kill") are left alone.
+  const baseByLower = new Map(Object.keys(home).map(d => [d.toLowerCase(), d]));
+  const FINISH_RE = /^(.+?)\s+(?:rainbow |confetti |galaxy |raised |etched |gilded |textured |surge |traditional |neon )?foil$/i;
+  for (const drop of Object.keys(home)) {
+    const m = drop.match(FINISH_RE);
+    if (!m) continue;
+    const base = baseByLower.get(m[1].toLowerCase());
+    if (base && base !== drop && home[base]) home[drop] = home[base];
+  }
   // apply this user's reassignments
   for (const [drop, ov] of Object.entries(slOverrides.drops)) {
     if (ov && ov.superdrop) home[drop] = ov.superdrop;
@@ -243,6 +256,91 @@ export async function refreshSlData() {
     }
     if (backfilled > 0) window.logger?.info('SL', `Backfilled ${backfilled} foil/variant printings via base collector number`);
 
+    // Pass 3: finish-specific drops from sealedProduct. MTGJSON tags most drops
+    // via `subsets` at the release level (foil + non-foil share one name), but
+    // recent and token/deck-style drops (FINAL FANTASY, Oishii! Tokens, …) carry
+    // no subset, and the curated list misses each product's actual finish (Rainbow
+    // Foil, etc.). data.sealedProduct is the comprehensive catalog — every SKU with
+    // its real finish name — and each product's contents.deck points back to a deck
+    // whose cards we can resolve by uuid. So we harvest those SKUs as finish-aware
+    // drops, skipping any whose base name a curated subset already covers (so the
+    // existing release-level grouping in the Explorer is left intact).
+    const decks = Array.isArray(json.data.decks) ? json.data.decks : [];
+    const sealed = Array.isArray(json.data.sealedProduct) ? json.data.sealedProduct : [];
+    if (sealed.length) {
+      const uuidToCard = {};
+      for (const c of [...cards, ...(json.data.tokens || [])]) {
+        const sid = (c.identifiers?.scryfallId || '').toLowerCase();
+        if (c.uuid && sid) uuidToCard[c.uuid] = { sid, name: c.name };
+      }
+      const deckByName = new Map(decks.map(d => [d.name, d]));
+      const cleanName = n => (n || '')
+        .replace(/^\s*secret lair drop\s+/i, '')   // strip the boilerplate prefix
+        .replace(/\bsecret lair x\s+/i, '')         // strip "Secret Lair x" collab infix
+        .replace(/\s{2,}/g, ' ')
+        .trim();
+      // sealedProduct names strip punctuation ("Iron Maiden Album Art"), so match
+      // them back to the curated/subset spelling ("Iron Maiden: Album Art") via a
+      // punctuation-insensitive key and reuse that canonical name. Without this,
+      // foil SKUs of any drop with a colon/apostrophe land under a stripped name in
+      // "Recent Additions" instead of beside their base, so their foil never shows.
+      const norm = s => (s || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+      const canonical = new Map();
+      for (const c of cards) for (const x of (c.subsets || [])) canonical.set(norm(x), x);
+      if (typeof SL_DROP_TO_SUPERDROP !== 'undefined')
+        for (const d of Object.keys(SL_DROP_TO_SUPERDROP)) if (!canonical.has(norm(d))) canonical.set(norm(d), d);
+      // Split a trailing foil finish ("… Rainbow Foil", "… Confetti Foil") off the base.
+      const FINISH = /\s+((?:rainbow|confetti|galaxy|raised|etched|gilded|textured|surge|traditional|neon)\s+)?foil$/i;
+      const seen = new Set();
+      let spDrops = 0;
+      for (const p of sealed) {
+        if (p.subtype !== 'secret_lair') continue;
+        const cleaned = cleanName(p.name);
+        if (!cleaned) continue;
+        const fm = cleaned.match(FINISH);
+        const baseName = fm ? cleaned.slice(0, fm.index).trim() : cleaned;
+        const finishLabel = fm ? cleaned.slice(fm.index).trim() : '';
+        const canon = canonical.get(norm(baseName));
+        let drop;
+        if (finishLabel) {
+          drop = `${canon || baseName} ${finishLabel}`;   // canonical base spelling if known
+        } else {
+          if (canon) continue;                             // base of a curated drop — already covered
+          drop = baseName;                                 // genuinely new base drop
+        }
+        const low = drop.toLowerCase();
+        if (seen.has(low)) continue;
+        seen.add(low);
+        if (!newDropCards[drop]) newDropCards[drop] = [];   // ensure searchable even if empty
+        for (const dref of (p.contents?.deck || [])) {
+          const dk = deckByName.get(dref.name);
+          if (!dk) continue;
+          const entries = [...(dk.mainBoard || []), ...(dk.commander || []), ...(dk.sideBoard || []), ...(dk.tokens || [])];
+          for (const ce of entries) {
+            const info = uuidToCard[ce.uuid];
+            if (!info) continue;
+            if (!newDropCards[drop].includes(info.name)) newDropCards[drop].push(info.name);
+            newScryfallToName[info.sid] = info.name;
+            newScryfallToDrops[info.sid] = newScryfallToDrops[info.sid] || [];
+            if (!newScryfallToDrops[info.sid].includes(drop)) newScryfallToDrops[info.sid].push(drop);
+          }
+        }
+        spDrops++;
+      }
+      if (spDrops) window.logger?.info('SL', `Added ${spDrops} finish-specific drops from MTGJSON sealed products`);
+    }
+
+    // Make the refresh authoritative: clear the previous derived maps (including the
+    // baked snapshot and the prior "Recent Additions" bucket) so a fresh fetch fully
+    // redefines the drop set. Without this, names from older data or a previous
+    // harvest strategy linger in memory as duplicates until the next restart.
+    if (typeof SL_DROP_CARDS !== 'undefined') for (const k in SL_DROP_CARDS) delete SL_DROP_CARDS[k];
+    if (typeof SL_SCRYFALL_TO_DROPS !== 'undefined') for (const k in SL_SCRYFALL_TO_DROPS) delete SL_SCRYFALL_TO_DROPS[k];
+    if (typeof SL_SCRYFALL_TO_NAME !== 'undefined') for (const k in SL_SCRYFALL_TO_NAME) delete SL_SCRYFALL_TO_NAME[k];
+    if (typeof SL_SUPERDROPS !== 'undefined') {
+      const ri = SL_SUPERDROPS.findIndex(sd => sd.superdrop === 'Recent Additions');
+      if (ri >= 0) SL_SUPERDROPS.splice(ri, 1);
+    }
     applySlDataUpdate(newDropCards, newScryfallToDrops, newScryfallToName);
     rebuildSlGrouping(); // re-apply this user's local grouping edits on top of the refreshed data
     await saveSlDataToCache(newDropCards, newScryfallToDrops, newScryfallToName);

@@ -11,10 +11,89 @@ import { esc, fmt, toast, today, uid } from './utils.js';
 // ─────────────────────────────────────────────────────────────────────────────
 // ADD / EDIT SEALED MODAL
 // ─────────────────────────────────────────────────────────────────────────────
-// <datalist> of all known SL drop names, for linking a sealed product to its drop.
-function slDropOptions() {
-  const drops = typeof SL_DROP_TO_SUPERDROP !== 'undefined' ? Object.keys(SL_DROP_TO_SUPERDROP) : [];
-  return drops.sort().map(d => `<option value="${esc(d)}"></option>`).join('');
+// ── Secret Lair drop search ──────────────────────────────────────────────────
+// Powers the typeahead used to link a sealed product to its drop for P&L. Baked
+// drop names (secretlair.js) use curly quotes and en-dashes, so both the query
+// and the candidates are normalized before matching — otherwise typing
+// "Li'l Walkers" would never find "Li’l Walkers".
+function _slNorm(s) {
+  return (s || '')
+    .toLowerCase()
+    .normalize('NFKD').replace(/[̀-ͯ]/g, '')   // strip diacritics
+    .replace(/['’‘‛`´]/g, '')         // drop apostrophes so "li'l" → "lil"
+    .replace(/[^a-z0-9]+/g, ' ')                          // other punctuation → space
+    .trim();
+}
+
+function _slDropEntries() {
+  // Union of every known drop name: the curated grouping (SL_DROP_TO_SUPERDROP)
+  // plus drop→cards (SL_DROP_CARDS), which can contain drops that have cards but
+  // no superdrop yet — searching only the former silently hid those.
+  const supers = (typeof SL_DROP_TO_SUPERDROP !== 'undefined' && SL_DROP_TO_SUPERDROP) || {};
+  const cards  = (typeof SL_DROP_CARDS !== 'undefined' && SL_DROP_CARDS) || {};
+  const names  = new Set([...Object.keys(supers), ...Object.keys(cards)]);
+  // Collapse near-duplicates that differ only in punctuation/casing — e.g. a
+  // curated "Horizon: Into the Forbidden West Foil" vs a punctuation-stripped
+  // "Horizon Into the Forbidden West Foil" left over from an earlier data shape —
+  // keeping the most canonical spelling. Foil vs non-foil stay distinct because
+  // the finish is part of the key.
+  const byKey = new Map();
+  for (const drop of names) {
+    const e = {
+      drop,
+      superdrop: supers[drop]?.superdrop || 'Standalone',
+      date: supers[drop]?.date || '',
+      norm: _slNorm(drop),
+    };
+    const key = drop.toLowerCase().replace(/[^a-z0-9]+/g, '');
+    const cur = byKey.get(key);
+    if (!cur || _slDropScore(e) > _slDropScore(cur)) byKey.set(key, e);
+  }
+  return [...byKey.values()];
+}
+
+// Higher = more canonical: a real superdrop and a date beat "Recent Additions"/
+// "Standalone", and richer punctuation (the curated spelling) breaks ties.
+function _slDropScore(e) {
+  let s = 0;
+  if (e.superdrop && e.superdrop !== 'Recent Additions' && e.superdrop !== 'Standalone') s += 100;
+  if (e.date) s += 10;
+  s += (e.drop.match(/[^A-Za-z0-9\s]/g) || []).length;
+  return s;
+}
+
+// Rank: exact > prefix > word-start > substring > all-tokens-present. An empty
+// query returns the most recent drops so focusing the field is still useful.
+export function searchSlDrops(query, limit = 8) {
+  const entries = _slDropEntries();
+  const q = _slNorm(query);
+  if (!q) {
+    return entries.sort((a, b) => (b.date || '').localeCompare(a.date || '')).slice(0, limit);
+  }
+  const tokens = q.split(' ').filter(Boolean);
+  const scored = [];
+  for (const e of entries) {
+    if (!e.norm) continue;
+    let score;
+    if (e.norm === q) score = 100;
+    else if (e.norm.startsWith(q)) score = 80;
+    else if ((' ' + e.norm).includes(' ' + q)) score = 70;
+    else if (e.norm.includes(q)) score = 55;
+    else if (tokens.every(t => e.norm.includes(t))) score = 40;
+    else continue;
+    score += Math.max(0, 10 - e.norm.length / 8);        // gently favor tighter matches
+    scored.push({ e, score });
+  }
+  scored.sort((a, b) => b.score - a.score || (b.e.date || '').localeCompare(a.e.date || ''));
+  return scored.slice(0, limit).map(s => s.e);
+}
+
+// Best-guess query from a product name, e.g.
+// "Secret Lair Drop: Oishii! Tokens - Rainbow Foil Edition" → "Oishii! Tokens".
+export function dropQueryFromProductName(name) {
+  let s = (name || '').replace(/^\s*secret lair(?:\s+drop)?\s*:?\s*/i, '');
+  s = s.split(/\s[-–—:]\s/)[0];
+  return s.trim();
 }
 
 export function showAddSealedModal(editId = null, prefill = {}) {
@@ -72,9 +151,10 @@ export function showAddSealedModal(editId = null, prefill = {}) {
     </div>
     <div class="form-group">
       <label>Secret Lair Drop <span style="color:var(--text-muted);font-weight:400">(optional — links this product to a drop for P&amp;L)</span></label>
-      <input type="text" id="sl-drop" list="sl-drop-list" autocomplete="off"
-        placeholder="e.g. Phyrexian Praetors" value="${esc(prefill.dropName ?? e.dropName ?? '')}">
-      <datalist id="sl-drop-list">${slDropOptions()}</datalist>
+      <input type="text" id="sl-drop" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false"
+        placeholder="Search Secret Lair drops…" value="${esc(prefill.dropName ?? e.dropName ?? '')}">
+      <div id="sl-drop-results" class="tcg-results" style="display:none;margin-top:6px"></div>
+      <div id="sl-drop-hint" style="font-size:11px;color:var(--text-muted);margin-top:6px"></div>
     </div>
     <div class="form-group">
       <label>Notes</label>
@@ -117,6 +197,97 @@ export function showAddSealedModal(editId = null, prefill = {}) {
       }),
       onManual: () => showAddSealedModal(editId, captured),
     });
+  });
+
+  // ── Secret Lair drop typeahead ────────────────────────────────────────────
+  const dropInput   = document.getElementById('sl-drop');
+  const dropResults = document.getElementById('sl-drop-results');
+  const dropHint    = document.getElementById('sl-drop-hint');
+  const dropReady   = typeof SL_DROP_TO_SUPERDROP !== 'undefined'
+                      && Object.keys(SL_DROP_TO_SUPERDROP || {}).length > 0;
+  let dropMatches = [];
+  let dropSel = -1;
+
+  dropHint.innerHTML = dropReady
+    ? 'Type to search, or focus the field to see drops matching this product. Newer drops appear after a Secret Lair data refresh.'
+    : 'Secret Lair data isn’t loaded yet — open the <strong>Secret Lair Explorer</strong> tab once to enable drop search. You can still type a drop name manually.';
+
+  const closeDrop = () => { dropResults.style.display = 'none'; dropInput.setAttribute('aria-expanded', 'false'); dropSel = -1; };
+
+  const highlightDrop = () => {
+    dropResults.querySelectorAll('.tcg-result-item').forEach((el, i) =>
+      el.classList.toggle('selected', i === dropSel));
+    dropResults.querySelector('.tcg-result-item.selected')?.scrollIntoView({ block: 'nearest' });
+  };
+
+  const refreshLatestDrops = async btn => {
+    if (typeof refreshSlData !== 'function') return;
+    btn.disabled = true; btn.textContent = '↻ Loading latest drops…';
+    try { await refreshSlData(); } catch { /* refreshSlData toasts its own errors */ }
+    // The fetch is slow; bail if the form was closed meanwhile.
+    if (dropResults.isConnected) refreshDrop();   // re-search against fresh data
+  };
+
+  const renderDrop = matches => {
+    dropMatches = matches;
+    if (!matches.length) {
+      const typed = dropInput.value.trim();
+      dropResults.innerHTML = `
+        <div class="tcg-no-results">
+          <div>No matching drops${typed ? ` for “${esc(typed)}”` : ''}. Recent drops may not be loaded yet.</div>
+          <div style="margin-top:8px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+            <button class="btn btn-sm" id="sl-drop-refresh" type="button">↻ Load latest Secret Lair drops</button>
+            <span style="color:var(--text-muted)">or press Enter to keep what you typed.</span>
+          </div>
+        </div>`;
+      dropResults.querySelector('#sl-drop-refresh')?.addEventListener('mousedown', ev => {
+        ev.preventDefault();                 // keep input focus
+        refreshLatestDrops(ev.currentTarget);
+      });
+    } else {
+      dropResults.innerHTML = matches.map((m, i) => `
+        <div class="tcg-result-item${i === dropSel ? ' selected' : ''}" data-drop="${esc(m.drop)}">
+          <div class="tcg-result-name">${esc(m.drop)}</div>
+          <div class="tcg-result-meta">
+            <span class="tcg-result-console">${esc(m.superdrop || 'Secret Lair')}</span>
+            <span>${esc(m.date || '')}</span>
+          </div>
+        </div>`).join('');
+      dropResults.querySelectorAll('.tcg-result-item').forEach(el => {
+        el.addEventListener('mousedown', ev => {
+          ev.preventDefault();                 // keep focus, beat the blur-close
+          dropInput.value = el.dataset.drop;
+          closeDrop();
+        });
+      });
+    }
+    dropResults.style.display = 'block';
+    dropInput.setAttribute('aria-expanded', 'true');
+  };
+
+  const refreshDrop = () => {
+    if (!dropReady) return;
+    const typed = dropInput.value.trim();
+    dropSel = -1;
+    if (typed) { renderDrop(searchSlDrops(typed, 8)); return; }
+    // Empty field: surface drops that match this product's name first, else recent.
+    const guess  = dropQueryFromProductName(document.getElementById('sl-name')?.value || '');
+    const byName = guess ? searchSlDrops(guess, 8) : [];
+    renderDrop(byName.length ? byName : searchSlDrops('', 8));
+  };
+
+  dropInput.addEventListener('input', refreshDrop);
+  dropInput.addEventListener('focus', refreshDrop);
+  dropInput.addEventListener('blur', () => setTimeout(closeDrop, 150));
+  dropInput.addEventListener('keydown', ev => {
+    if (dropResults.style.display === 'none' || !dropMatches.length) {
+      if (ev.key === 'Escape') closeDrop();
+      return;
+    }
+    if (ev.key === 'ArrowDown')    { ev.preventDefault(); dropSel = Math.min(dropSel + 1, dropMatches.length - 1); highlightDrop(); }
+    else if (ev.key === 'ArrowUp') { ev.preventDefault(); dropSel = Math.max(dropSel - 1, 0); highlightDrop(); }
+    else if (ev.key === 'Enter' && dropSel >= 0) { ev.preventDefault(); dropInput.value = dropMatches[dropSel].drop; closeDrop(); }
+    else if (ev.key === 'Escape')  { closeDrop(); }
   });
 
   document.getElementById('sl-save').addEventListener('click', () => {
