@@ -40,9 +40,10 @@ function buildMenu() {
     {
       label: '&File',
       submenu: [
-        { label: 'Import CSV…',        accelerator: 'CmdOrCtrl+I', click: () => sendMenu('import:csv') },
+        { label: 'Import…',            accelerator: 'CmdOrCtrl+I', click: () => sendMenu('import:hub') },
         { label: 'Import Deck…',       accelerator: 'CmdOrCtrl+D', click: () => sendMenu('import:deck') },
-        { label: 'Load Collection…',   accelerator: 'CmdOrCtrl+O', click: () => sendMenu('import:json') },
+        { type: 'separator' },
+        { label: 'Load Collection (JSON)…', accelerator: 'CmdOrCtrl+O', click: () => sendMenu('import:json') },
         { label: 'Save Collection…',   accelerator: 'CmdOrCtrl+S', click: () => sendMenu('export:json') },
         { type: 'separator' },
         { label: 'Reset Database…',    click: () => sendMenu('settings:reset') },

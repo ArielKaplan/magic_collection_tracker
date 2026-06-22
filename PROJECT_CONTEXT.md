@@ -123,7 +123,7 @@ Native chrome: menu bar with accelerators (Ctrl+I import CSV, F5 refresh prices,
 
 ## Data flow
 
-1. **Import CSV** (Ctrl+I) — ManaBox export through the column-mapping wizard. Dedup on manaboxId + scryfallId + foil.
+1. **Import** (Ctrl+I) — one unified wizard (`importWizard.js`, `showImportHub(kind?)`) with a type chooser: **Cards** / **Sealed** / **Decks**. Cards & Sealed share a File→Map Columns→Review CSV flow driven by `IMPORT_KINDS` (per-kind field defs + converter + merge); Decks embeds the decklist paste/file form from `deckIO.js` (`deckImportBodyHtml`/`wireDeckImportForm`). Cards dedup on manaboxId + scryfallId + foil; sealed dedup on name + type + setCode (sold records never overwritten). Sealed aliases match the app's own sealed export so export→re-import round-trips. Reached from the File menu, the ↑ Import button on each tab, and empty states.
 2. **Refresh Prices** (F5, auto once per day on first open) — Scryfall batches with 429 backoff (2s/4s/8s), then TCGCSV market-price pass. Foil→etched price fallback is load-bearing (don't remove). Deck cards included.
 3. **Price persistence is delta-based**: `storePriceSnapshot`/`storeMarketPriceSnapshot` queue new snapshots; `autoSave()` flushes only the queue (restored on failure). autoSave does NOT rewrite price history.
    - At the end of `refreshPrices`, `recordPortfolioSnapshot()` (analytics.js) writes one `portfolio_snapshots` row for the day (UPSERT on date — last refresh of the day wins) capturing cards/sealed value + cost basis. Loaded into `collection.portfolioSnapshots` on `autoLoad`; the Dashboard "Value Over Time" chart reads it. Snapshots accrue going forward (no retroactive reconstruction — `price_history` has survivorship bias).

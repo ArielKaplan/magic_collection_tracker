@@ -1,9 +1,10 @@
 import { cardCurrentValue } from './analytics.js';
 import { showEditScryfallModal } from './cardsTab.js';
 import { CONDITION_FULL, FOIL_LABEL } from './constants.js';
-import { showDeckExportModal, showDeckImportModal } from './deckIO.js';
+import { showDeckExportModal } from './deckIO.js';
 import { deckById, deckFormat, deckOwnedMaps, deleteDeck, renderDeckTile, showDeckAddCardModal, showNewDeckModal } from './decks.js';
 import { showGalleryModal } from './gallery.js';
+import { showImportHub } from './importWizard.js';
 import { promptText, showSellSealedModal, undoSealedSale } from './modals.js';
 import { openAddProductFlow } from './productPicker.js';
 import { render } from './render.js';
@@ -11,7 +12,7 @@ import { showAddSealedModal, showUpdatePriceModal } from './sealedModals.js';
 import { refreshTcgcsvCache } from './sealedPricing.js';
 import { showSlViewerModal } from './slTab.js';
 import { collection, ui } from './state.js';
-import { autoSave, importCsvFile } from './storage.js';
+import { autoSave } from './storage.js';
 import { esc, fmt, netFetch, toast } from './utils.js';
 
 
@@ -220,7 +221,7 @@ export function showSlTileHoverPreview(el, scryfallId) {
 export function attachContentListeners() {
   // Empty state CSV import
   const emptyCsv = document.getElementById('emptyCsvBtn');
-  if (emptyCsv) emptyCsv.addEventListener('click', () => importCsvFile().catch(console.error));
+  if (emptyCsv) emptyCsv.addEventListener('click', () => showImportHub('cards'));
 
   // ── Card hover previews across tabs ─────────────────────────────────────
   // Card Collection › Gallery view: each .gallery-card has onclick="showGalleryModal('cardId')"
@@ -408,7 +409,7 @@ export function attachContentListeners() {
   const deckNewBtn = document.getElementById('deckNewBtn');
   if (deckNewBtn) deckNewBtn.addEventListener('click', showNewDeckModal);
   const deckImportBtn = document.getElementById('deckImportBtn');
-  if (deckImportBtn) deckImportBtn.addEventListener('click', showDeckImportModal);
+  if (deckImportBtn) deckImportBtn.addEventListener('click', () => showImportHub('decks'));
   const deckSearchEl = document.getElementById('deckSearch');
   if (deckSearchEl) deckSearchEl.addEventListener('input', e => {
     ui.decks.search = e.target.value;

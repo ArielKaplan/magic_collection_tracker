@@ -192,6 +192,7 @@ export function renderCards() {
                 </div>
               </div>` : ''}
             </div>`}
+            <button class="btn" onclick="showImportHub('cards')" style="padding:7px 12px;font-size:12px;white-space:nowrap" title="Import cards from a CSV export">↑ Import</button>
             <button class="btn" onclick="showExportModal('cards')" style="padding:7px 12px;font-size:12px;white-space:nowrap" title="Export cards to CSV, JSON, Markdown, or text">⤓ Export</button>
           </div>
           <select id="statusFilter" title="Owned cards, cards you've sold, or both">

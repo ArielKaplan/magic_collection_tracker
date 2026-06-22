@@ -1,4 +1,3 @@
-import { showImportWizard } from './importWizard.js';
 import { normalizePriceHistoryKeys, pendingPriceSnaps, restorePendingPriceSnaps, takePendingPriceSnaps } from './prices.js';
 import { render } from './render.js';
 import { collection } from './state.js';
@@ -208,9 +207,4 @@ export async function loadCollectionFile() {
   }
 }
 
-export async function importCsvFile() {
-  const result = await window.api.dialog.openCsv();
-  if (!result) return;
-  showImportWizard(result);
-}
 

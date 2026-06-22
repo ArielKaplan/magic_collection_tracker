@@ -54,6 +54,7 @@ export const EXPORT_COLUMNS = {
     { key: 'productType',   label: 'Product Type',   get: i => i.productType },
     { key: 'setCode',       label: 'Set Code',       get: i => i.setCode },
     { key: 'setName',       label: 'Set Name',       get: i => i.setName },
+    { key: 'dropName',      label: 'Secret Lair Drop', get: i => i.dropName || '' },
     { key: 'quantity',      label: 'Quantity',       get: i => i.quantity },
     { key: 'status',        label: 'Status',         get: i => i.status },
     { key: 'purchasePrice', label: 'Purchase Price', get: i => i.purchasePrice },

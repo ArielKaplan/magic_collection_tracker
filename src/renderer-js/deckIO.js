@@ -219,9 +219,11 @@ export async function resolveDeckEntries(entries) {
   return { linked, fetched, missing };
 }
 
-export function showDeckImportModal() {
-  showModal(`
-    <h2>Import Deck</h2>
+// Decklist form body — name + format + textarea + live preview. Rendered inside
+// the unified import wizard (see importWizard.js); the wizard supplies the
+// surrounding header and footer buttons. Wire it with wireDeckImportForm().
+export function deckImportBodyHtml() {
+  return `
     <div style="font-size:12px;color:var(--text-dim);margin-bottom:14px;line-height:1.5">
       Paste a decklist from <strong>Moxfield</strong>, <strong>Archidekt</strong>, <strong>ManaBox</strong>, or MTG Arena —
       or load a .txt / .csv export. Cards you own are linked to your collection;
@@ -235,18 +237,19 @@ export function showDeckImportModal() {
         </select>
       </div>
     </div>
-    <div class="form-group">
+    <div class="form-group" style="margin-bottom:0">
       <label style="display:flex;justify-content:space-between;align-items:center">Decklist
-        <button class="btn btn-sm" id="di-file">📄 Load from file…</button>
+        <button class="btn btn-sm" id="di-file" type="button">📄 Load from file…</button>
       </label>
       <textarea id="di-text" rows="12" placeholder="1 Sol Ring (C21) 263&#10;1 Arcane Signet&#10;4 Lightning Bolt&#10;&#10;SIDEBOARD:&#10;2 Abrade" style="width:100%;font-family:monospace;font-size:12px;resize:vertical"></textarea>
       <div id="di-preview" style="font-size:11.5px;color:var(--text-muted);margin-top:6px"></div>
-    </div>
-    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:14px">
-      <button class="btn" id="di-cancel">Cancel</button>
-      <button class="btn btn-primary" id="di-import">Import Deck</button>
-    </div>`, 'wide');
+    </div>`;
+}
 
+// Wires the body produced by deckImportBodyHtml(). `importBtnId` is the id of the
+// caller-owned import button; `onComplete` runs after a successful import (e.g. to
+// close the wizard) before the tab switch + render.
+export function wireDeckImportForm({ importBtnId = 'di-import', onComplete } = {}) {
   const textEl = document.getElementById('di-text');
   const nameEl = document.getElementById('di-name');
   const preview = document.getElementById('di-preview');
@@ -276,14 +279,13 @@ export function showDeckImportModal() {
     updatePreview();
   });
 
-  document.getElementById('di-cancel').addEventListener('click', hideModal);
-  document.getElementById('di-import').addEventListener('click', async () => {
+  document.getElementById(importBtnId).addEventListener('click', async () => {
     const { entries, suggestedName } = parseDeckList(textEl.value);
     if (!entries.length) { toast('No cards recognized — check the list format', 'error'); return; }
     const name = nameEl.value.trim() || suggestedName || 'Imported Deck';
     const format = document.getElementById('di-format').value;
 
-    const btn = document.getElementById('di-import');
+    const btn = document.getElementById(importBtnId);
     btn.disabled = true;
     btn.textContent = 'Resolving cards…';
     window.logger?.info('Deck', `Importing “${name}”: ${entries.length} entries…`);
@@ -297,7 +299,7 @@ export function showDeckImportModal() {
     ui.decks.deckId = deck.id;
     ui.activeTab = 'decks';
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === 'decks'));
-    hideModal(); render(); autoSave();
+    onComplete?.(); render(); autoSave();
 
     const bits = [`${entries.reduce((s, e) => s + e.quantity, 0)} cards`, `${linked} matched to your collection`, `${fetched} fetched from Scryfall`];
     if (missing) bits.push(`${missing} unresolved (name-only)`);

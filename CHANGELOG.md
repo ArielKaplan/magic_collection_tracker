@@ -11,6 +11,12 @@ in-app "What's New" screen — from that version's section. Keep entries
 user-facing: what changed, not how.
 
 ## [Unreleased]
+### Added
+- **One place to import everything.** Your card collection, sealed products, and decks now come in through a single **Import** wizard — pick what you're importing on one screen, reachable from **File → Import…** (Ctrl+I) or the new **↑ Import** button on each tab. The card CSV column-mapper and the decklist importer work exactly as before; they just live in one workflow now instead of three separate places.
+- **Sealed product import.** You can finally bring sealed products back in from a CSV — including this app's own sealed export — so a wipe-and-restore now covers your shelf, not just your cards. Columns auto-match, and re-importing a product you already have (same name, type, and set) updates it in place instead of creating a duplicate.
+
+### Fixed
+- **The sealed export now includes the Secret Lair Drop column**, so the drop each product is linked to survives an export → re-import round-trip.
 
 ## [0.20.0] - 2026-06-22
 ### Added

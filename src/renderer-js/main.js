@@ -28,7 +28,7 @@ import * as NS_hover from './hover.js';
 import * as NS_wantlist from './wantlist.js';
 import { analyzeByColor, analyzeByManaValue, analyzeByType, binderValueMap, cardCurrentValue, realizedGains, renderCardCountBySet, renderCardCountByYear, renderCardOfTheDay, renderColorPanel, renderManaValuePanel, renderRarityPanel, renderStatsPanel, renderTop10ValueCards, renderTypePanel, renderValueBySet, topMovers, totalCardsValue, totalSealedValue } from './analytics.js';
 import { FOIL_LABEL } from './constants.js';
-import { showDeckImportModal } from './deckIO.js';
+import { showImportHub } from './importWizard.js';
 import { findCollectionCardById, hideCardHoverPreview, showCardHoverPreview } from './hover.js';
 import { closeLogPanel, toggleLogPanel } from './logger.js';
 import { hideModal } from './modals.js';
@@ -38,7 +38,7 @@ import { showSettings } from './settings.js';
 import { computeSlIndex, loadSlOverrides, refreshSlData } from './slTab.js';
 import { collection, ui } from './state.js';
 import { showAbout } from './statusbar.js';
-import { autoLoad, importCsvFile, loadCollectionFile, saveCollection } from './storage.js';
+import { autoLoad, loadCollectionFile, saveCollection } from './storage.js';
 import { esc, fmt, fmtPct, toast, today } from './utils.js';
 
 // Expose every module export as a window global. Inline onclick handlers in
@@ -101,8 +101,9 @@ async function init() {
         return;
       }
       switch (action) {
-        case 'import:csv':       importCsvFile().catch(console.error); break;
-        case 'import:deck':      showDeckImportModal(); break;
+        case 'import:hub':       showImportHub(); break;
+        case 'import:csv':       showImportHub('cards'); break;
+        case 'import:deck':      showImportHub('decks'); break;
         case 'import:json':      loadCollectionFile().catch(console.error); break;
         case 'export:json':      saveCollection().catch(console.error); break;
         case 'refresh:prices':   refreshPrices(); break;
