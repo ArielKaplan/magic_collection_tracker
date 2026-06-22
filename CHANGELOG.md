@@ -11,6 +11,8 @@ in-app "What's New" screen — from that version's section. Keep entries
 user-facing: what changed, not how.
 
 ## [Unreleased]
+
+## [0.22.0] - 2026-06-22
 ### Added
 - **Linking a sealed product to a Secret Lair drop is now a real search.** The "Secret Lair Drop" field on the add/edit sealed form is a proper typeahead: forgiving matching (curly quotes, en-dashes, and apostrophes no longer trip it up), ranked results showing the superdrop and date, keyboard navigation, and suggestions based on the product's name. A "Load latest Secret Lair drops" button pulls the newest list right from the field.
 - **Foil and non-foil drops are now distinct.** A Secret Lair data refresh now captures each drop's real finishes (e.g. "Garden Buds Rainbow Foil", "Iron Maiden: Album Art Foil") plus token/deck-only drops the old data source missed entirely (Oishii! Tokens, FINAL FANTASY, Hatsune Miku, Garfield, and more), and the Explorer groups each foil version next to its base drop.
