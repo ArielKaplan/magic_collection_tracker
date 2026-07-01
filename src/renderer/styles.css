@@ -431,6 +431,40 @@ body.app-shell {
   border-radius: var(--radius-lg);
   padding: 4px;
 }
+.sr-row-sub { color: var(--text-dim); font-size: var(--fs-xs); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sr-sec-note { margin-left: 8px; font-weight: 500; text-transform: none; letter-spacing: 0; color: var(--text-muted); font-size: var(--fs-xs); }
+.sr-loading { padding: 28px 16px; color: var(--text-muted); font-size: var(--fs-sm); }
+.sr-print-link {
+  margin-left: 10px; flex-shrink: 0;
+  background: transparent; border: 1px solid var(--border);
+  color: var(--text-dim); border-radius: var(--radius-sm);
+  font-size: var(--fs-xxs); font-family: inherit; padding: 2px 7px; cursor: pointer;
+}
+.sr-print-link:hover { border-color: var(--border2); color: var(--accent2); }
+
+/* ── Tabbed Search Results view ─────────── */
+.srt { display: flex; flex-direction: column; height: 100%; }
+.srt-strip {
+  display: flex; gap: 4px; flex-wrap: wrap;
+  padding-bottom: 12px; margin-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+}
+.srt-tab {
+  display: inline-flex; align-items: center; gap: 6px;
+  max-width: 240px;
+  padding: 5px 8px 5px 10px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-dim); font-size: var(--fs-sm); cursor: pointer;
+  transition: color var(--motion-fast), border-color var(--motion-fast), background var(--motion-fast);
+}
+.srt-tab:hover { background: var(--surface2); color: var(--text); }
+.srt-tab.active { color: var(--accent2); border-color: rgba(200,155,60,0.35); background: rgba(200,155,60,0.10); }
+.srt-tab-kind { flex-shrink: 0; opacity: 0.7; font-size: 11px; }
+.srt-tab-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.srt-tab-close { flex-shrink: 0; opacity: 0.5; font-size: 10px; padding: 0 2px; border-radius: 4px; }
+.srt-tab-close:hover { opacity: 1; background: var(--surface3); color: var(--red); }
+.srt-body { flex: 1; min-height: 0; overflow-y: auto; padding-top: 14px; }
 
 /* ── Update pill (Discord-style) — appears in the top bar when a new version
    is available; click to view "What's New" and download/restart. ───────── */

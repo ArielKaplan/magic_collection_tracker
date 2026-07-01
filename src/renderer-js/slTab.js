@@ -1248,6 +1248,7 @@ export async function showSlViewerModal(scryfallId) {
       ${data.prices?.usd ? `<div style="font-size:22px;font-weight:700;color:var(--text);margin-bottom:14px">$${data.prices.usd}</div>` : ''}
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
         <a href="${esc(scryfallUrl)}" target="_blank" class="btn btn-ghost" style="font-size:12px;text-decoration:none">View on Scryfall ↗</a>
+        <button class="btn btn-ghost" style="font-size:12px" onclick="openPrintingsTab('${escJs(data.name || '')}')">View all printings ◇</button>
         <button class="btn btn-ghost" style="font-size:12px" onclick="toggleSlCardWant('${escJs(scryfallId)}');this.innerHTML=isCardWanted('${escJs(scryfallId)}')?'★ On want list':'☆ Add to want list'">${isCardWanted(scryfallId) ? '★ On want list' : '☆ Add to want list'}</button>
         <button class="btn btn-ghost" style="font-size:12px" onclick="editSlCardNote('${escJs(scryfallId)}')">✎ ${slCardNote(scryfallId) ? 'Edit' : 'Add'} note</button>
       </div>

@@ -72,6 +72,7 @@ export function showGalleryModal(cardId) {
 
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           <button class="btn btn-ghost" style="font-size:12px" onclick="viewInCollection('${escJs(card.name)}')">View in collection →</button>
+          <button class="btn btn-ghost" style="font-size:12px" onclick="openPrintingsTab('${escJs(card.name)}')">View all printings ◇</button>
           ${scryfallUrl ? `<a href="${esc(scryfallUrl)}" target="_blank" class="btn btn-ghost" style="font-size:12px;text-decoration:none">View on Scryfall ↗</a>` : ''}
         </div>
       </div>

@@ -11,6 +11,11 @@ in-app "What's New" screen — from that version's section. Keep entries
 user-facing: what changed, not how.
 
 ## [Unreleased]
+### Added
+- **Full search results, in tabs.** Press Enter in the search box (or hit "See all") to open the **Search Results** view — now with **live catalog search**: your matches are joined by results straight from **Scryfall** (every card) and the **sealed catalog (TCGCSV)**, grouped into sections with owned/not-owned dots. Each search opens as its own **pinned tab**, so you can keep several searches side-by-side and flip between them to compare. **"View all printings ◇"** (on any card result or in a card's detail popup) opens a dedicated tab listing every printing of that card with prices. Open tabs are **remembered between sessions**, and you can close any you're done with.
+
+### Changed
+- **Sharper search matching.** Search now matches whole-word starts instead of any substring, so typing "ring" finds *The One Ring* without also dredging up *Sheoldred, Whispering One* — while partial typing like "trea" → *Treasure* still works.
 
 ## [0.25.0] - 2026-07-01
 ### Added

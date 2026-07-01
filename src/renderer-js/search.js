@@ -15,8 +15,8 @@ import { showGalleryModal } from './gallery.js';
 import { hideModal } from './modals.js';
 import { render } from './render.js';
 import { showSlViewerModal } from './slTab.js';
-import { collection, ui } from './state.js';
-import { esc, escJs, fmt } from './utils.js';
+import { collection, tcgcsvCache, ui } from './state.js';
+import { esc, escJs, fmt, netFetch } from './utils.js';
 
 const CAP = 5;   // results shown per group in the dropdown before "See all"
 
@@ -28,7 +28,9 @@ function makeMatcher(query) {
   return (...fields) => {
     if (!terms.length) return false;
     const hay = norm(fields.filter(Boolean).join('  '));
-    return terms.every(t => hay.includes(t));
+    // Word-boundary (prefix-of-word) match: "ring" hits "One Ring"/"Ringleader"
+    // but not "Whispering". Term is already lowercased.
+    return terms.every(t => new RegExp('(?:^|[^\\p{L}\\p{N}])' + t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'u').test(hay));
   };
 }
 
@@ -250,6 +252,12 @@ function pickItem(item) {
       ui.slViewer.drop = item.name; ui.slViewer.superdrop = item.sub || ''; ui.slViewer.view = 'drops'; goToTab('slviewer'); break;
     case 'failed':
       goToTab('failures'); break;
+    case 'scrycard':   // live Scryfall card → detail popup
+    case 'print':      // a specific printing → detail popup
+      if (item.scryfallId) showSlViewerModal(item.scryfallId);
+      break;
+    case 'sealedcat':  // live TCGCSV sealed product → Sealed tab
+      ui.sealed.search = item.name; goToTab('sealed'); break;
   }
 }
 
@@ -263,15 +271,137 @@ export function viewInCollection(name) {
   goToTab('cards');
 }
 
-// Phase B will build the tabbed, live-catalog Search Results view. For now this
-// routes to the (scaffolded) 'search' tab carrying the query.
-export function openFullSearch(query) {
+// ─────────────────────────────────────────────────────────────────────────────
+// SEARCH RESULTS TABS (Phase B)
+// Frozen, closeable, persisted result tabs in the Search Results view. Two kinds:
+//   'query'     — a full search (collection + SL + live Scryfall + live TCGCSV)
+//   'printings' — every printing of one card (live Scryfall, unique=prints)
+// Tab descriptors persist to localStorage; results live in memory and re-run on
+// load (prices change, so stale snapshots aren't worth persisting).
+// ─────────────────────────────────────────────────────────────────────────────
+const MAX_TABS = 30;
+const TABS_KEY = 'sl-search-tabs';
+
+function ensureSearchState() {
+  if (!ui.search || !Array.isArray(ui.search.tabs)) ui.search = { tabs: [], activeId: null };
+  return ui.search;
+}
+function newId() { return 't' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
+
+function persistTabs() {
+  try {
+    const s = ensureSearchState();
+    const slim = s.tabs.map(t => ({ id: t.id, kind: t.kind, query: t.query, cardName: t.cardName, label: t.label, createdAt: t.createdAt }));
+    localStorage.setItem(TABS_KEY, JSON.stringify({ tabs: slim, activeId: s.activeId }));
+  } catch { /* localStorage unavailable — tabs stay session-only */ }
+}
+
+export function loadPersistedTabs() {
+  try {
+    const raw = localStorage.getItem(TABS_KEY);
+    if (!raw) return;
+    const data = JSON.parse(raw);
+    const s = ensureSearchState();
+    s.tabs = (data.tabs || []).slice(0, MAX_TABS).map(t => ({ ...t, status: 'idle', results: null, error: null }));
+    s.activeId = (data.activeId && s.tabs.some(t => t.id === data.activeId)) ? data.activeId : (s.tabs[0]?.id || null);
+  } catch { /* ignore corrupt store */ }
+}
+
+function addTab(tab) {
+  const s = ensureSearchState();
+  // De-dupe: same kind + same target → activate the existing tab instead
+  const existing = s.tabs.find(t => t.kind === tab.kind &&
+    (tab.kind === 'query' ? norm(t.query) === norm(tab.query) : norm(t.cardName) === norm(tab.cardName)));
+  if (existing) { s.activeId = existing.id; persistTabs(); return existing; }
+  s.tabs.push(tab);
+  while (s.tabs.length > MAX_TABS) s.tabs.shift();   // drop oldest past the cap
+  s.activeId = tab.id;
+  persistTabs();
+  return tab;
+}
+
+export function openQueryTab(query) {
   closeDropdown();
   const q = (query || '').trim();
   if (!q) return;
-  ui.search = ui.search || { query: '' };
-  ui.search.query = q;
+  const tab = addTab({ id: newId(), kind: 'query', query: q, label: q, createdAt: Date.now(), status: 'idle', results: null });
   goToTab('search');
+  if (tab.status !== 'done') runTab(tab.id);
+}
+
+export function openPrintingsTab(cardName) {
+  hideModal();
+  const name = (cardName || '').trim();
+  if (!name) return;
+  const tab = addTab({ id: newId(), kind: 'printings', cardName: name, label: `${name} · printings`, createdAt: Date.now(), status: 'idle', results: null });
+  goToTab('search');
+  if (tab.status !== 'done') runTab(tab.id);
+}
+
+export function activateSearchTab(id) {
+  const s = ensureSearchState();
+  const tab = s.tabs.find(t => t.id === id);
+  if (!tab) return;
+  s.activeId = id;
+  persistTabs();
+  render();
+  if (tab.status === 'idle') runTab(id);
+}
+
+export function closeSearchTab(id) {
+  const s = ensureSearchState();
+  const idx = s.tabs.findIndex(t => t.id === id);
+  if (idx < 0) return;
+  s.tabs.splice(idx, 1);
+  if (s.activeId === id) s.activeId = (s.tabs[idx] || s.tabs[idx - 1] || null)?.id || null;
+  persistTabs();
+  render();
+}
+
+// Backwards-compatible alias (dropdown "See all" / Enter).
+export function openFullSearch(query) { openQueryTab(query); }
+
+// ── Async runners ─────────────────────────────────────────────────────────────
+function ownedIdSet() {
+  return new Set(collection.cards.filter(c => c.status !== 'sold' && c.scryfallId).map(c => c.scryfallId.toLowerCase()));
+}
+
+async function runTab(id) {
+  const s = ensureSearchState();
+  const tab = s.tabs.find(t => t.id === id);
+  if (!tab) return;
+  tab.status = 'loading'; tab.error = null;
+  if (ui.activeTab === 'search' && s.activeId === id) render();
+  try {
+    tab.results = tab.kind === 'printings' ? await fetchPrintings(tab.cardName) : await fetchQuery(tab.query);
+    tab.status = 'done';
+  } catch (e) {
+    tab.status = 'error';
+    tab.error = e.message || 'Search failed';
+  }
+  if (ui.activeTab === 'search' && s.activeId === id) render();
+}
+
+async function fetchQuery(query) {
+  const offline = quickSearch(query, Infinity);   // collection + SL (offline)
+  let scry = [];
+  try {
+    const resp = await netFetch(`https://api.scryfall.com/cards/search?q=${encodeURIComponent(query)}&unique=cards&order=name`);
+    if (resp.ok) { const d = await resp.json(); scry = (d.data || []).slice(0, 60); }
+  } catch { /* no results / offline → leave empty */ }
+  const toks = norm(query).split(/\s+/).filter(Boolean);
+  const sealedCat = (tcgcsvCache.sealedProducts || [])
+    .filter(p => p.name && toks.every(t => p.name.toLowerCase().includes(t)))
+    .slice(0, 40);
+  return { offline, scry, sealedCat, sealedLoaded: (tcgcsvCache.sealedProducts || []).length > 0 };
+}
+
+async function fetchPrintings(cardName) {
+  const q = '!"' + cardName + '"';
+  const resp = await netFetch(`https://api.scryfall.com/cards/search?q=${encodeURIComponent(q)}&unique=prints&order=released`);
+  if (!resp.ok) return { prints: [] };
+  const d = await resp.json();
+  return { prints: d.data || [] };
 }
 
 // ── Dropdown open/close + wiring ─────────────────────────────────────────────
@@ -287,6 +417,7 @@ export function initSearch() {
   const input = document.getElementById('cmd-search-input');
   if (!input) return;
   input.disabled = false;
+  loadPersistedTabs();   // restore any Search Results tabs from a prior session
 
   input.addEventListener('input', () => {
     clearTimeout(debounceTimer);
@@ -313,10 +444,16 @@ export function initSearch() {
     if (wrap && !wrap.contains(e.target) && box && !box.contains(e.target)) closeDropdown();
   });
 
-  // Full-results page rows (delegated — content is re-rendered by render())
+  // Search Results view — tab strip + result rows (delegated; content re-renders)
   const content = document.getElementById('content');
   if (content) content.addEventListener('click', e => {
-    const row = e.target.closest('.sr-page .sr-row');
+    const close = e.target.closest('.srt-tab-close');
+    if (close) { e.stopPropagation(); closeSearchTab(close.dataset.close); return; }
+    const tabEl = e.target.closest('.srt-tab');
+    if (tabEl) { activateSearchTab(tabEl.dataset.tabid); return; }
+    const printBtn = e.target.closest('[data-printings]');
+    if (printBtn) { openPrintingsTab(printBtn.dataset.printings); return; }
+    const row = e.target.closest('.srt .sr-row');
     if (row) pickItem(pageItems[Number(row.dataset.idx)]);
   });
 
@@ -330,31 +467,139 @@ export function initSearch() {
   });
 }
 
-// ── Search Results tab (Phase A scaffold; Phase B = tabbed + live catalogs) ───
+// ── Search Results view (tabbed) ─────────────────────────────────────────────
+let pageItems = [];   // flattened clickable rows in the active tab, for routing
+
+function pushRow(item) { const i = pageItems.length; pageItems.push(item); return i; }
+
 export function renderSearchTab() {
-  const q = ui.search?.query || '';
-  if (!q) {
+  const s = ensureSearchState();
+  if (!s.tabs.length) {
     return `<div class="empty-state" style="padding:48px 24px;text-align:center">
       <div style="font-size:15px;font-weight:700;margin-bottom:6px">Search Results</div>
-      <div style="color:var(--text-muted);font-size:13px">Search from the bar up top and press Enter to open full results here.</div>
+      <div style="color:var(--text-muted);font-size:13px">Search from the bar up top and press Enter to open full results here.<br>Open searches stay pinned as tabs so you can compare cards side-by-side.</div>
     </div>`;
   }
-  const res = quickSearch(q, Infinity);   // uncapped for the full page
+  const active = s.tabs.find(t => t.id === s.activeId) || s.tabs[0];
+  s.activeId = active.id;
   pageItems = [];
-  let html = `<div class="sr-page">
-    <div class="sr-page-head"><span class="sr-page-q">Results for “${esc(q)}”</span>
-    <span class="sr-page-note">Full catalog search is coming in the next update — showing your collection + Secret Lair matches for now.</span></div>`;
-  if (!res || !res.totalCount) {
-    html += `<div class="empty-state" style="padding:32px">No matches in your collection or the Secret Lair catalog.</div></div>`;
-    return html;
-  }
-  for (const g of res.groups) {
-    html += `<div class="sr-page-group"><h3 class="sr-page-group-head">${esc(g.label)} <span class="sr-page-count">${g.total}</span></h3><div class="sr-page-rows">`;
-    for (const item of g.items) { html += rowHtml(item, pageItems.length); pageItems.push(item); }
-    html += `</div></div>`;
-  }
-  html += '</div>';
-  return html;
+  // Restored-from-disk tabs start idle; kick off their fetch on first view.
+  if (active.status === 'idle') setTimeout(() => runTab(active.id), 0);
+
+  const strip = `<div class="srt-strip">${s.tabs.map(t => `
+    <div class="srt-tab${t.id === active.id ? ' active' : ''}" data-tabid="${t.id}" title="${esc(t.label)}">
+      <span class="srt-tab-kind">${t.kind === 'printings' ? '◇' : '⌕'}</span>
+      <span class="srt-tab-label">${esc(t.label)}</span>
+      <span class="srt-tab-close" data-close="${t.id}" title="Close tab">✕</span>
+    </div>`).join('')}</div>`;
+
+  const body = active.kind === 'printings' ? renderPrintingsBody(active) : renderQueryBody(active);
+  return `<div class="srt">${strip}<div class="srt-body">${body}</div></div>`;
 }
 
-let pageItems = [];   // flattened items on the full-results page, for click routing
+function loadingHtml(label) {
+  return `<div class="sr-loading">Searching ${esc(label)}…</div>`;
+}
+function errorHtml(msg) {
+  return `<div class="sr-page-group"><div class="empty-state" style="padding:24px;color:var(--red)">Search failed: ${esc(msg)}</div></div>`;
+}
+
+function sectionHtml(title, count, rowsHtml, note) {
+  if (!rowsHtml && !note) return '';
+  const head = `<h3 class="sr-page-group-head">${esc(title)}${count != null ? ` <span class="sr-page-count">${count}</span>` : ''}${note ? `<span class="sr-sec-note">${esc(note)}</span>` : ''}</h3>`;
+  const body = rowsHtml ? `<div class="sr-page-rows">${rowsHtml}</div>` : '';
+  return `<div class="sr-page-group">${head}${body}</div>`;
+}
+
+// A collection/SL card row that also offers "View all printings".
+function collectionCardRow(item) {
+  const idx = pushRow(item);
+  const meta = item.owned ? `×${item.qty}${item.prints > 1 ? ` · ${item.prints} printings` : ''}` : esc(item.drop || 'Secret Lair');
+  return `<div class="sr-row" data-idx="${idx}">
+    ${ownDot(item.owned)}
+    <span class="sr-row-name">${esc(item.name)}</span>
+    <span class="sr-row-meta">${meta}</span>
+    <button class="sr-print-link" data-printings="${esc(item.name)}" title="View all printings">◇ printings</button>
+  </div>`;
+}
+
+function scryRow(c, ownedIds) {
+  const id = (c.id || '').toLowerCase();
+  const price = c.prices?.usd ?? c.prices?.usd_foil ?? c.prices?.usd_etched;
+  const idx = pushRow({ type: 'scrycard', name: c.name, scryfallId: id });
+  return `<div class="sr-row" data-idx="${idx}">
+    ${ownDot(ownedIds.has(id))}
+    <span class="sr-row-name">${esc(c.name)}</span>
+    <span class="sr-row-sub">${esc(c.set_name || '')} · ${esc((c.set || '').toUpperCase())} #${esc(c.collector_number || '?')}</span>
+    <span class="sr-row-meta">${price != null ? '$' + price : '—'}</span>
+    <button class="sr-print-link" data-printings="${esc(c.name)}" title="View all printings">◇ printings</button>
+  </div>`;
+}
+
+function sealedCatRow(p) {
+  const idx = pushRow({ type: 'sealedcat', name: p.name });
+  return `<div class="sr-row" data-idx="${idx}">
+    <span class="sr-row-name">${esc(p.name)}</span>
+    <span class="sr-row-meta">${p.marketPrice != null ? fmt(p.marketPrice) : '—'}</span>
+  </div>`;
+}
+
+function printRow(c, ownedIds) {
+  const id = (c.id || '').toLowerCase();
+  const price = c.prices?.usd ?? c.prices?.usd_foil ?? c.prices?.usd_etched;
+  const finishes = (c.finishes || []).join(' / ') || '—';
+  const idx = pushRow({ type: 'print', scryfallId: id, name: c.name });
+  return `<div class="sr-row" data-idx="${idx}">
+    ${ownDot(ownedIds.has(id))}
+    <span class="sr-row-name">${esc(c.set_name || '')}</span>
+    <span class="sr-row-sub">#${esc(c.collector_number || '?')} · ${esc(finishes)}</span>
+    <span class="sr-row-meta">${price != null ? '$' + price : '—'}</span>
+  </div>`;
+}
+
+function renderQueryBody(tab) {
+  let html = `<div class="sr-page"><div class="sr-page-head"><span class="sr-page-q">Results for “${esc(tab.query)}”</span></div>`;
+  if (tab.status === 'loading' || tab.status === 'idle') return html + loadingHtml(`“${tab.query}”`) + '</div>';
+  if (tab.status === 'error') return html + errorHtml(tab.error) + '</div>';
+
+  const r = tab.results || {};
+  const ownedIds = ownedIdSet();
+
+  // Your collection + Secret Lair catalog (offline groups)
+  if (r.offline?.totalCount) {
+    for (const g of r.offline.groups) {
+      const rows = g.items.map(item => (g.key === 'cards') ? collectionCardRow(item) : (pushRow(item), rowHtml(item, pageItems.length - 1))).join('');
+      html += sectionHtml(g.label, g.total, rows);
+    }
+  }
+
+  // Live card catalog (Scryfall)
+  const scryRows = (r.scry || []).map(c => scryRow(c, ownedIds)).join('');
+  html += sectionHtml('Card Catalog · Scryfall', (r.scry || []).length, scryRows);
+
+  // Live sealed catalog (TCGCSV)
+  if (r.sealedLoaded) {
+    const sealedRows = (r.sealedCat || []).map(p => sealedCatRow(p)).join('');
+    html += sectionHtml('Sealed Catalog · TCGCSV', (r.sealedCat || []).length, sealedRows);
+  } else {
+    html += sectionHtml('Sealed Catalog · TCGCSV', null, '', 'not loaded — sync from the Sealed tab to search it');
+  }
+
+  if (!pageItems.length && !(r.scry || []).length) {
+    html += `<div class="empty-state" style="padding:24px">No matches anywhere for “${esc(tab.query)}”.</div>`;
+  }
+  return html + '</div>';
+}
+
+function renderPrintingsBody(tab) {
+  let html = `<div class="sr-page"><div class="sr-page-head"><span class="sr-page-q">All printings · ${esc(tab.cardName)}</span></div>`;
+  if (tab.status === 'loading' || tab.status === 'idle') return html + loadingHtml(`printings of “${tab.cardName}”`) + '</div>';
+  if (tab.status === 'error') return html + errorHtml(tab.error) + '</div>';
+
+  const prints = tab.results?.prints || [];
+  if (!prints.length) return html + `<div class="empty-state" style="padding:24px">No printings found.</div></div>`;
+  const ownedIds = ownedIdSet();
+  const rows = prints.map(c => printRow(c, ownedIds)).join('');
+  html += sectionHtml(`${prints.length} printing${prints.length !== 1 ? 's' : ''}`, null, rows);
+  return html + '</div>';
+}
