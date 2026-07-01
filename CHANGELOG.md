@@ -11,6 +11,8 @@ in-app "What's New" screen — from that version's section. Keep entries
 user-facing: what changed, not how.
 
 ## [Unreleased]
+
+## [0.23.0] - 2026-07-01
 ### Changed
 - **A new look — "Pro Instrument."** The app moves from the violet Material theme to a neutral-dark, trading-terminal palette with restrained gold accents. Gold now carries meaning: it marks the primary action, active navigation, and focus — while your portfolio numbers, prices, and totals read in clean high-contrast white. Tighter type (Inter, with JetBrains Mono for figures), tighter corners, and quieter borders throughout.
 
