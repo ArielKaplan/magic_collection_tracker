@@ -11,6 +11,8 @@ in-app "What's New" screen — from that version's section. Keep entries
 user-facing: what changed, not how.
 
 ## [Unreleased]
+
+## [0.24.0] - 2026-07-01
 ### Changed
 - **New navigation — a left rail instead of top tabs.** The app is now laid out like a desktop trading terminal: a fixed left sidebar holds all your sections (Dashboard, Card Collection, Sealed, Decks, Secret Lair Explorer, Want List, Failed Lookups) with icons and your account at the bottom, a slim command bar up top carries the price-refresh status and a **Refresh Prices** button, and a full-width status bar along the bottom shows your card count, portfolio total, and save state. More room for your data, and everything's one click away from anywhere.
 
