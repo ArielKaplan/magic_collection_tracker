@@ -2,7 +2,7 @@ import { cardCurrentValue } from './analytics.js';
 import { FOIL_LABEL } from './constants.js';
 import { showModal } from './modals.js';
 import { collection } from './state.js';
-import { esc, fmt } from './utils.js';
+import { esc, escJs, fmt } from './utils.js';
 
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -70,7 +70,10 @@ export function showGalleryModal(cardId) {
           ${spark}
         </div>` : ''}
 
-        ${scryfallUrl ? `<a href="${esc(scryfallUrl)}" target="_blank" class="btn btn-ghost" style="font-size:12px;text-decoration:none">View on Scryfall ↗</a>` : ''}
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-ghost" style="font-size:12px" onclick="viewInCollection('${escJs(card.name)}')">View in collection →</button>
+          ${scryfallUrl ? `<a href="${esc(scryfallUrl)}" target="_blank" class="btn btn-ghost" style="font-size:12px;text-decoration:none">View on Scryfall ↗</a>` : ''}
+        </div>
       </div>
     </div>`);
 }

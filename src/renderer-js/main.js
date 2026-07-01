@@ -26,6 +26,7 @@ import * as NS_settings from './settings.js';
 import * as NS_updaterUI from './updaterUI.js';
 import * as NS_hover from './hover.js';
 import * as NS_wantlist from './wantlist.js';
+import * as NS_search from './search.js';
 import { analyzeByColor, analyzeByManaValue, analyzeByType, binderValueMap, cardCurrentValue, realizedGains, renderCardCountBySet, renderCardCountByYear, renderCardOfTheDay, renderColorPanel, renderManaValuePanel, renderRarityPanel, renderStatsPanel, renderTop10ValueCards, renderTypePanel, renderValueBySet, topMovers, totalCardsValue, totalSealedValue } from './analytics.js';
 import { FOIL_LABEL } from './constants.js';
 import { showImportHub } from './importWizard.js';
@@ -34,6 +35,7 @@ import { closeLogPanel, toggleLogPanel } from './logger.js';
 import { hideModal } from './modals.js';
 import { refreshPrices } from './prices.js';
 import { render } from './render.js';
+import { initSearch } from './search.js';
 import { showSettings } from './settings.js';
 import { computeSlIndex, loadSlOverrides, refreshSlData } from './slTab.js';
 import { collection, ui } from './state.js';
@@ -46,7 +48,7 @@ import { esc, fmt, fmtPct, toast, today } from './utils.js';
 // this preserves the classic-script contract. Remove as tabs migrate to
 // components with real event wiring.
 const WINDOW_DENYLIST = new Set(['window', 'document', 'location', 'top', 'parent', 'self', 'frames', 'length', 'name', 'status', 'history', 'origin', 'closed', 'opener', 'navigator', 'screen']);
-for (const ns of [NS_constants, NS_state, NS_logger, NS_utils, NS_csv, NS_storage, NS_importWizard, NS_prices, NS_statusbar, NS_sealedPricing, NS_analytics, NS_render, NS_ticker, NS_cardsTab, NS_gallery, NS_slTab, NS_failures, NS_sealedTab, NS_decks, NS_deckIO, NS_modals, NS_productPicker, NS_sealedModals, NS_exportModal, NS_settings, NS_updaterUI, NS_hover, NS_wantlist]) {
+for (const ns of [NS_constants, NS_state, NS_logger, NS_utils, NS_csv, NS_storage, NS_importWizard, NS_prices, NS_statusbar, NS_sealedPricing, NS_analytics, NS_render, NS_ticker, NS_cardsTab, NS_gallery, NS_slTab, NS_failures, NS_sealedTab, NS_decks, NS_deckIO, NS_modals, NS_productPicker, NS_sealedModals, NS_exportModal, NS_settings, NS_updaterUI, NS_hover, NS_wantlist, NS_search]) {
   for (const [key, value] of Object.entries(ns)) {
     if (WINDOW_DENYLIST.has(key)) continue;
     try { window[key] = value; } catch { /* read-only window prop — skip */ }
@@ -75,6 +77,9 @@ async function init() {
   // Command-bar "Refresh Prices" CTA
   const cmdRefresh = document.getElementById('cmdRefreshPrices');
   if (cmdRefresh) cmdRefresh.addEventListener('click', () => refreshPrices());
+
+  // Global command-bar search (dropdown + ⌘K + full-results routing)
+  initSearch();
 
   // Top-bar update pill (shown when the main process reports a new version)
   NS_updaterUI.wireUpdateBadge();

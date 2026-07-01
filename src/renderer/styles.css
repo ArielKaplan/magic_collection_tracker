@@ -359,6 +359,79 @@ body.app-shell {
 .cmd-refresh-btn svg { width: 15px; height: 15px; }
 .cmd-refresh-btn:hover { box-shadow: none; }
 
+/* ── Global search dropdown ─────────────── */
+.cmd-search { position: relative; }
+.cmd-search-results {
+  display: none;
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  width: min(460px, 92vw);
+  max-height: 70vh;
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  padding: 6px;
+  z-index: 200;
+}
+.sr-group { padding: 2px 0 4px; }
+.sr-group + .sr-group { border-top: 1px solid var(--border); margin-top: 2px; }
+.sr-group-head {
+  display: flex; align-items: center; gap: 6px;
+  padding: 6px 10px 4px;
+  font-size: var(--fs-xxs); font-weight: 700; text-transform: uppercase;
+  letter-spacing: var(--tracking-label); color: var(--text-muted);
+}
+.sr-group-more {
+  margin-left: auto;
+  padding: 0 6px; border-radius: 99px;
+  background: var(--surface2); color: var(--text-muted);
+  font-size: 9px; font-weight: 700;
+}
+.sr-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 10px;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  font-size: var(--fs-sm);
+}
+.sr-row.active { background: var(--surface2); }
+.sr-row-name { color: var(--text); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sr-row-meta { margin-left: auto; color: var(--text-dim); font-size: var(--fs-xs); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.sr-own { font-size: 9px; line-height: 1; flex-shrink: 0; }
+.sr-own-yes { color: var(--green); }
+.sr-own-no  { color: var(--text-muted); }
+.sr-foot {
+  margin-top: 4px; padding: 8px 10px;
+  border-top: 1px solid var(--border);
+  color: var(--text-dim); font-size: var(--fs-xs); cursor: pointer;
+  border-radius: var(--radius-md);
+}
+.sr-foot:hover { background: var(--surface2); color: var(--text); }
+.sr-empty { padding: 12px; color: var(--text-muted); font-size: var(--fs-sm); }
+
+/* ── Full search-results page ───────────── */
+.sr-page { max-width: 820px; }
+.sr-page-head { margin-bottom: 16px; }
+.sr-page-q { display: block; font-size: var(--fs-xl); font-weight: 700; letter-spacing: var(--tracking-tight); color: var(--text); }
+.sr-page-note { display: block; margin-top: 4px; font-size: var(--fs-xs); color: var(--text-muted); }
+.sr-page-group { margin-bottom: 18px; }
+.sr-page-group-head {
+  display: flex; align-items: center; gap: 8px;
+  font-size: var(--fs-xs); font-weight: 700; text-transform: uppercase;
+  letter-spacing: var(--tracking-label); color: var(--text-muted);
+  margin-bottom: 6px;
+}
+.sr-page-count { padding: 0 6px; border-radius: 99px; background: var(--surface2); font-size: 9.5px; }
+.sr-page-rows {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 4px;
+}
+
 /* ── Update pill (Discord-style) — appears in the top bar when a new version
    is available; click to view "What's New" and download/restart. ───────── */
 .update-pill {

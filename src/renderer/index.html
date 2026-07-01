@@ -49,6 +49,12 @@
         <svg class="rail-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
         <span class="rail-label">Failed Lookups</span>
       </button>
+
+      <div class="rail-group">Search</div>
+      <button class="tab-btn rail-item" data-tab="search" title="Search Results">
+        <svg class="rail-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+        <span class="rail-label">Search Results</span>
+      </button>
     </nav>
 
     <div class="rail-footer">
@@ -65,11 +71,12 @@
 
   <!-- ── Command bar ──────────────────────────────────────────────────── -->
   <header class="cmdbar">
-    <label class="cmd-search" title="Global search — coming soon">
+    <div class="cmd-search">
       <svg class="cmd-search-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-      <input type="text" class="cmd-search-input" placeholder="Search cards, sets, binders…" disabled aria-label="Global search (coming soon)">
+      <input type="text" id="cmd-search-input" class="cmd-search-input" placeholder="Search cards, sets, binders…" autocomplete="off" spellcheck="false" aria-label="Global search">
       <span class="cmd-kbd">⌘K</span>
-    </label>
+      <div id="cmd-search-results" class="cmd-search-results" role="listbox"></div>
+    </div>
     <div class="cmd-right">
       <span class="cmd-refresh" id="sb-refresh">Last refresh: —</span>
       <button class="update-pill" id="update-pill" style="display:none"></button>

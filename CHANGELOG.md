@@ -11,6 +11,8 @@ in-app "What's New" screen — from that version's section. Keep entries
 user-facing: what changed, not how.
 
 ## [Unreleased]
+### Added
+- **Global search in the command bar.** Start typing in the top search box and get instant, grouped results across your collection and the Secret Lair catalog — **Cards** (with an owned/not-owned dot and how many printings you hold), **Sets, Binders, Sealed, Decks, Want List, Secret Lair drops,** and **Failed Lookups**. Click any result to jump to it; clicking a card opens its details with a **"View in collection"** link. **⌘K / Ctrl+K** focuses the box, and **Enter** opens a full **Search Results** view (new item in the rail) with every match. *Coming next: live full-catalog search across Scryfall & TCGCSV, and multiple frozen result tabs for side-by-side comparison.*
 
 ## [0.24.0] - 2026-07-01
 ### Changed

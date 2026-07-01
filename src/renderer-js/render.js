@@ -4,6 +4,7 @@ import { renderFailedLookupsTab } from './failures.js';
 import { attachContentListeners } from './hover.js';
 import { updateRefreshUI } from './prices.js';
 import { renderSealed } from './sealedTab.js';
+import { renderSearchTab } from './search.js';
 import { renderSlViewer } from './slTab.js';
 import { collection, ui } from './state.js';
 import { updateStatusBar } from './statusbar.js';
@@ -40,6 +41,7 @@ export function render() {
       case 'slviewer':  content.innerHTML = renderSlViewer();          break;
       case 'wantlist':  content.innerHTML = renderWantList();          break;
       case 'failures':  content.innerHTML = renderFailedLookupsTab();  break;
+      case 'search':    content.innerHTML = renderSearchTab();         break;
     }
   } catch (e) {
     console.error('Render error:', e);
