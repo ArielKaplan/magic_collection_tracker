@@ -660,7 +660,7 @@ function renderSlIndexBody(idx) {
     const verdict = !allPriced ? ''
       : cvk.crackTotal > cvk.keepTotal
         ? `<span style="margin-left:auto;color:var(--green);font-weight:600">Cracking wins by ${fmt(cvk.crackTotal - cvk.keepTotal)}</span>`
-        : `<span style="margin-left:auto;color:var(--accent2);font-weight:600">Keeping wins by ${fmt(cvk.keepTotal - cvk.crackTotal)}</span>`;
+        : `<span style="margin-left:auto;color:var(--text);font-weight:600">Keeping wins by ${fmt(cvk.keepTotal - cvk.crackTotal)}</span>`;
     crackKeep = `
       <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin-top:14px;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px 16px">
         <span style="font-size:13px;font-weight:700">📦 ${cvk.heldCount} sealed drop${cvk.heldCount === 1 ? '' : 's'} held</span>
@@ -701,13 +701,27 @@ export function sealedKeepValue(drop) {
   return { value: hasPrice ? value : null, qty };
 }
 
-// Pure aggregation: sum a drop's singles, deduped per card name, taking the best
-// (max) current price across that card's printings/finishes (usd/foil/etched).
-export function sumDropSingles(cards) {
+// Which Scryfall finish a drop's name implies — so a "… Foil" / "… Rainbow Foil"
+// drop values its foil printings, not the best across finishes.
+export function dropFinish(drop) {
+  if (/\betched\b/i.test(drop)) return 'etched';
+  if (/\bfoil$/i.test(drop)) return 'foil';
+  return 'normal';
+}
+
+// Pure aggregation: sum a drop's singles, deduped per card name. `finish` chooses
+// which Scryfall price to prefer ('foil' → usd_foil, 'etched' → usd_etched, else
+// non-foil usd), each falling back to the other finishes when the preferred price
+// is missing (e.g. a foil-only card in a non-foil drop).
+export function sumDropSingles(cards, finish = 'normal') {
+  const order = finish === 'foil' ? ['usd_foil', 'usd', 'usd_etched']
+    : finish === 'etched' ? ['usd_etched', 'usd_foil', 'usd']
+    : ['usd', 'usd_foil', 'usd_etched'];
   const byName = {};
   for (const card of (cards || [])) {
     const p = card.prices || {};
-    const val = parseFloat(p.usd ?? p.usd_foil ?? p.usd_etched);
+    let val = NaN;
+    for (const k of order) { const v = parseFloat(p[k]); if (!isNaN(v)) { val = v; break; } }
     if (isNaN(val)) continue;
     const name = card.name || card.id;
     byName[name] = Math.max(byName[name] ?? 0, val);
@@ -729,7 +743,7 @@ export async function priceSlDropSingles(drop) {
       const data = await fetchScryfallBatch(uniq.slice(i, i + 75));
       for (const c of (data.data || [])) cards.push(c);
     }
-    const { value, priced } = sumDropSingles(cards);
+    const { value, priced } = sumDropSingles(cards, dropFinish(drop));
     const totalNames = (typeof SL_DROP_CARDS !== 'undefined' && SL_DROP_CARDS[drop]?.length) || priced;
     slDropSinglesCache.set(drop, { value, priced, names: totalNames, at: Date.now() });
   } catch (e) {
@@ -781,10 +795,10 @@ function dropEconomicsBanner(drop) {
     if (held) {
       verdict = diff >= 0
         ? `<div style="margin-top:8px;font-weight:700;color:var(--green)">✂️ Crack it — the singles are worth ${amt} more than the sealed box.</div>`
-        : `<div style="margin-top:8px;font-weight:700;color:var(--accent2)">📦 Keep it sealed — the box carries a ${amt} premium over its singles.</div>`;
+        : `<div style="margin-top:8px;font-weight:700;color:var(--text)">📦 Keep it sealed — the box carries a ${amt} premium over its singles.</div>`;
     } else {
       verdict = diff >= 0
-        ? `<div style="margin-top:8px;font-weight:700;color:var(--accent2)">📦 To complete this drop, the sealed box is cheaper by ${amt}.</div>`
+        ? `<div style="margin-top:8px;font-weight:700;color:var(--text)">📦 To complete this drop, the sealed box is cheaper by ${amt}.</div>`
         : `<div style="margin-top:8px;font-weight:700;color:var(--green)">🃏 To complete this drop, buying the singles is cheaper by ${amt}.</div>`;
     }
   }
@@ -1226,12 +1240,12 @@ export async function showSlViewerModal(scryfallId) {
         <span style="color:var(--text-muted)">CMC</span>      <span>${data.cmc ?? '—'}</span>
         ${oracleText ? `<span style="color:var(--text-muted);align-self:start">Oracle</span><span style="font-style:italic;font-size:12px;line-height:1.5">${esc(oracleText)}${(data.oracle_text||'').length > 300 ? '…' : ''}</span>` : ''}
         ${slInfo.length ? slInfo.map(s => `
-          <span style="color:var(--text-muted)">SL Drop</span><span style="color:var(--accent2);font-weight:600">${esc(s.drop)}</span>
+          <span style="color:var(--text-muted)">SL Drop</span><span class="sl-type-badge">${esc(s.drop)}</span>
           <span style="color:var(--text-muted)">Superdrop</span><span>${esc(s.superdrop)}</span>
         `).join('') : ''}
         <span style="color:var(--text-muted)">In binder</span><span style="color:#f87171;font-weight:600">Not owned</span>
       </div>
-      ${data.prices?.usd ? `<div style="font-size:22px;font-weight:700;color:var(--accent2);margin-bottom:14px">$${data.prices.usd}</div>` : ''}
+      ${data.prices?.usd ? `<div style="font-size:22px;font-weight:700;color:var(--text);margin-bottom:14px">$${data.prices.usd}</div>` : ''}
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
         <a href="${esc(scryfallUrl)}" target="_blank" class="btn btn-ghost" style="font-size:12px;text-decoration:none">View on Scryfall ↗</a>
         <button class="btn btn-ghost" style="font-size:12px" onclick="toggleSlCardWant('${escJs(scryfallId)}');this.innerHTML=isCardWanted('${escJs(scryfallId)}')?'★ On want list':'☆ Add to want list'">${isCardWanted(scryfallId) ? '★ On want list' : '☆ Add to want list'}</button>

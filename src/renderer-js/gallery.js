@@ -44,7 +44,7 @@ export function showGalleryModal(cardId) {
           <span style="color:var(--text-muted)">Qty owned</span> <span>${card.quantity}</span>
           ${slInfo.length ? slInfo.map(s => `
             <span style="color:var(--text-muted)">SL Drop</span>
-            <span style="color:var(--accent2);font-weight:600">${esc(s.drop)}</span>
+            <span class="sl-type-badge">${esc(s.drop)}</span>
             <span style="color:var(--text-muted)">Superdrop</span>
             <span>${esc(s.superdrop)}</span>
           `).join('') : ''}
@@ -53,7 +53,7 @@ export function showGalleryModal(cardId) {
         <div style="display:flex;gap:20px;margin-bottom:14px;flex-wrap:wrap">
           ${value != null ? `<div>
             <div style="font-size:11px;color:var(--text-muted);margin-bottom:2px">Market price</div>
-            <div style="font-size:22px;font-weight:700;color:var(--accent2)">${fmt(value)}</div>
+            <div style="font-size:22px;font-weight:700;color:var(--text)">${fmt(value)}</div>
           </div>` : ''}
           ${cost ? `<div>
             <div style="font-size:11px;color:var(--text-muted);margin-bottom:2px">Cost basis</div>

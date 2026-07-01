@@ -364,7 +364,7 @@
     flex-wrap: wrap;
     min-height: 40px;
   }
-  .dash-title { font-size: 11px; font-weight: 700; letter-spacing: 0.12em; color: var(--accent2, #e8b84b); }
+  .dash-title { font-size: 11px; font-weight: 700; letter-spacing: 0.12em; color: var(--text-muted, #6f6d76); }
   .dash-divider { width: 1px; height: 16px; background: var(--border, #252545); }
   .dash-spacer { flex: 1; }
 
@@ -432,7 +432,7 @@
     padding: 14px 16px 12px;
     border-bottom: 1px solid var(--border, #252545);
   }
-  .nc-title { font-size: 13px; font-weight: 700; letter-spacing: 0.04em; color: var(--accent2, #e8b84b); }
+  .nc-title { font-size: 13px; font-weight: 700; letter-spacing: 0.04em; color: var(--text-muted, #6f6d76); }
   .nc-close {
     background: transparent; border: none; color: var(--text-dim, #7a7692);
     font-size: 18px; cursor: pointer; line-height: 1; padding: 0 4px;

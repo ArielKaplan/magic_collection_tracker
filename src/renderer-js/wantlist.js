@@ -254,7 +254,7 @@ export function renderWantList() {
           ${w.foil && w.foil !== 'normal' ? `<span class="badge badge-${esc(w.foil)}" style="margin-left:6px">${esc(FOIL_LABEL[w.foil] || w.foil)}</span>` : ''}
         </td>
         <td style="color:var(--text-muted);font-size:12px">${esc(w.dropName || w.setName || (w.setCode || '').toUpperCase() || '—')}</td>
-        <td style="text-align:right;font-weight:600;color:var(--accent2)">${price != null ? fmt(price) : '<span style="color:var(--text-muted)">—</span>'}</td>
+        <td style="text-align:right;font-weight:600;color:var(--text)">${price != null ? fmt(price) : '<span style="color:var(--text-muted)">—</span>'}</td>
         <td style="text-align:right">
           <span style="color:var(--text-muted);font-size:12px">$</span><input type="number" min="0" step="0.01" value="${w.maxPrice ?? ''}" placeholder="—"
             onchange="setWantTarget('${esc(w.id)}', this.value)"

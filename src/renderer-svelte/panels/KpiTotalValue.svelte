@@ -26,7 +26,7 @@
 
 <style>
   .kpi { display: flex; flex-direction: column; gap: 4px; padding-top: 4px; }
-  .value { font-size: 24px; font-weight: 800; letter-spacing: -0.02em; color: var(--accent2, #e8b84b); line-height: 1; }
+  .value { font-size: 24px; font-weight: 800; letter-spacing: -0.02em; color: var(--text, #ececef); line-height: 1; }
   .sub { font-size: 11px; color: var(--text-dim, #7a7692); }
   .up { color: var(--green, #3dba6f); }
   .down { color: var(--red, #e05555); }

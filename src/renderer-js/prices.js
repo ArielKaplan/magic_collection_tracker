@@ -145,7 +145,7 @@ export async function fetchScryfallBatch(ids) {
         const refreshEl = document.getElementById('sb-refresh');
         if (refreshEl) {
           refreshEl.textContent = `↻ Rate limited — waiting ${wait / 1000}s…`;
-          refreshEl.style.color = 'var(--accent2)';
+          refreshEl.style.color = 'var(--text-dim)';
         }
         window.logger?.warn('Price', `Rate limited (429) — backing off ${wait / 1000}s before retry ${attempt + 1}/${DELAYS.length}`);
         await sleep(wait);

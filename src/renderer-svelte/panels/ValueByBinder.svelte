@@ -29,6 +29,6 @@
   .lbl { font-size: 12px; color: var(--text, #ece9e1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .track { height: 6px; background: var(--border, #252545); border-radius: 3px; overflow: hidden; }
   .fill { height: 100%; background: linear-gradient(90deg, var(--accent, #c89b3c), var(--accent2, #e8b84b)); }
-  .val { text-align: right; font-size: 12px; font-weight: 600; color: var(--accent2, #e8b84b); }
+  .val { text-align: right; font-size: 12px; font-weight: 600; color: var(--text, #ececef); }
   .sub { font-size: 10px; color: var(--text-muted, #4a4668); padding: 0 0 6px 0; }
 </style>

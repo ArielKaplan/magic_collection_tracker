@@ -31,5 +31,5 @@
   .lbl { color: var(--text, #ece9e1); }
   .track { height: 6px; background: var(--border, #252545); border-radius: 3px; overflow: hidden; }
   .fill { height: 100%; opacity: 0.8; }
-  .val { text-align: right; font-weight: 600; color: var(--accent2, #e8b84b); }
+  .val { text-align: right; font-weight: 600; color: var(--text, #ececef); }
 </style>

@@ -90,7 +90,7 @@ const near = (a, b) => Math.abs(a - b) < 1e-6;
   collection.settings = {};
 
   // ── Phase 2: crack-or-keep ────────────────────────────────────────────────
-  const { sumDropSingles, sealedKeepValue } = await import('../src/renderer-js/slTab.js');
+  const { sumDropSingles, sealedKeepValue, dropFinish } = await import('../src/renderer-js/slTab.js');
 
   // sumDropSingles: each printing is its own Scryfall object; price = usd ?? foil ?? etched.
   // Dedupe per card NAME, taking the max across that card's printings.
@@ -104,6 +104,14 @@ const near = (a, b) => Math.abs(a - b) < 1e-6;
   const agg = sumDropSingles(cards);
   check('sumDropSingles dedupes by name + best finish (25+4+7.5=36.5)', near(agg.value, 36.5), agg.value);
   check('sumDropSingles priced count = 3 (A,B,C)', agg.priced === 3, agg.priced);
+
+  // finish-aware pricing: a foil drop values usd_foil, a non-foil drop values usd
+  const ff = [{ name: 'X', prices: { usd: '10.00', usd_foil: '30.00' } }];
+  check('finish=normal prefers non-foil price (10)', near(sumDropSingles(ff, 'normal').value, 10), sumDropSingles(ff, 'normal').value);
+  check('finish=foil prefers foil price (30)', near(sumDropSingles(ff, 'foil').value, 30), sumDropSingles(ff, 'foil').value);
+  check('dropFinish: "… Rainbow Foil" -> foil', dropFinish('Garden Buds Rainbow Foil') === 'foil');
+  check('dropFinish: "… Etched Foil" -> etched', dropFinish('Crocodile Jackson Etched Foil') === 'etched');
+  check('dropFinish: base drop -> normal', dropFinish('Garden Buds') === 'normal');
 
   // sealedKeepValue: only still-sealed copies count toward keep value
   collection.sealed = [

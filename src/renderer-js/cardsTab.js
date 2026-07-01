@@ -267,7 +267,7 @@ export function renderCardRow(card) {
     ${col('quantity', `<td style="text-align:center">${card.quantity}</td>`)}
     ${col('purchasePrice', `<td>${fmt(card.purchasePrice)}</td>`)}
     ${col('currentPrice', `<td style="font-weight:600">${curPrice != null ? fmt(curPrice) : '<span style="color:var(--text-dim)">—</span>'}</td>`)}
-    ${col('marketPrice', `<td style="font-weight:600;color:var(--accent2)">${mktPrice != null ? fmt(mktPrice) : '<span style="color:var(--text-dim)">—</span>'}</td>`)}
+    ${col('marketPrice', `<td style="font-weight:600;color:var(--text)">${mktPrice != null ? fmt(mktPrice) : '<span style="color:var(--text-dim)">—</span>'}</td>`)}
     ${col('priceDelta', `<td>${changeHtml}</td>`)}
     ${col('trend', `<td>${sparkline(hist)}</td>`)}
     ${col('flags', `<td>${flags}</td>`)}

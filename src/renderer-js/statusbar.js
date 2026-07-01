@@ -22,7 +22,7 @@ export function updateStatusBar() {
 
   if (ui.refreshing) {
     refreshEl.textContent = `↻ Refreshing prices… ${ui.refreshProgress}%`;
-    refreshEl.style.color = 'var(--accent2)';
+    refreshEl.style.color = 'var(--text-dim)';
   } else {
     refreshEl.style.color = '';
     if (collection.lastPriceRefresh) {
@@ -54,7 +54,7 @@ export function updateStatusBar() {
 }
 
 export function showAbout() {
-  const termStyle = 'font-weight:600;color:var(--accent2);white-space:nowrap';
+  const termStyle = 'font-weight:600;color:var(--text);white-space:nowrap';
   const defStyle  = 'color:var(--text-dim);font-size:12px;line-height:1.55';
   showModal(`
     <h2 style="margin-bottom:4px">Secret Lair Tracker</h2>
@@ -67,7 +67,7 @@ export function showAbout() {
       <span style="color:var(--text-muted)">Last refresh</span><span>${collection.lastPriceRefresh ? new Date(collection.lastPriceRefresh).toLocaleString() : 'Never'}</span>
     </div>
 
-    <h3 style="font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--accent2);margin:0 0 10px">Price Column Glossary</h3>
+    <h3 style="font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text-muted);margin:0 0 10px">Price Column Glossary</h3>
     <div style="display:grid;grid-template-columns:auto 1fr;gap:8px 14px;margin-bottom:18px">
       <span style="${termStyle}">Low (SCR)</span>
       <span style="${defStyle}">The cheapest active listing on TCGPlayer right now, as reported by Scryfall. This is what you could theoretically buy the card for today — but it may be a single heavily-played copy or an outlier listing.</span>
@@ -85,7 +85,7 @@ export function showAbout() {
       <span style="${defStyle}">A sparkline chart of the card's low price over all recorded refresh dates. Rising line = price going up; falling line = price going down.</span>
     </div>
 
-    <h3 style="font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--accent2);margin:0 0 10px">Dashboard Terms</h3>
+    <h3 style="font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text-muted);margin:0 0 10px">Dashboard Terms</h3>
     <div style="display:grid;grid-template-columns:auto 1fr;gap:8px 14px;margin-bottom:18px">
       <span style="${termStyle}">Total Value</span>
       <span style="${defStyle}">Cards value + sealed value combined. Uses Scryfall low price for cards and TCGPlayer market price for sealed products.</span>

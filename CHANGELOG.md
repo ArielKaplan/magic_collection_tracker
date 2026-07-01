@@ -11,6 +11,11 @@ in-app "What's New" screen — from that version's section. Keep entries
 user-facing: what changed, not how.
 
 ## [Unreleased]
+### Changed
+- **A new look — "Pro Instrument."** The app moves from the violet Material theme to a neutral-dark, trading-terminal palette with restrained gold accents. Gold now carries meaning: it marks the primary action, active navigation, and focus — while your portfolio numbers, prices, and totals read in clean high-contrast white. Tighter type (Inter, with JetBrains Mono for figures), tighter corners, and quieter borders throughout.
+
+### Fixed
+- **Finish-aware drop pricing.** A Secret Lair drop's value now follows its finish — a "… Rainbow Foil" or "… Etched Foil" drop is priced from its foil/etched singles instead of the best price across all finishes — so the crack-or-keep math matches what you actually hold.
 
 ## [0.22.0] - 2026-06-22
 ### Added

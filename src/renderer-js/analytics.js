@@ -316,7 +316,7 @@ export function renderCardOfTheDay() {
           ${card.condition ? `<span style="color:var(--text-muted)">Cond</span><span>${esc(card.condition)}</span>` : ''}
         </div>
         ${value != null
-          ? `<div style="font-size:20px;font-weight:700;color:var(--accent2);margin-bottom:2px">${fmt(value)}</div>
+          ? `<div style="font-size:20px;font-weight:700;color:var(--text);margin-bottom:2px">${fmt(value)}</div>
              ${card.quantity > 1 ? `<div style="font-size:11px;color:var(--text-muted);margin-bottom:10px">× ${card.quantity} = ${fmt(totalVal)}</div>` : '<div style="margin-bottom:10px"></div>'}`
           : '<div style="font-size:12px;color:var(--text-muted);margin-bottom:10px">No price data</div>'}
         <button class="btn btn-ghost" style="font-size:11px;padding:3px 10px" onclick="ui.cotdOffset=(ui.cotdOffset||0)+1;render()">🎲 New Card</button>
@@ -401,7 +401,7 @@ export function renderTop10ValueCards() {
           <td style="color:var(--text-muted);font-size:11.5px;font-weight:600">${esc(c.setCode.toUpperCase())}</td>
           <td>${c.foil !== 'normal' ? `<span class="badge badge-${c.foil}">${FOIL_LABEL[c.foil]}</span>` : '<span style="color:var(--text-muted)">—</span>'}</td>
           <td style="text-align:center">${c.quantity}</td>
-          <td style="font-weight:700;color:var(--accent2)">${fmt(value)}</td>
+          <td style="font-weight:700;color:var(--text)">${fmt(value)}</td>
           <td style="font-weight:700">${fmt(value * c.quantity)}</td>
         </tr>`).join('')}
     </tbody>

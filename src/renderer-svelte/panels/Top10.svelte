@@ -35,7 +35,7 @@
   li { display: grid; grid-template-columns: 18px 1fr auto auto auto; gap: 6px; padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.03); align-items: center; font-size: 12px; }
   .rank { color: var(--text-muted, #4a4668); font-weight: 700; font-size: 10.5px; text-align: right; }
   .name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .foil { font-size: 9.5px; padding: 1px 5px; border-radius: 99px; background: rgba(200,155,60,0.15); color: var(--accent2, #e8b84b); }
+  .foil { font-size: 9.5px; padding: 1px 5px; border-radius: 99px; background: rgba(155,123,250,0.15); color: var(--treat-foil, #9b7bfa); }
   .set { color: var(--text-dim, #7a7692); font-size: 10.5px; font-weight: 600; }
-  .val { font-weight: 700; color: var(--accent2, #e8b84b); text-align: right; min-width: 56px; }
+  .val { font-weight: 700; color: var(--text, #ececef); text-align: right; min-width: 56px; }
 </style>

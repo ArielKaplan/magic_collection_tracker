@@ -1,77 +1,135 @@
 /* ============================================================
-   Secret Lair Tracker — Material You
-   A complete Material Design 3 (dark) design system:
-   tonal surface hierarchy, violet primary palette, pill
-   navigation, filled/tonal buttons, state layers, M3 shape
-   scale (8/12/16/28), Roboto Flex display type, snackbar
-   toasts, side sheets, and soft layered elevation.
+   Secret Lair Tracker — Direction A · "Pro Instrument"
+   A data-dense desktop tool that reads like a trading terminal:
+   neutral-dark surfaces (no blue cast), restrained functional
+   gold, tight type, borders (not shadows) defining containers.
 
-   Single source of truth — replaces styles.css and
-   styles.direction-a.css. Every selector the renderer JS
-   generates is covered here.
+   Token values are the single source of truth (see tokens.css /
+   DESIGN_LANGUAGE.md). Legacy names are preserved as a
+   load-bearing API — values are redefined here, never renamed —
+   because ~850 var() refs across JS + Svelte panels consume them.
    ============================================================ */
 
-@import url('https://fonts.googleapis.com/css2?family=Roboto+Flex:opsz,wght@8..144,100..1000&family=Roboto+Mono:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
 :root {
-  /* ── Material 3 reference tokens (dark scheme) ── */
-  --md-primary:              #cfbcff;
-  --md-on-primary:           #381e72;
-  --md-primary-container:    #4f378b;
-  --md-on-primary-container: #eaddff;
-  --md-secondary-container:  #4a4458;
-  --md-on-secondary-container:#e8def8;
-  --md-inverse-surface:      #e6e0e9;
-  --md-inverse-on-surface:   #322f35;
-  --md-outline:              #938f99;
-  --md-outline-variant:      #49454f;
+  /* ── Surfaces (neutral dark — no blue cast) ───────────── */
+  --bg:        #0e0e10;          /* page background                */
+  --bg2:       #16161a;          /* alias → surface (legacy name)  */
+  --surface:   #16161a;          /* cards / panels                 */
+  --surface2:  #1d1d22;          /* inputs, nested chips, hover    */
+  --surface3:  #25252c;          /* pressed / focused surface      */
+  --border:    #2a2a31;          /* hairline border                */
+  --border2:   #3a3a44;          /* hover / emphasized border      */
 
-  /* ── Legacy token names (consumed by JS + Svelte panels) ── */
-  --bg:        #131118;          /* surface dim — app background   */
-  --bg2:       #1d1b20;          /* surface container low          */
-  --surface:   #1d1b20;          /* cards / panels                 */
-  --surface2:  #2b2930;          /* inputs, nested chips           */
-  --surface3:  #36343b;          /* hover / highest container      */
-  --border:    #2e2b35;          /* hairline on dark surfaces      */
-  --border2:   #49454f;          /* outline variant                */
+  /* ── Brand accent — FUNCTIONAL ONLY (CTA/active/focus) ── */
+  --accent:     #c89b3c;         /* gold                           */
+  --accent2:    #e8b84b;         /* hover/active gold              */
+  --accent-dim: #6b520f;
+  --accent-soft: rgba(200, 155, 60, 0.12);
+  --focus-ring: 0 0 0 2px rgba(232, 184, 75, .35);
 
-  --accent:     #cfbcff;         /* M3 primary (violet 80)         */
-  --accent2:    #eaddff;         /* primary 90 — KPI numerals      */
-  --accent-dim: #4f378b;         /* primary container              */
-  --accent-soft: rgba(207, 188, 255, 0.12);
+  /* ── Text ─────────────────────────────────────────────── */
+  --text:      #ececef;          /* primary — incl. all KPI numbers*/
+  --text-dim:  #a3a1aa;          /* secondary / labels-in-context  */
+  --text-muted:#6f6d76;          /* micro labels, disabled         */
 
-  --text:      #e6e0e9;          /* on-surface                     */
-  --text-dim:  #cac4d0;          /* on-surface-variant             */
-  --text-muted:#928f9a;          /* outline-ish labels             */
-
-  /* Functional hues (tone ~80 pastels, readable on dark) */
-  --green:     #7bd89f;
+  /* ── Signals ──────────────────────────────────────────── */
+  --green:     #3dba6f;
   --green-dim: #11402a;
-  --red:       #ffb4ab;
+  --red:       #e05555;
   --red-dim:   #4a1410;
-  --blue:      #a8c8ff;
-  --purple:    #d0bcff;
-  --gold:      #e9c46a;
-  --orange:    #ffb77c;
-  --silver:    #c9c5d0;
+  --blue:      #5b9cf6;
 
-  /* M3 elevation */
-  --shadow-sm: 0 1px 2px rgba(0,0,0,.3), 0 1px 3px 1px rgba(0,0,0,.15);
-  --shadow-md: 0 1px 2px rgba(0,0,0,.3), 0 2px 6px 2px rgba(0,0,0,.15);
-  --shadow-lg: 0 4px 4px rgba(0,0,0,.3), 0 8px 12px 6px rgba(0,0,0,.15);
+  /* ── Legacy hue aliases (repointed to new palette) ────── */
+  --purple:    #9b7bfa;          /* → treat-foil                   */
+  --gold:      #c89b3c;          /* → accent                       */
+  --orange:    #d9541f;          /* → rarity-mythic                */
+  --silver:    #b8c0cc;          /* → rarity-common                */
 
-  /* M3 shape scale */
-  --radius-sm:  8px;
-  --radius-md: 12px;
-  --radius-lg: 16px;
-  --radius-xl: 28px;
+  /* ── MTG rarity / treatment — domain identity ─────────── */
+  --rarity-common:   #b8c0cc;
+  --rarity-uncommon: #b8c0cc;
+  --rarity-rare:     #c9a227;
+  --rarity-mythic:   #d9541f;
+  --treat-foil:      #9b7bfa;
+  --treat-etched:    #e8b84b;
+
+  /* ── MTG WUBRG (for filters/charts, not chrome) ───────── */
+  --mtg-w: #f0e6c0;
+  --mtg-u: #5b9cf6;
+  --mtg-b: #5e3d6b;
+  --mtg-r: #e05555;
+  --mtg-g: #3dba6f;
+  --mtg-c: #9aa0b0;
+  --mtg-m: #c89b3c;
+
+  /* ── Material 3 reference tokens (retained for focus/borders) ── */
+  --md-primary:              #c89b3c;   /* → accent                */
+  --md-on-primary:           #0d0d1a;
+  --md-primary-container:    #6b520f;
+  --md-on-primary-container: #e8b84b;
+  --md-secondary-container:  #25252c;
+  --md-on-secondary-container:#ececef;
+  --md-inverse-surface:      #ececef;
+  --md-inverse-on-surface:   #16161a;
+  --md-outline:              #6f6d76;
+  --md-outline-variant:      #3a3a44;
+
+  /* ── Elevation — quiet; borders do most of the work ───── */
+  --shadow-sm: 0 1px 2px rgba(0,0,0,.35);
+  --shadow-md: 0 2px 8px rgba(0,0,0,.45);
+  --shadow-lg: 0 8px 24px rgba(0,0,0,.55);
+
+  /* ── Radii — pro-tool tight ───────────────────────────── */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --radius-xl: 14px;
+
+  /* ── Spacing (8px-ish base, 2px nudges) ───────────────── */
+  --space-1: 4px;
+  --space-2: 6px;
+  --space-3: 8px;
+  --space-4: 10px;
+  --space-5: 12px;
+  --space-6: 14px;
+  --space-7: 18px;
+  --space-8: 22px;
+
+  /* ── Type — SINGLE sans family + mono for figures ─────── */
+  --font-sans: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Cascadia Code', ui-monospace, monospace;
+
+  --fs-xxs: 10px;
+  --fs-xs:  11px;
+  --fs-sm:  12px;
+  --fs-base:13.5px;
+  --fs-md:  14px;
+  --fs-lg:  16px;
+  --fs-xl:  18px;
+  --fs-2xl: 22px;
+  --fs-3xl: 28px;
+
+  --lh-tight: 1.15;
+  --lh-snug:  1.35;
+  --lh-body:  1.5;
+
+  --tracking-label: 0.06em;
+  --tracking-tab:   0.01em;
+  --tracking-tight: -0.02em;
+
+  /* ── Motion — fast, no bounce ─────────────────────────── */
+  --motion-fast: 120ms cubic-bezier(.2,.7,.2,1);
+  --motion-base: 180ms cubic-bezier(.2,.7,.2,1);
 }
 
 /* ── Reset ─────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
-  font-family: 'Roboto Flex', 'Roboto', 'Segoe UI', system-ui, sans-serif;
+  font-family: var(--font-sans);
   background: var(--bg);
   color: var(--text);
   min-height: 100vh;
@@ -82,7 +140,7 @@ body {
 }
 
 code, .mono, pre, .log-entry, .log-t, .log-cat, .log-msg, .log-det {
-  font-family: 'Roboto Mono', 'Cascadia Code', ui-monospace, monospace;
+  font-family: var(--font-mono);
 }
 
 /* Tabular numerals wherever figures align */
@@ -95,12 +153,12 @@ td, .stat-value, .s-value, .sp-value, .bar-val, .a-val, .a-pct,
 /* Display type: tighter, heavier Roboto Flex */
 h1, h2, h3,
 .modal h2, .panel-title h2, .sealed-name, .sl-superdrop-name {
-  font-family: 'Roboto Flex', 'Roboto', sans-serif;
+  font-family: var(--font-sans);
   font-weight: 700;
   letter-spacing: -0.02em;
 }
 
-::selection { background: rgba(207, 188, 255, 0.28); }
+::selection { background: rgba(232, 184, 75, 0.28); }
 
 /* ── Scrollbar ─────────────────────────── */
 ::-webkit-scrollbar { width: 10px; height: 10px; }
@@ -934,6 +992,21 @@ tr.card-row-hover:hover { background: color-mix(in srgb, var(--md-primary) 6%, t
 .badge-type    { background: rgba(168, 200, 255, 0.13); color: var(--blue); }
 .badge-lang    { background: var(--surface2); color: var(--text-dim); font-size: 10.5px; }
 
+/* SL drop identity — a functional gold chip marking Secret Lair drops (spec §4: SL/type → --accent) */
+.sl-type-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  border-radius: var(--radius-sm);
+  background: rgba(200, 155, 60, 0.12);
+  border: 1px solid rgba(200, 155, 60, 0.25);
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
 /* ── Price colors ──────────────────────── */
 .price-up      { color: var(--green); }
 .price-down    { color: var(--red); }
@@ -1521,7 +1594,7 @@ body[data-binder-open="true"]::before {
 }
 .sealed-card-chip:hover { background: var(--surface3); }
 .chip-name { font-weight: 600; }
-.chip-price { color: var(--accent); font-size: 11px; margin-top: 3px; font-weight: 700; }
+.chip-price { color: var(--text); font-size: 11px; margin-top: 3px; font-weight: 700; }
 .cards-section-label {
   font-size: 11px;
   font-weight: 500;
@@ -1565,7 +1638,7 @@ body[data-binder-open="true"]::before {
 }
 .tcg-result-name { font-size: 13.5px; font-weight: 600; color: var(--text); margin-bottom: 3px; }
 .tcg-result-meta { display: flex; justify-content: space-between; font-size: 12px; color: var(--text-dim); }
-.tcg-result-price { font-weight: 600; color: var(--accent2); }
+.tcg-result-price { font-weight: 600; color: var(--text); }
 .tcg-result-console { font-size: 11px; color: var(--text-muted); }
 .tcg-price-label { font-weight: 400; color: var(--text-dim); font-size: 11px; }
 
@@ -1614,7 +1687,7 @@ body[data-binder-open="true"]::before {
 .bm-product-item:last-child { border-bottom: none; }
 .bm-product-item:hover { background: var(--surface2); }
 .bm-product-name { font-size: 13px; font-weight: 500; color: var(--text); flex: 1; min-width: 0; }
-.bm-product-price { font-size: 13px; font-weight: 700; color: var(--accent2); white-space: nowrap; }
+.bm-product-price { font-size: 13px; font-weight: 700; color: var(--text); white-space: nowrap; }
 .bm-empty { padding: 20px; font-size: 13px; color: var(--text-dim); text-align: center; line-height: 1.6; }
 
 /* ── Product picker (sealed catalog) ───── */
@@ -2382,7 +2455,7 @@ select option { background: #211f26; color: var(--text); }
   padding: 10px 18px;
   min-width: 110px;
 }
-.deck-stat-val { font-size: 17px; font-weight: 700; color: var(--accent2); }
+.deck-stat-val { font-size: 17px; font-weight: 700; color: var(--text); }
 .deck-stat-lbl { font-size: 10.5px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .06em; margin-top: 2px; }
 .deck-value-note { font-size: 11px; color: var(--text-muted); margin: 2px 2px 12px; }
 

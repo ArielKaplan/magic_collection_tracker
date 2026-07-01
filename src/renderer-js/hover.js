@@ -170,7 +170,7 @@ function buildSlUnownedHoverHtml(scryfallId, data) {
   if (cmc != null) rows.push(`<span class="lbl">CMC</span><span>${cmc}</span>`);
   if (artist)   rows.push(`<span class="lbl">Artist</span><span>${esc(artist)}</span>`);
   for (const s of slInfo) {
-    rows.push(`<span class="lbl">SL Drop</span><span style="color:var(--accent2)">${esc(s.drop)}</span>`);
+    rows.push(`<span class="lbl">SL Drop</span><span class="sl-type-badge">${esc(s.drop)}</span>`);
     rows.push(`<span class="lbl">Superdrop</span><span>${esc(s.superdrop)}</span>`);
   }
   rows.push(`<span class="lbl">Owned</span><span style="color:#f87171;font-weight:600">No</span>`);
