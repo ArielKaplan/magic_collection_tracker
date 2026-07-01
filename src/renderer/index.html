@@ -9,20 +9,74 @@
   <link rel="stylesheet" href="dist/svelte-app.css">
 </head>
 <body class="app-shell">
-  <header class="topbar">
-    <div class="topbar-brand" title="Secret Lair Tracker">🃏</div>
-    <nav class="topbar-nav">
-      <button class="tab-btn active" data-tab="dashboard" title="Dashboard (Ctrl+1)">Dashboard</button>
-      <button class="tab-btn" data-tab="cards" title="Card Collection (Ctrl+2)">Card Collection</button>
-      <button class="tab-btn" data-tab="sealed" title="Sealed Collection (Ctrl+3)">Sealed Collection</button>
-      <button class="tab-btn" data-tab="decks" title="Decks (Ctrl+7)">Decks</button>
-      <button class="tab-btn" data-tab="slviewer" title="Secret Lair Explorer (Ctrl+5)">Secret Lair Explorer</button>
-      <button class="tab-btn" data-tab="wantlist" id="wantlistTab" title="Want List (Ctrl+8)">Want List</button>
-      <button class="tab-btn" data-tab="failures" id="failuresTab" title="Failed Lookups (Ctrl+6)">Failed Lookups</button>
+  <!-- ── Left rail navigation ─────────────────────────────────────────── -->
+  <aside class="rail">
+    <div class="rail-brand" title="Secret Lair Tracker">
+      <div class="rail-mark">SL</div>
+      <div class="rail-word">
+        <span class="rail-word-name">SECRET LAIR</span>
+        <span class="rail-word-sub">TRACKER</span>
+      </div>
+    </div>
+
+    <nav class="rail-nav">
+      <div class="rail-group">Workspace</div>
+      <button class="tab-btn rail-item active" data-tab="dashboard" title="Dashboard (Ctrl+1)">
+        <svg class="rail-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>
+        <span class="rail-label">Dashboard</span>
+      </button>
+      <button class="tab-btn rail-item" data-tab="cards" title="Card Collection (Ctrl+2)">
+        <svg class="rail-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/></svg>
+        <span class="rail-label">Card Collection</span>
+      </button>
+      <button class="tab-btn rail-item" data-tab="sealed" title="Sealed Collection (Ctrl+3)">
+        <svg class="rail-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 21.73a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73Z"/><path d="M12 22V12"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="m7.5 4.27 9 5.15"/></svg>
+        <span class="rail-label">Sealed Collection</span>
+      </button>
+      <button class="tab-btn rail-item" data-tab="decks" title="Decks (Ctrl+7)">
+        <svg class="rail-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4v16"/><path d="M8 8v12"/><path d="M12 6v14"/><path d="m16 6 4 14"/></svg>
+        <span class="rail-label">Decks</span>
+      </button>
+      <button class="tab-btn rail-item" data-tab="slviewer" title="Secret Lair Explorer (Ctrl+5)">
+        <svg class="rail-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg>
+        <span class="rail-label">Secret Lair Explorer</span>
+      </button>
+      <button class="tab-btn rail-item" data-tab="wantlist" id="wantlistTab" title="Want List (Ctrl+8)">
+        <svg class="rail-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+        <span class="rail-label">Want List</span>
+      </button>
+      <button class="tab-btn rail-item" data-tab="failures" id="failuresTab" title="Failed Lookups (Ctrl+6)">
+        <svg class="rail-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+        <span class="rail-label">Failed Lookups</span>
+      </button>
     </nav>
-    <div class="topbar-actions">
+
+    <div class="rail-footer">
+      <div class="rail-avatar">A</div>
+      <div class="rail-acct">
+        <span class="rail-acct-name">Akapl</span>
+        <span class="rail-acct-sub">Local vault</span>
+      </div>
+      <button class="rail-settings" id="sidebarSettings" title="Settings (Ctrl+,)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2Z"/><circle cx="12" cy="12" r="3"/></svg>
+      </button>
+    </div>
+  </aside>
+
+  <!-- ── Command bar ──────────────────────────────────────────────────── -->
+  <header class="cmdbar">
+    <label class="cmd-search" title="Global search — coming soon">
+      <svg class="cmd-search-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+      <input type="text" class="cmd-search-input" placeholder="Search cards, sets, binders…" disabled aria-label="Global search (coming soon)">
+      <span class="cmd-kbd">⌘K</span>
+    </label>
+    <div class="cmd-right">
+      <span class="cmd-refresh" id="sb-refresh">Last refresh: —</span>
       <button class="update-pill" id="update-pill" style="display:none"></button>
-      <button class="topbar-btn" id="sidebarSettings" title="Settings (Ctrl+,)">⚙</button>
+      <button class="btn-primary cmd-refresh-btn" id="cmdRefreshPrices" title="Refresh Prices (Ctrl+R)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
+        Refresh Prices
+      </button>
     </div>
   </header>
 
@@ -32,17 +86,12 @@
 
   <footer class="status-bar">
     <span class="sb-section" id="sb-cards">— cards</span>
-    <span class="sb-divider"></span>
     <span class="sb-section" id="sb-value">$—</span>
-    <span class="sb-divider"></span>
-    <span class="sb-section" id="sb-refresh">Last refresh: —</span>
-    <span class="sb-section sb-spacer"></span>
     <span class="sb-section" id="sb-issues" style="display:none"></span>
-    <span class="sb-divider"></span>
+    <span class="sb-section sb-spacer"></span>
     <span class="sb-section sb-logs" id="sb-logs" title="Activity Log (Ctrl+L)">
       ⓘ Logs <span class="sb-logs-count" id="sb-logs-count" style="display:none"></span>
     </span>
-    <span class="sb-divider"></span>
     <span class="sb-section sb-status" id="autosave-status"></span>
   </footer>
 

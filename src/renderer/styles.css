@@ -174,102 +174,190 @@ h1, h2, h3,
 /* ── App shell: top bar / ticker / main / (floating) status ── */
 body.app-shell {
   display: grid;
-  grid-template-columns: 1fr;
-  grid-template-rows: 64px 38px 1fr 0;
+  grid-template-columns: 226px 1fr;
+  grid-template-rows: 52px auto 1fr 28px;
   grid-template-areas:
-    "nav"
-    "ticker"
-    "main"
-    "status";
+    "rail cmdbar"
+    "rail ticker"
+    "rail main"
+    "rail status";
   height: 100vh;
   overflow: hidden;
 }
 #content { grid-area: main; }
 
-/* ── Top app bar ───────────────────────── */
-.topbar {
-  grid-area: nav;
+/* ── Left rail navigation ──────────────── */
+.rail {
+  grid-area: rail;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  user-select: none;
+}
+
+.rail-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 14px 12px;
+}
+.rail-mark {
+  width: 30px; height: 30px;
+  flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--accent);
+  color: #0d0d1a;
+  border-radius: var(--radius-sm);
+  font-size: 12px; font-weight: 800; letter-spacing: 0.02em;
+}
+.rail-word { display: flex; flex-direction: column; line-height: 1.12; }
+.rail-word-name { font-size: 12px; font-weight: 800; letter-spacing: 0.04em; color: var(--text); }
+.rail-word-sub  { font-size: 9px; font-weight: 700; letter-spacing: 0.22em; color: var(--text-muted); }
+
+.rail-nav {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px 10px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.rail-group {
+  font-size: var(--fs-xxs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-label);
+  color: var(--text-muted);
+  padding: 10px 8px 4px;
+}
+/* Vertical nav item (carries the .tab-btn hook the renderer JS toggles) */
+.rail-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 11px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  text-align: left;
+  white-space: nowrap;
+  transition: color var(--motion-fast), background var(--motion-fast), border-color var(--motion-fast);
+}
+.rail-ico { width: 16px; height: 16px; flex-shrink: 0; }
+.rail-label { overflow: hidden; text-overflow: ellipsis; }
+.rail-item:hover { background: var(--surface2); color: var(--text); }
+.rail-item.active {
+  background: rgba(200, 155, 60, 0.12);
+  border-color: rgba(200, 155, 60, 0.22);
+  color: var(--accent2);
+}
+/* Count badges (Failed Lookups / Want List) — appended to the item by JS; push right */
+.rail-item .fail-badge,
+.rail-item .want-badge { margin-left: auto; }
+
+.rail-footer {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 10px 12px;
+  border-top: 1px solid var(--border);
+}
+.rail-avatar {
+  width: 28px; height: 28px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--surface3);
+  color: var(--text);
+  border-radius: 50%;
+  font-size: 12px; font-weight: 700;
+}
+.rail-acct { display: flex; flex-direction: column; line-height: 1.2; flex: 1; min-width: 0; }
+.rail-acct-name { font-size: var(--fs-sm); font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; }
+.rail-acct-sub  { font-size: var(--fs-xxs); color: var(--text-muted); }
+.rail-settings {
+  width: 30px; height: 30px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: transparent; border: none; border-radius: var(--radius-md);
+  color: var(--text-muted); cursor: pointer;
+  transition: color var(--motion-fast), background var(--motion-fast);
+}
+.rail-settings svg { width: 16px; height: 16px; }
+.rail-settings:hover { background: var(--surface2); color: var(--text); }
+
+/* ── Command bar ───────────────────────── */
+.cmdbar {
+  grid-area: cmdbar;
   background: var(--bg);
   border-bottom: 1px solid var(--border);
   display: flex;
-  align-items: stretch;
+  align-items: center;
+  gap: 14px;
+  padding: 0 18px;
   user-select: none;
-  padding: 0 20px;
 }
-
-.topbar-brand {
-  display: flex; align-items: center; justify-content: center;
-  width: 38px; height: 38px;
-  align-self: center;
-  margin-right: 22px;
-  background: linear-gradient(135deg, var(--md-primary-container), #38265f);
-  border-radius: 12px;
-  font-size: 17px;
-  box-shadow: 0 2px 10px rgba(79, 55, 139, 0.45);
-  flex-shrink: 0;
-}
-
-.topbar-nav {
-  flex: 1;
+.cmd-search {
   display: flex;
   align-items: center;
-  gap: 4px;
-  overflow-x: auto;
-  overflow-y: hidden;
+  gap: 8px;
+  flex: 1;
+  max-width: 340px;
+  height: 34px;
+  padding: 0 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-muted);
+  cursor: text;
 }
-
-/* Navigation pills — active gets a secondary-container indicator */
-.tab-btn {
+.cmd-search-ico { width: 15px; height: 15px; flex-shrink: 0; }
+.cmd-search-input {
+  flex: 1; min-width: 0;
+  background: transparent; border: none; outline: none;
+  color: var(--text);
+  font-family: inherit; font-size: var(--fs-sm);
+}
+.cmd-search-input::placeholder { color: var(--text-muted); }
+.cmd-search-input:disabled { cursor: text; }
+.cmd-kbd {
+  flex-shrink: 0;
+  padding: 1px 6px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+}
+.cmd-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-left: auto;
+}
+.cmd-refresh {
+  font-size: var(--fs-sm);
+  color: var(--text-dim);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.cmd-refresh-btn {
   display: inline-flex;
   align-items: center;
-  height: 40px;
-  padding: 0 18px;
-  background: transparent;
-  border: none;
-  border-radius: 99px;
-  color: var(--text-muted);
-  cursor: pointer;
-  font-family: inherit;
-  font-size: 13px;
-  font-weight: 500;
-  letter-spacing: 0.01em;
-  white-space: nowrap;
-  transition: color 0.15s, background 0.15s;
+  gap: 7px;
+  padding: 8px 15px;
+  border-radius: var(--radius-md);
+  box-shadow: none;
 }
-.tab-btn:hover {
-  color: var(--text);
-  background: color-mix(in srgb, var(--text) 8%, transparent);
-}
-.tab-btn.active {
-  color: var(--md-on-secondary-container);
-  background: var(--md-secondary-container);
-  font-weight: 600;
-}
-
-.topbar-actions {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding-left: 10px;
-  margin-left: 6px;
-}
-.topbar-btn {
-  width: 40px; height: 40px;
-  background: transparent;
-  border: none;
-  border-radius: 99px;
-  color: var(--text-muted);
-  cursor: pointer;
-  font-family: inherit;
-  font-size: 16px;
-  display: flex; align-items: center; justify-content: center;
-  transition: color 0.15s, background 0.15s, transform 0.3s cubic-bezier(.2,0,0,1);
-}
-.topbar-btn:hover {
-  color: var(--text);
-  background: color-mix(in srgb, var(--text) 8%, transparent);
-  transform: rotate(45deg);
-}
+.cmd-refresh-btn svg { width: 15px; height: 15px; }
+.cmd-refresh-btn:hover { box-shadow: none; }
 
 /* ── Update pill (Discord-style) — appears in the top bar when a new version
    is available; click to view "What's New" and download/restart. ───────── */
@@ -368,7 +456,7 @@ body.app-shell {
 .ticker-empty {
   font-size: 11.5px;
   color: var(--text-muted);
-  font-family: 'Roboto Mono', monospace;
+  font-family: var(--font-mono);
 }
 
 .ticker-track {
@@ -395,7 +483,7 @@ body.app-shell {
   align-items: baseline;
   gap: 8px;
   padding: 0 22px;
-  font-family: 'Roboto Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 11.5px;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
@@ -408,7 +496,7 @@ body.app-shell {
 .tk-name {
   color: var(--text);
   font-weight: 500;
-  font-family: 'Roboto Flex', sans-serif;
+  font-family: var(--font-sans);
   font-size: 12px;
   max-width: 180px;
   overflow: hidden;
@@ -433,46 +521,47 @@ body.app-shell {
 /* ── Main content pane ─────────────────── */
 main {
   grid-area: main;
-  padding: 30px 40px 110px;
+  padding: 18px;
   overflow-y: auto;
   overflow-x: hidden;
-  max-width: 1440px;
+  max-width: 1500px;
   margin: 0 auto;
   width: 100%;
 }
-@media (max-width: 900px) { main { padding: 22px 18px 110px; } }
+@media (max-width: 900px) { main { padding: 14px; } }
 
-/* ── Floating status pill ──────────────── */
+/* ── Status bar (full-width, bottom) ───── */
 .status-bar {
-  position: fixed;
-  bottom: 20px;
-  right: 20px;
-  background: color-mix(in srgb, var(--surface2) 88%, transparent);
-  backdrop-filter: blur(20px) saturate(160%);
-  -webkit-backdrop-filter: blur(20px) saturate(160%);
-  border: 1px solid var(--border2);
-  border-radius: 99px;
-  padding: 8px 8px 8px 16px;
+  grid-area: status;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
   display: flex;
-  align-items: center;
-  font-family: 'Roboto Mono', monospace;
-  font-size: 11.5px;
+  align-items: stretch;
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
   color: var(--text-dim);
-  box-shadow: var(--shadow-md);
-  z-index: 100;
   user-select: none;
+  overflow: hidden;
 }
 .sb-divider { display: none; }
-.sb-section { padding: 0 13px; border-right: 1px solid var(--border2); white-space: nowrap; }
+.sb-section {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 13px;
+  border-right: 1px solid var(--border);
+  white-space: nowrap;
+}
 .sb-section:last-child { border-right: none; }
-.sb-section.sb-spacer { display: none; }
-#sb-refresh, #autosave-status { display: none; }
+.sb-section.sb-spacer { flex: 1; padding: 0; border-right: none; }
+#sb-cards { font-variant-numeric: tabular-nums; }
+/* Running portfolio total — the one status-bar gold exception (DESIGN_LANGUAGE §1) */
+#sb-value { color: var(--accent); font-variant-numeric: tabular-nums; }
 .sb-status { color: var(--green); transition: opacity 0.6s; }
-.sb-issues-warn { color: var(--gold); cursor: pointer; }
-.sb-issues-warn:hover { color: var(--red); }
+.sb-issues-warn { color: var(--red); cursor: pointer; }
+.sb-issues-warn:hover { filter: brightness(1.2); }
 
-.sb-logs { padding: 5px 13px; border-radius: 99px; cursor: pointer; transition: color 0.15s, background 0.15s; }
-.sb-logs:hover { background: var(--surface3); color: var(--accent); }
+.sb-logs { cursor: pointer; transition: color var(--motion-fast), background var(--motion-fast); }
+.sb-logs:hover { background: var(--surface2); color: var(--accent); }
 .sb-logs-count {
   display: inline-block;
   margin-left: 5px;
@@ -491,9 +580,9 @@ main {
 /* ── Activity Log side sheet ───────────── */
 .logs-panel {
   position: fixed;
-  top: 103px;            /* below top bar + ticker */
+  top: 90px;             /* below command bar (52px) + ticker (38px) */
   right: 0;
-  bottom: 0;
+  bottom: 28px;          /* clear the status bar */
   width: 480px;
   max-width: 95vw;
   background: var(--surface);
@@ -547,7 +636,7 @@ main {
   padding: 26px 20px;
   color: var(--text-muted);
   font-size: 12.5px;
-  font-family: 'Roboto Flex', sans-serif;
+  font-family: var(--font-sans);
   line-height: 1.6;
 }
 
@@ -678,7 +767,7 @@ main {
   margin-bottom: 12px;
 }
 .hero-value {
-  font-family: 'Roboto Flex', sans-serif;
+  font-family: var(--font-sans);
   font-size: 72px;
   font-weight: 800;
   color: var(--text);
@@ -693,7 +782,7 @@ main {
   flex-wrap: wrap;
 }
 .hero-delta {
-  font-family: 'Roboto Flex', sans-serif;
+  font-family: var(--font-sans);
   font-size: 15px;
   font-weight: 600;
   padding: 7px 14px;
@@ -757,7 +846,7 @@ main {
   margin-bottom: 10px;
 }
 .b-value {
-  font-family: 'Roboto Flex', sans-serif;
+  font-family: var(--font-sans);
   font-size: 27px;
   font-weight: 750;
   color: var(--text);
@@ -798,7 +887,7 @@ main {
   margin-bottom: 10px;
 }
 .s-value {
-  font-family: 'Roboto Flex', sans-serif;
+  font-family: var(--font-sans);
   font-size: 27px;
   font-weight: 750;
   color: var(--text);
@@ -1558,7 +1647,7 @@ body[data-binder-open="true"]::before {
   margin-bottom: 4px;
 }
 .sp-value {
-  font-family: 'Roboto Flex', sans-serif;
+  font-family: var(--font-sans);
   font-size: 18px;
   font-weight: 700;
   letter-spacing: -0.02em;
@@ -2039,8 +2128,8 @@ body[data-binder-open="true"]::before {
   border-radius: 99px;
   font-size: 10px;
   font-weight: 700;
-  background: #8c1d18;            /* M3 error container */
-  color: #f9dedc;
+  background: rgba(224, 85, 85, 0.16);
+  color: var(--red);
   vertical-align: middle;
   line-height: 1;
 }
@@ -2114,7 +2203,7 @@ body[data-binder-open="true"]::before {
   border-radius: 6px;
   background: rgba(15, 13, 19, 0.85);
   color: var(--text);
-  font-family: 'Roboto Mono', monospace;
+  font-family: var(--font-mono);
 }
 
 /* ── Secret Lair explorer ──────────────── */
@@ -2264,7 +2353,7 @@ tr.want-hit td { border-bottom-color: rgba(123, 216, 159, 0.18); }
   white-space: pre-wrap;
 }
 .chp-price {
-  font-family: 'Roboto Flex', sans-serif;
+  font-family: var(--font-sans);
   font-size: 16px;
   font-weight: 700;
   letter-spacing: -0.02em;
@@ -2273,7 +2362,7 @@ tr.want-hit td { border-bottom-color: rgba(123, 216, 159, 0.18); }
 }
 
 /* ── KPI numerics (Svelte dashboard) ───── */
-.kpi-value { font-family: 'Roboto Flex', sans-serif; font-weight: 700; letter-spacing: -0.02em; }
+.kpi-value { font-family: var(--font-sans); font-weight: 700; letter-spacing: -0.02em; }
 
 /* ── Focus ring ────────────────────────── */
 :focus-visible {

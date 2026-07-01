@@ -72,6 +72,10 @@ async function init() {
   const sbs = document.getElementById('sidebarSettings');
   if (sbs) sbs.addEventListener('click', showSettings);
 
+  // Command-bar "Refresh Prices" CTA
+  const cmdRefresh = document.getElementById('cmdRefreshPrices');
+  if (cmdRefresh) cmdRefresh.addEventListener('click', () => refreshPrices());
+
   // Top-bar update pill (shown when the main process reports a new version)
   NS_updaterUI.wireUpdateBadge();
 
