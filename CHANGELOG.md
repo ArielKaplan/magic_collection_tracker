@@ -11,6 +11,8 @@ in-app "What's New" screen — from that version's section. Keep entries
 user-facing: what changed, not how.
 
 ## [Unreleased]
+
+## [0.27.0] - 2026-07-02
 ### Added
 - **Card previews in search.** Hovering a card in the search dropdown or the Search Results view now shows the same floating card overview used everywhere else — image, price, type, binder, and oracle text at a glance.
 - **Click a card you own → straight to its binder.** Clicking an owned card in search results now jumps to the binder holding it (your most valuable copy, if you have several), lands on the right page, scrolls to the card, and pulses it with a brief gold highlight so your eye lands exactly where it should. Cards you don't own still open their detail popup.
