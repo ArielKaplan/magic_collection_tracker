@@ -258,6 +258,21 @@ export function attachContentListeners() {
       el.addEventListener('mouseleave', hideCardHoverPreview);
     });
   }
+  // Search Results tab: hover on card rows (owned → local card; catalog/printings
+  // rows → Scryfall-backed preview via scryfall id).
+  if (ui.activeTab === 'search') {
+    document.querySelectorAll('.srt .sr-row[data-card-id]').forEach(el => {
+      const card = findCollectionCardById(el.dataset.cardId);
+      if (!card) return;
+      el.addEventListener('mouseenter', () => showCardHoverPreview(el, card));
+      el.addEventListener('mouseleave', hideCardHoverPreview);
+    });
+    document.querySelectorAll('.srt .sr-row[data-scryfall-id]').forEach(el => {
+      el.addEventListener('mouseenter', () => showSlTileHoverPreview(el, el.dataset.scryfallId));
+      el.addEventListener('mouseleave', hideCardHoverPreview);
+    });
+  }
+
   // Decks tab: hover preview on deck card rows (works for unowned cards too —
   // we synthesize a card object from the deck entry)
   if (ui.activeTab === 'decks' && ui.decks.deckId) {

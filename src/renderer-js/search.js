@@ -11,7 +11,8 @@
 //    SL_DROP_TO_SUPERDROP, SL_DROP_CARDS (accessed bare, with typeof guards,
 //    exactly as slTab.js does).
 // ─────────────────────────────────────────────────────────────────────────────
-import { showGalleryModal } from './gallery.js';
+import { cardCurrentValue } from './analytics.js';
+import { filteredCards } from './cardsTab.js';
 import { hideModal } from './modals.js';
 import { render } from './render.js';
 import { showSlViewerModal } from './slTab.js';
@@ -213,8 +214,17 @@ function renderDropdown(query) {
   box.style.display = 'block';
 
   box.querySelectorAll('.sr-row').forEach(el => {
-    el.addEventListener('mouseenter', () => setActive(Number(el.dataset.idx)));
-    el.addEventListener('mousedown', e => { e.preventDefault(); pick(Number(el.dataset.idx)); });
+    const idx = Number(el.dataset.idx);
+    const item = flatItems[idx];
+    el.addEventListener('mouseenter', () => {
+      setActive(idx);
+      if (item?.type === 'card' && item.owned && item.cardId != null) {
+        const card = collection.cards.find(c => c.id === item.cardId);
+        if (card) window.app?.showCardHoverPreview?.(el, card);
+      }
+    });
+    el.addEventListener('mouseleave', () => window.app?.hideCardHoverPreview?.());
+    el.addEventListener('mousedown', e => { e.preventDefault(); pick(idx); });
   });
   const foot = box.querySelector('.sr-foot');
   if (foot) foot.addEventListener('mousedown', e => { e.preventDefault(); openFullSearch(query); });
@@ -234,9 +244,9 @@ function pickItem(item) {
   closeDropdown();
   switch (item.type) {
     case 'card':
-      if (item.owned && item.cardId != null) showGalleryModal(item.cardId);
-      else if (item.scryfallId) showSlViewerModal(item.scryfallId);
-      else openFullSearch(item.name);           // not-owned, no local id → resolve online
+      if (item.owned) goToCardByName(item.name);          // jump to its binder + flash
+      else if (item.scryfallId) showSlViewerModal(item.scryfallId);  // not-owned → detail popup
+      else openPrintingsTab(item.name);                   // name-only (no id) → printings
       break;
     case 'set':
       ui.cards.search = item.name; ui.cards.binder = { include: [], exclude: [] }; goToTab('cards'); break;
@@ -269,6 +279,49 @@ export function viewInCollection(name) {
   ui.cards.status = 'owned';
   hideModal();
   goToTab('cards');
+}
+
+// Jump to the binder holding a card and flash the row. Picks the highest-value
+// owned copy when the same card lives in several binders/copies.
+export function goToCardByName(name) {
+  const matches = collection.cards.filter(c => c.status !== 'sold' && norm(c.name) === norm(name));
+  if (!matches.length) return;
+  const target = matches.reduce((best, c) =>
+    (cardCurrentValue(c) ?? -Infinity) > (cardCurrentValue(best) ?? -Infinity) ? c : best);
+  goToCard(target);
+}
+
+function goToCard(card) {
+  hideModal();
+  // Open the binder and clear other filters so the card is guaranteed visible.
+  ui.cards.search = '';
+  ui.cards.binder = { include: card.binderName ? [card.binderName] : [], exclude: [] };
+  ui.cards.foil = 'all'; ui.cards.rarity = 'all'; ui.cards.condition = 'all'; ui.cards.language = 'all';
+  ui.cards.status = 'owned';
+  ui.cards.page = 1;
+  // Compute the page the card lands on (filteredCards() reflects the filters set above).
+  try {
+    const list = filteredCards();
+    const idx = list.findIndex(c => c.id === card.id);
+    if (idx >= 0) ui.cards.page = Math.floor(idx / ui.cards.perPage) + 1;
+  } catch { /* fall back to page 1 */ }
+  goToTab('cards');
+  flashCard(card.id);
+}
+
+// Scroll to a card in the (just-rendered) collection and pulse it.
+function flashCard(cardId) {
+  requestAnimationFrame(() => {
+    const content = document.getElementById('content');
+    if (!content) return;
+    let el = content.querySelector(`tr[data-card-id="${cardId}"]`);
+    if (!el) el = [...content.querySelectorAll('.gallery-card')]
+      .find(g => (g.getAttribute('onclick') || '').includes(`'${cardId}'`));
+    if (!el) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    el.classList.add('card-flash');
+    setTimeout(() => el.classList.remove('card-flash'), 1700);
+  });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -515,7 +568,8 @@ function sectionHtml(title, count, rowsHtml, note) {
 function collectionCardRow(item) {
   const idx = pushRow(item);
   const meta = item.owned ? `×${item.qty}${item.prints > 1 ? ` · ${item.prints} printings` : ''}` : esc(item.drop || 'Secret Lair');
-  return `<div class="sr-row" data-idx="${idx}">
+  const hoverAttr = item.owned && item.cardId != null ? ` data-card-id="${esc(item.cardId)}"` : '';
+  return `<div class="sr-row" data-idx="${idx}"${hoverAttr}>
     ${ownDot(item.owned)}
     <span class="sr-row-name">${esc(item.name)}</span>
     <span class="sr-row-meta">${meta}</span>
@@ -527,7 +581,7 @@ function scryRow(c, ownedIds) {
   const id = (c.id || '').toLowerCase();
   const price = c.prices?.usd ?? c.prices?.usd_foil ?? c.prices?.usd_etched;
   const idx = pushRow({ type: 'scrycard', name: c.name, scryfallId: id });
-  return `<div class="sr-row" data-idx="${idx}">
+  return `<div class="sr-row" data-idx="${idx}" data-scryfall-id="${esc(id)}">
     ${ownDot(ownedIds.has(id))}
     <span class="sr-row-name">${esc(c.name)}</span>
     <span class="sr-row-sub">${esc(c.set_name || '')} · ${esc((c.set || '').toUpperCase())} #${esc(c.collector_number || '?')}</span>
@@ -549,7 +603,7 @@ function printRow(c, ownedIds) {
   const price = c.prices?.usd ?? c.prices?.usd_foil ?? c.prices?.usd_etched;
   const finishes = (c.finishes || []).join(' / ') || '—';
   const idx = pushRow({ type: 'print', scryfallId: id, name: c.name });
-  return `<div class="sr-row" data-idx="${idx}">
+  return `<div class="sr-row" data-idx="${idx}" data-scryfall-id="${esc(id)}">
     ${ownDot(ownedIds.has(id))}
     <span class="sr-row-name">${esc(c.set_name || '')}</span>
     <span class="sr-row-sub">#${esc(c.collector_number || '?')} · ${esc(finishes)}</span>

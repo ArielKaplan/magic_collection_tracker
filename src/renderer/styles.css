@@ -466,6 +466,19 @@ body.app-shell {
 .srt-tab-close:hover { opacity: 1; background: var(--surface3); color: var(--red); }
 .srt-body { flex: 1; min-height: 0; overflow-y: auto; padding-top: 14px; }
 
+/* ── Flash a card after jumping to it from search ─── */
+@keyframes rowFlash {
+  0%, 22% { background: rgba(232, 184, 75, 0.24); }
+  100%    { background: transparent; }
+}
+tr.card-flash > td { animation: rowFlash 1.7s ease-out; }
+@keyframes cardFlash {
+  0%   { box-shadow: 0 0 0 0 rgba(232, 184, 75, 0); }
+  18%  { box-shadow: 0 0 0 3px var(--accent2), 0 0 20px 3px rgba(232, 184, 75, 0.55); }
+  100% { box-shadow: 0 0 0 0 rgba(232, 184, 75, 0); }
+}
+.gallery-card.card-flash { animation: cardFlash 1.7s ease-out; border-radius: var(--radius-md); }
+
 /* ── Update pill (Discord-style) — appears in the top bar when a new version
    is available; click to view "What's New" and download/restart. ───────── */
 .update-pill {
