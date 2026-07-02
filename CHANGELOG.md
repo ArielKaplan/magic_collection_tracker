@@ -11,6 +11,9 @@ in-app "What's New" screen — from that version's section. Keep entries
 user-facing: what changed, not how.
 
 ## [Unreleased]
+### Changed
+- **Foil and non-foil Secret Lair drops are now truly distinct.** The Explorer's drop data is rebuilt on a per-product basis straight from MTGJSON's sealed-product catalog — each purchasable version of a drop (non-foil, Foil Edition, Rainbow Foil, …) now knows exactly which printings it contains and in which finish. Owning a non-foil card no longer lights up the foil drop as owned (and vice versa), special foil printings (the ★ collector numbers) count toward the foil version they actually belong to, and Drop P&L credits each of your copies to the version you actually hold. Foil-only drops are also priced by their foil values automatically — no more guessing from the drop's name.
+- **Exact sealed-price matching.** When a drop's sealed price comes from the TCGCSV index, it now matches by TCGplayer product ID instead of name search wherever possible — the right SKU, every time (takes effect after the next price-data sync).
 
 ## [0.27.0] - 2026-07-02
 ### Added

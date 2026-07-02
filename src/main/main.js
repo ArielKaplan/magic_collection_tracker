@@ -233,7 +233,7 @@ function registerIpc() {
   ipcMain.handle('settings:all',        ()             => db.getAllSettings());
 
   // SL data
-  ipcMain.handle('sl:replace',          (_e, dc, std, stn) => db.replaceSlData(dc, std, stn));
+  ipcMain.handle('sl:replace',          (_e, dc, std, stn, products) => db.replaceSlData(dc, std, stn, products));
   ipcMain.handle('sl:get',              ()             => db.getSlData());
 
   // File dialogs

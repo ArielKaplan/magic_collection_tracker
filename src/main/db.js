@@ -473,7 +473,7 @@ function getAllSettings() {
 }
 
 // ── SL drop data ─────────────────────────────────────────────────────────────
-function replaceSlData(dropCards, scryfallToDrops, scryfallToName) {
+function replaceSlData(dropCards, scryfallToDrops, scryfallToName, products) {
   const tx = db.transaction(() => {
     db.prepare('DELETE FROM sl_drop_cards').run();
     db.prepare('DELETE FROM sl_scryfall_drops').run();
@@ -485,6 +485,25 @@ function replaceSlData(dropCards, scryfallToDrops, scryfallToName) {
       for (const d of drops) sd.run(id, d);
     // Name map persisted as a settings JSON blob — small (~120kB) and read in one shot.
     if (scryfallToName) setSetting('sl_scryfall_to_name', JSON.stringify(scryfallToName));
+    // Finish-aware product model (nullable for callers predating v0.28.0 —
+    // an omitted argument leaves the previously stored model in place).
+    if (Array.isArray(products)) {
+      db.prepare('DELETE FROM sl_products').run();
+      db.prepare('DELETE FROM sl_product_cards').run();
+      const ip = db.prepare(`INSERT OR IGNORE INTO sl_products
+        (uuid, legacy_drop, drop_name, finish_label, finish, tcgplayer_product_id, release_date, low_confidence)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`);
+      const ic = db.prepare(`INSERT OR IGNORE INTO sl_product_cards
+        (product_uuid, scryfall_id, card_name, collector_number, finish, count)
+        VALUES (?, ?, ?, ?, ?, ?)`);
+      for (const p of products) {
+        ip.run(p.uuid, p.legacyDrop, p.dropName, p.finishLabel || '', p.finish || 'nonfoil',
+          p.tcgplayerProductId != null ? String(p.tcgplayerProductId) : null,
+          p.releaseDate || null, p.lowConfidence ? 1 : 0);
+        for (const c of (p.cards || []))
+          ic.run(p.uuid, c.scryfallId, c.name || null, c.number || null, c.finish || 'nonfoil', c.count || 1);
+      }
+    }
     setSetting('sl_data_updated_at', new Date().toISOString());
   });
   tx();
@@ -506,7 +525,25 @@ function getSlData() {
     const raw = getSetting('sl_scryfall_to_name');
     if (raw) scryfallToName = JSON.parse(raw);
   } catch { /* ignore — empty map is fine */ }
-  return { dropCards, scryfallToDrops, scryfallToName, updatedAt: getSetting('sl_data_updated_at') };
+  // Reassemble the finish-aware product model (camelCased, cards nested).
+  const products = [];
+  const byUuid = {};
+  for (const r of db.prepare('SELECT * FROM sl_products').all()) {
+    const p = {
+      uuid: r.uuid, legacyDrop: r.legacy_drop, dropName: r.drop_name,
+      finishLabel: r.finish_label || '', finish: r.finish || 'nonfoil',
+      tcgplayerProductId: r.tcgplayer_product_id || null,
+      releaseDate: r.release_date || null,
+      lowConfidence: !!r.low_confidence, cards: [],
+    };
+    byUuid[p.uuid] = p;
+    products.push(p);
+  }
+  for (const r of db.prepare('SELECT * FROM sl_product_cards').all()) {
+    const p = byUuid[r.product_uuid];
+    if (p) p.cards.push({ scryfallId: r.scryfall_id, name: r.card_name, number: r.collector_number || '', finish: r.finish || 'nonfoil', count: r.count || 1 });
+  }
+  return { dropCards, scryfallToDrops, scryfallToName, products, updatedAt: getSetting('sl_data_updated_at') };
 }
 
 // ── Clear / reset ────────────────────────────────────────────────────────────
@@ -520,6 +557,8 @@ function clearSlData() {
   const tx = db.transaction(() => {
     db.prepare('DELETE FROM sl_drop_cards').run();
     db.prepare('DELETE FROM sl_scryfall_drops').run();
+    db.prepare('DELETE FROM sl_products').run();
+    db.prepare('DELETE FROM sl_product_cards').run();
   });
   tx();
 }
@@ -579,6 +618,8 @@ function resetAll() {
     db.prepare('DELETE FROM failed_lookups').run();
     db.prepare('DELETE FROM sl_drop_cards').run();
     db.prepare('DELETE FROM sl_scryfall_drops').run();
+    db.prepare('DELETE FROM sl_products').run();
+    db.prepare('DELETE FROM sl_product_cards').run();
     db.prepare('DELETE FROM portfolio_snapshots').run();
     db.prepare('DELETE FROM want_list').run();
     db.prepare('DELETE FROM settings').run();

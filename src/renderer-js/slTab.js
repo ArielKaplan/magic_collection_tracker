@@ -4,7 +4,8 @@ import { hideModal, showModal } from './modals.js';
 import { fetchScryfallBatch } from './prices.js';
 import { render } from './render.js';
 import { searchTcgcsvLocal } from './sealedPricing.js';
-import { collection, ui } from './state.js';
+import { attributeDropFor, buildSlModel, finishGroup, projectLegacy, requiredFinishFor, setSlProducts, slDropModelFinish, slProductForDrop } from './slData.js';
+import { collection, tcgcsvCache, ui } from './state.js';
 import { esc, escJs, fmt, netFetch, toast } from './utils.js';
 import { addDropMissingToWantList, isCardWanted } from './wantlist.js';
 
@@ -211,124 +212,15 @@ export async function refreshSlData() {
     if (!cards.length) throw new Error('No cards in MTGJSON response (data.cards was empty or missing)');
     window.logger?.info('SL', `Parsed ${cards.length.toLocaleString()} cards from MTGJSON`);
 
-    const newDropCards = {};
-    const newScryfallToDrops = {};
-    const newScryfallToName = {};
-
-    // Pass 1: trust MTGJSON's `subsets` field where present.
-    for (const card of cards) {
-      const sid  = (card.identifiers?.scryfallId || '').toLowerCase();
-      const name = card.name;
-      const subs = card.subsets || [];
-      if (sid && name) newScryfallToName[sid] = name;
-      if (sid && subs.length) newScryfallToDrops[sid] = subs;
-      for (const drop of subs) {
-        if (!newDropCards[drop]) newDropCards[drop] = [];
-        if (!newDropCards[drop].includes(name)) newDropCards[drop].push(name);
-      }
-    }
-
-    // Pass 2: foil/star backfill — base collector number → drops. Foil printings
-    // (collector "1485★") inherit the drop tag of the regular printing ("1485")
-    // when MTGJSON failed to tag them in `subsets` directly.
-    const baseKeyToDrops = {};
-    for (const card of cards) {
-      const num  = (card.number || '').replace(/[★*]/g, '').trim();
-      const subs = card.subsets || [];
-      if (!num || !subs.length) continue;
-      const key = `${num}|${card.name}`;
-      if (!baseKeyToDrops[key]) baseKeyToDrops[key] = new Set();
-      for (const d of subs) baseKeyToDrops[key].add(d);
-    }
-    let backfilled = 0;
-    for (const card of cards) {
-      const sid = (card.identifiers?.scryfallId || '').toLowerCase();
-      if (!sid) continue;
-      // Only backfill cards that don't already have any drop tags
-      if (newScryfallToDrops[sid] && newScryfallToDrops[sid].length) continue;
-      const num = (card.number || '').replace(/[★*]/g, '').trim();
-      const key = `${num}|${card.name}`;
-      const drops = baseKeyToDrops[key];
-      if (drops && drops.size > 0) {
-        newScryfallToDrops[sid] = [...drops];
-        backfilled++;
-      }
-    }
-    if (backfilled > 0) window.logger?.info('SL', `Backfilled ${backfilled} foil/variant printings via base collector number`);
-
-    // Pass 3: finish-specific drops from sealedProduct. MTGJSON tags most drops
-    // via `subsets` at the release level (foil + non-foil share one name), but
-    // recent and token/deck-style drops (FINAL FANTASY, Oishii! Tokens, …) carry
-    // no subset, and the curated list misses each product's actual finish (Rainbow
-    // Foil, etc.). data.sealedProduct is the comprehensive catalog — every SKU with
-    // its real finish name — and each product's contents.deck points back to a deck
-    // whose cards we can resolve by uuid. So we harvest those SKUs as finish-aware
-    // drops, skipping any whose base name a curated subset already covers (so the
-    // existing release-level grouping in the Explorer is left intact).
-    const decks = Array.isArray(json.data.decks) ? json.data.decks : [];
-    const sealed = Array.isArray(json.data.sealedProduct) ? json.data.sealedProduct : [];
-    if (sealed.length) {
-      const uuidToCard = {};
-      for (const c of [...cards, ...(json.data.tokens || [])]) {
-        const sid = (c.identifiers?.scryfallId || '').toLowerCase();
-        if (c.uuid && sid) uuidToCard[c.uuid] = { sid, name: c.name };
-      }
-      const deckByName = new Map(decks.map(d => [d.name, d]));
-      const cleanName = n => (n || '')
-        .replace(/^\s*secret lair drop\s+/i, '')   // strip the boilerplate prefix
-        .replace(/\bsecret lair x\s+/i, '')         // strip "Secret Lair x" collab infix
-        .replace(/\s{2,}/g, ' ')
-        .trim();
-      // sealedProduct names strip punctuation ("Iron Maiden Album Art"), so match
-      // them back to the curated/subset spelling ("Iron Maiden: Album Art") via a
-      // punctuation-insensitive key and reuse that canonical name. Without this,
-      // foil SKUs of any drop with a colon/apostrophe land under a stripped name in
-      // "Recent Additions" instead of beside their base, so their foil never shows.
-      const norm = s => (s || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
-      const canonical = new Map();
-      for (const c of cards) for (const x of (c.subsets || [])) canonical.set(norm(x), x);
-      if (typeof SL_DROP_TO_SUPERDROP !== 'undefined')
-        for (const d of Object.keys(SL_DROP_TO_SUPERDROP)) if (!canonical.has(norm(d))) canonical.set(norm(d), d);
-      // Split a trailing foil finish ("… Rainbow Foil", "… Confetti Foil") off the base.
-      const FINISH = /\s+((?:rainbow|confetti|galaxy|raised|etched|gilded|textured|surge|traditional|neon)\s+)?foil$/i;
-      const seen = new Set();
-      let spDrops = 0;
-      for (const p of sealed) {
-        if (p.subtype !== 'secret_lair') continue;
-        const cleaned = cleanName(p.name);
-        if (!cleaned) continue;
-        const fm = cleaned.match(FINISH);
-        const baseName = fm ? cleaned.slice(0, fm.index).trim() : cleaned;
-        const finishLabel = fm ? cleaned.slice(fm.index).trim() : '';
-        const canon = canonical.get(norm(baseName));
-        let drop;
-        if (finishLabel) {
-          drop = `${canon || baseName} ${finishLabel}`;   // canonical base spelling if known
-        } else {
-          if (canon) continue;                             // base of a curated drop — already covered
-          drop = baseName;                                 // genuinely new base drop
-        }
-        const low = drop.toLowerCase();
-        if (seen.has(low)) continue;
-        seen.add(low);
-        if (!newDropCards[drop]) newDropCards[drop] = [];   // ensure searchable even if empty
-        for (const dref of (p.contents?.deck || [])) {
-          const dk = deckByName.get(dref.name);
-          if (!dk) continue;
-          const entries = [...(dk.mainBoard || []), ...(dk.commander || []), ...(dk.sideBoard || []), ...(dk.tokens || [])];
-          for (const ce of entries) {
-            const info = uuidToCard[ce.uuid];
-            if (!info) continue;
-            if (!newDropCards[drop].includes(info.name)) newDropCards[drop].push(info.name);
-            newScryfallToName[info.sid] = info.name;
-            newScryfallToDrops[info.sid] = newScryfallToDrops[info.sid] || [];
-            if (!newScryfallToDrops[info.sid].includes(drop)) newScryfallToDrops[info.sid].push(drop);
-          }
-        }
-        spDrops++;
-      }
-      if (spDrops) window.logger?.info('SL', `Added ${spDrops} finish-specific drops from MTGJSON sealed products`);
-    }
+    // Build the finish-aware relational model: sealedProduct → deck contents
+    // (per-entry isFoil) → exact printings, plus subsets coverage and the
+    // collector-number backfill for orphaned ★ foils — all in slData.js. The
+    // legacy name-keyed maps the renderer consumes are projections of it.
+    // Known drop names only help restore canonical punctuation for products
+    // whose base spelling MTGJSON's subsets don't cover.
+    const knownDrops = typeof SL_DROP_TO_SUPERDROP !== 'undefined' ? Object.keys(SL_DROP_TO_SUPERDROP) : [];
+    const model = buildSlModel(json, { knownDrops });
+    const legacy = projectLegacy(model);
 
     // Make the refresh authoritative: clear the previous derived maps (including the
     // baked snapshot and the prior "Recent Additions" bucket) so a fresh fetch fully
@@ -341,13 +233,14 @@ export async function refreshSlData() {
       const ri = SL_SUPERDROPS.findIndex(sd => sd.superdrop === 'Recent Additions');
       if (ri >= 0) SL_SUPERDROPS.splice(ri, 1);
     }
-    applySlDataUpdate(newDropCards, newScryfallToDrops, newScryfallToName);
+    applySlDataUpdate(legacy.dropCards, legacy.scryfallToDrops, legacy.scryfallToName);
+    setSlProducts(model.products);   // finish-aware registry (ownership, P&L, pricing)
     rebuildSlGrouping(); // re-apply this user's local grouping edits on top of the refreshed data
-    await saveSlDataToCache(newDropCards, newScryfallToDrops, newScryfallToName);
+    await saveSlDataToCache(legacy.dropCards, legacy.scryfallToDrops, legacy.scryfallToName, model.products);
 
-    const drops = Object.keys(newDropCards).length;
+    const drops = Object.keys(legacy.dropCards).length;
     toast(`SL data updated — ${drops} drops, ${cards.length} cards`, 'success');
-    window.logger?.success('SL', `Updated: ${drops} drops · ${cards.length.toLocaleString()} cards · ${Object.keys(newScryfallToDrops).length.toLocaleString()} mapped printings`);
+    window.logger?.success('SL', `Updated: ${model.products.length} products across ${drops} drops · ${cards.length.toLocaleString()} cards · ${Object.keys(legacy.scryfallToDrops).length.toLocaleString()} mapped printings`);
   } catch (e) {
     toast(`Failed to refresh SL data: ${e.message}`, 'error');
     window.logger?.error('SL', `Refresh failed: ${e.message}`);
@@ -377,10 +270,14 @@ function slCollectorSortKey(num) {
 
 // Shared card tile used by both the drop view and the collector-number view.
 // numLabel (collector number) is shown only when provided.
-function slCardTile(scryfallId, numLabel) {
+// requiredFinish (optional, 'nonfoil'|'foil'|'etched') scopes the owned check
+// to copies of that finish — a drop-detail tile for a Foil Edition SKU only
+// lights up for foil copies. Omitted (collector view) = any finish counts.
+function slCardTile(scryfallId, numLabel, requiredFinish) {
   const id = scryfallId.toLowerCase();
   const img = `https://cards.scryfall.io/normal/front/${id[0]}/${id[1]}/${id}.jpg`;
-  const ownedPrintings = ownedCards().filter(c => c.scryfallId === scryfallId);
+  const ownedPrintings = ownedCards().filter(c => c.scryfallId === scryfallId
+    && (!requiredFinish || finishGroup(c.foil) === requiredFinish));
   const owned = ownedPrintings.length > 0;
   const totalQty = ownedPrintings.reduce((s, c) => s + (c.quantity || 1), 0);
   const val = owned ? cardCurrentValue(ownedPrintings[0]) : null;
@@ -435,13 +332,17 @@ export function computeDropPnL() {
     return rows[drop];
   };
 
-  // Owned singles → primary drop (SLD cards almost always map to exactly one).
+  // Owned singles → the drop whose SKU actually contains this printing in
+  // this finish (a foil copy of a shared printing lands on the Foil Edition,
+  // not the base drop). Falls back to the primary legacy drop when the
+  // product model doesn't know the pair (pre-model cache, unmapped cards).
   // Sold copies have left the collection, so they no longer count toward value.
   for (const c of ownedCards()) {
     if (!c.scryfallId) continue;
     const drops = SL_SCRYFALL_TO_DROPS[c.scryfallId];
     if (!drops || !drops.length) continue;
-    const r = get(drops[0]);
+    const attributed = attributeDropFor(c.scryfallId, c.foil);
+    const r = get(attributed && drops.includes(attributed) ? attributed : drops[0]);
     const v = cardCurrentValue(c);
     r.value += v ?? 0;
     r.singlesQty += c.quantity || 1;
@@ -701,9 +602,12 @@ export function sealedKeepValue(drop) {
   return { value: hasPrice ? value : null, qty };
 }
 
-// Which Scryfall finish a drop's name implies — so a "… Foil" / "… Rainbow Foil"
-// drop values its foil printings, not the best across finishes.
+// Which Scryfall finish a drop's singles should be valued at. The product
+// model knows each SKU's real finish (from MTGJSON deck contents); the name
+// regex only remains as a fallback for pre-model cached data.
 export function dropFinish(drop) {
+  const modelFinish = slDropModelFinish(drop);
+  if (modelFinish) return modelFinish === 'nonfoil' ? 'normal' : modelFinish;
   if (/\betched\b/i.test(drop)) return 'etched';
   if (/\bfoil$/i.test(drop)) return 'foil';
   return 'normal';
@@ -755,12 +659,20 @@ export async function priceSlDropSingles(drop) {
 }
 
 // Best-effort current sealed-box price for a drop: a linked sealed product's
-// price if you have one, otherwise the closest match in the synced TCGCSV index.
+// price if you have one; else an *exact* TCGplayer-id join into the synced
+// TCGCSV index (the product model carries each SKU's tcgplayerProductId);
+// else the fuzzy name match as a last resort.
 function sealedPriceForDrop(drop) {
   for (const s of ownedSealed()) {
     if (s.dropName === drop) { const mv = sealedMarketValue(s); if (mv != null) return { price: mv, source: 'linked' }; }
   }
   try {
+    const product = slProductForDrop(drop);
+    if (product && product.tcgplayerProductId) {
+      const wanted = String(product.tcgplayerProductId);
+      const hit = (tcgcsvCache.sealedProducts || []).find(p => String(p.productId ?? '') === wanted);
+      if (hit && hit.marketPrice != null) return { price: hit.marketPrice, source: 'tcgcsv', name: hit.name };
+    }
     const hit = (searchTcgcsvLocal(drop, 1) || [])[0];
     if (hit && hit.marketPrice != null) return { price: hit.marketPrice, source: 'tcgcsv', name: hit.name };
   } catch { /* cache not synced */ }
@@ -821,6 +733,16 @@ export function renderSlViewer() {
   if (!hasSl) return `<div style="padding:40px;text-align:center;color:var(--text-muted)">Secret Lair data not loaded.</div>`;
 
   const ownedIds = new Set(ownedCards().map(c => c.scryfallId).filter(Boolean));
+  // (scryfallId, finish) pairs — the finish-aware ownership key. A drop whose
+  // SKU requires foil copies only counts foil copies as owned.
+  const ownedFinishKeys = new Set(ownedCards().filter(c => c.scryfallId)
+    .map(c => `${c.scryfallId}|${finishGroup(c.foil)}`));
+  // Finish-aware per-drop ownership: the model says which finish this drop
+  // needs for this printing; no opinion → finish-blind (today's behavior).
+  const ownsInDrop = (drop, id) => {
+    const required = requiredFinishFor(drop, id);
+    return required ? ownedFinishKeys.has(`${id}|${required}`) : ownedIds.has(id);
+  };
   // SLD-set names the user owns somewhere — only used as a *drop count* fallback
   // for the rare case where a drop's card list contains a name that has no
   // scryfallIds tagged to it at all (MTGJSON data gap).
@@ -846,7 +768,7 @@ export function renderSlViewer() {
       const n = SL_SCRYFALL_TO_NAME?.[id];
       if (!n) continue;
       namesWithTiles.add(n);
-      if (ownedIds.has(id)) directMatchedNames.add(n);
+      if (ownsInDrop(drop, id)) directMatchedNames.add(n);
     }
 
     let owned = 0;
@@ -1097,7 +1019,7 @@ export function renderSlViewer() {
   // Drop selected — show card grid for that drop
   if (sv.drop) {
     const cardIds = SL_DROP_TO_SCRYFALL_IDS[sv.drop] || [];
-    const missingIds = cardIds.filter(id => !ownedIds.has(id));
+    const missingIds = cardIds.filter(id => !ownsInDrop(sv.drop, id));
     const wantedMissing = missingIds.filter(id => isCardWanted(id)).length;
     const stats = dropOwnedNameStats(sv.drop);
     const PAGE_SIZE = 100;
@@ -1135,7 +1057,7 @@ export function renderSlViewer() {
       ${pnlBanner}
       ${dropEconomicsBanner(sv.drop)}
       <div class="gallery-grid">
-        ${shown.map(scryfallId => slCardTile(scryfallId)).join('')}
+        ${shown.map(scryfallId => slCardTile(scryfallId, undefined, requiredFinishFor(sv.drop, scryfallId))).join('')}
       </div>
       ${hasMore ? `<div style="text-align:center;padding:28px 0">
         <button class="btn btn-primary" onclick="ui.slViewer.page++;render()">Load more — ${(cardIds.length - shown.length).toLocaleString()} remaining</button>

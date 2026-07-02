@@ -80,8 +80,13 @@ src/
     ├── state.js         # collection / ui / tcgcsvCache (mutated, never reassigned)
     ├── constants, logger, utils, csv, storage, importWizard, prices,
     ├── statusbar, sealedPricing, analytics, render, ticker, cardsTab,
-    ├── gallery, slTab, failures, sealedTab, decks, deckIO, modals,
+    ├── gallery, slTab, slData, failures, sealedTab, decks, deckIO, modals,
     ├── productPicker, sealedModals, exportModal, settings, updaterUI, hover
+    │   # slData.js = finish-aware SL product model (v0.28): buildSlModel walks
+    │   # MTGJSON sealedProduct→deck(isFoil)→printings; legacy SL_* maps are
+    │   # projections; registry answers requiredFinishFor/attributeDropFor.
+    │   # Persisted in sl_products/sl_product_cards. See "Secret Lair Data — Deep
+    │   # Dive & Redesign Blueprint.md" (repo root) for the full design + evidence.
     └── package.json     # {"type":"module"} — scopes ESM so Node can import these
 
 src/renderer-svelte/     # Svelte dashboard (18 panels + custom chart builder)
@@ -138,7 +143,9 @@ Native chrome: menu bar with accelerators (Ctrl+I import CSV, F5 refresh prices,
 ```powershell
 node scripts\smoke-decks.js          # deck parse/validate/stats/export (imports renderer-js modules)
 node scripts\smoke-decks-render.js   # Decks tab render functions
+node scripts\smoke-sldata.js         # finish-aware SL model builder vs. cached SLD.json fixture (both foil regimes)
 $env:ELECTRON_RUN_AS_NODE=1; npx electron scripts\smoke-decks-db.js   # db.js deck round-trip
+$env:ELECTRON_RUN_AS_NODE=1; npx electron scripts\smoke-sldata-db.js  # sl_products/sl_product_cards round-trip
 npx electron scripts\smoke-netfetch.js   # main-process net.fetch against live endpoints
 ```
 Launch with logs: `$env:ELECTRON_ENABLE_LOGGING="1"; npx electron . --dev`

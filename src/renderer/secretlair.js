@@ -7467,9 +7467,9 @@ function applySlDataUpdate(newDropCards, newScryfallToDrops, newScryfallToName) 
   }
 }
 
-async function saveSlDataToCache(dropCards, scryfallToDrops, scryfallToName) {
+async function saveSlDataToCache(dropCards, scryfallToDrops, scryfallToName, products) {
   try {
-    await window.api.sl.replace(dropCards, scryfallToDrops, scryfallToName || {});
+    await window.api.sl.replace(dropCards, scryfallToDrops, scryfallToName || {}, products || null);
     SL_CACHE_INFO_CACHED = { updatedAt: new Date().toISOString() };
   } catch (e) {
     console.warn('SL cache save failed:', e);
@@ -7478,10 +7478,13 @@ async function saveSlDataToCache(dropCards, scryfallToDrops, scryfallToName) {
 
 async function loadSlDataFromCache() {
   try {
-    const { dropCards, scryfallToDrops, scryfallToName, updatedAt } = await window.api.sl.get();
+    const { dropCards, scryfallToDrops, scryfallToName, products, updatedAt } = await window.api.sl.get();
     if (dropCards && Object.keys(dropCards).length && scryfallToDrops && Object.keys(scryfallToDrops).length) {
       applySlDataUpdate(dropCards, scryfallToDrops, scryfallToName);
       SL_CACHE_INFO_CACHED = updatedAt ? { updatedAt } : null;
+      // Stash the finish-aware product model for module land — renderer
+      // main.js hands it to the slData registry right after this call.
+      window.__slProductsCache = products || [];
       return updatedAt || null;
     }
     return null;

@@ -144,6 +144,7 @@ export async function refreshTcgcsvCache() {
             const price = priceMap[p.productId] ?? null;
             allSealed.push({
               id:          `tcgcsv-${g.groupId}-${p.productId}`,
+              productId:   p.productId,   // exact-join key (MTGJSON sealedProduct.identifiers.tcgplayerProductId)
               name,
               consoleName: g.name,
               marketPrice: price != null ? parseFloat(price) : null,

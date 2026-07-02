@@ -58,8 +58,8 @@ contextBridge.exposeInMainWorld('api', {
     all:  ()        => inv('settings:all'),
   },
   sl: {
-    replace:  (dc, std, stn)  => inv('sl:replace', dc, std, stn),
-    get:      ()              => inv('sl:get'),
+    replace:  (dc, std, stn, products)  => inv('sl:replace', dc, std, stn, products),
+    get:      ()                        => inv('sl:get'),
   },
   dialog: {
     openCsv:   ()      => inv('dialog:openCsv'),

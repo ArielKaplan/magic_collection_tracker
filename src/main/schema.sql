@@ -130,6 +130,38 @@ CREATE TABLE IF NOT EXISTS sl_scryfall_drops (
 );
 CREATE INDEX IF NOT EXISTS idx_sl_drop_lookup ON sl_scryfall_drops(drop_name);
 
+-- Finish-aware SL product model (v0.28.0). One row per purchasable SKU —
+-- "Goblin & Squabblin'" and "Goblin & Squabblin' Foil" are separate products
+-- of the same drop. Built from MTGJSON sealedProduct → deck contents (with
+-- per-entry isFoil) by the renderer's buildSlModel(); the legacy name-keyed
+-- maps above are projections of this. legacy_drop is the display/join name
+-- the rest of the app uses; tcgplayer_product_id joins TCGCSV exactly.
+CREATE TABLE IF NOT EXISTS sl_products (
+  uuid                  TEXT PRIMARY KEY,
+  legacy_drop           TEXT NOT NULL,
+  drop_name             TEXT NOT NULL,
+  finish_label          TEXT DEFAULT '',
+  finish                TEXT NOT NULL DEFAULT 'nonfoil',  -- nonfoil | foil | etched
+  tcgplayer_product_id  TEXT,
+  release_date          TEXT,
+  low_confidence        INTEGER DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_sl_products_drop ON sl_products(legacy_drop);
+
+-- Which printings, in which finish, a product contains. The (scryfall_id,
+-- finish) pair is what makes foil and non-foil truly distinct: a non-foil
+-- copy of a shared printing matches the base product's row, never the foil's.
+CREATE TABLE IF NOT EXISTS sl_product_cards (
+  product_uuid      TEXT NOT NULL,
+  scryfall_id       TEXT NOT NULL,
+  card_name         TEXT,
+  collector_number  TEXT,
+  finish            TEXT NOT NULL DEFAULT 'nonfoil',
+  count             INTEGER DEFAULT 1,
+  PRIMARY KEY (product_uuid, scryfall_id, finish)
+);
+CREATE INDEX IF NOT EXISTS idx_sl_product_cards_sid ON sl_product_cards(scryfall_id);
+
 -- Decks — a deck is a *played* list, distinct from binders (the owned collection).
 -- Deck cards may link to an owned collection card (card_id) or be unowned
 -- placeholders identified by scryfall_id/name. Deck contents never count
