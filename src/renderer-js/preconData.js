@@ -101,8 +101,9 @@ export const preconState = {
   cardsLoading: false,
   reverse: null,       // Map(sid → Set(file)) — built with cards
   syncing: false,
-  singles: new Map(),  // file → { value, priced, rows } — on-demand Scryfall pricing
-  pricing: new Set(),  // files being priced right now
+  singles: new Map(),  // file → { value, priced, rows } — computed from details
+  details: new Map(),  // file → Map(sid → { manaCost, cmc, typeLine, colors, rarity, prices }) — Scryfall, on demand
+  pricing: new Set(),  // files being fetched right now
 };
 
 // Startup: deck headers only.
@@ -157,19 +158,23 @@ export function preconsContaining(scryfallId) {
 
 // ── sync: append-only diff against MTGJSON's DeckList.json ──────────────────
 
-export async function refreshPreconData() {
+// opts.silent: the daily background check — quiet unless something was added.
+export async function refreshPreconData(opts = {}) {
   if (preconState.syncing) return;
   preconState.syncing = true;
   render();
   try {
-    toast('Checking MTGJSON for new preconstructed decks…', 'info', 8000);
+    if (!opts.silent) toast('Checking MTGJSON for new preconstructed decks…', 'info', 8000);
     const resp = await netFetch('https://mtgjson.com/api/v5/DeckList.json');
     if (!resp.ok) throw new Error(`HTTP ${resp.status} from mtgjson.com`);
+    // SLD is the SL Explorer's turf — except the Secret Lair Commander decks,
+    // which straddle both (full playable decklist lives here).
     const list = ((await resp.json()).data || [])
-      .filter(d => PRECON_SCOPE_TYPES.has(d.type) && d.code !== 'SLD');
+      .filter(d => PRECON_SCOPE_TYPES.has(d.type) && (d.code !== 'SLD' || d.type === 'Commander Deck'));
     const missing = list.filter(d => !preconState.byFile.has(d.fileName));
     if (!missing.length) {
-      toast('Precon catalog is up to date — no new decks.', 'success');
+      if (!opts.silent) toast('Precon catalog is up to date — no new decks.', 'success');
+      window.logger?.info?.('Precon', 'Catalog up to date');
       return;
     }
     window.logger?.info?.('Precon', `${missing.length} new deck${missing.length !== 1 ? 's' : ''} — fetching decklists…`);
@@ -208,7 +213,7 @@ export async function refreshPreconData() {
       toast('New decks were listed but none could be fetched — try again later.', 'error');
     }
   } catch (e) {
-    toast(`Precon check failed: ${e.message}`, 'error');
+    if (!opts.silent) toast(`Precon check failed: ${e.message}`, 'error');
     window.logger?.error?.('Precon', `sync failed: ${e.message}`);
   } finally {
     preconState.syncing = false;
@@ -258,41 +263,64 @@ export function sealedPriceForPrecon(deck) {
   return null;
 }
 
-// On-demand singles pricing: Σ price × count over main/side/commander rows,
-// each row priced at its own finish (token board excluded — bulk noise).
-export async function pricePreconSingles(file) {
-  if (preconState.pricing.has(file)) return;
+// A row's price given its finish, from a Scryfall prices object.
+export function rowPrice(prices, finish) {
+  const p = prices || {};
+  const order = finish === 'foil' ? ['usd_foil', 'usd', 'usd_etched']
+    : finish === 'etched' ? ['usd_etched', 'usd_foil', 'usd']
+    : ['usd', 'usd_foil', 'usd_etched'];
+  for (const k of order) {
+    const v = parseFloat(p[k]);
+    if (!isNaN(v)) return v;
+  }
+  return null;
+}
+
+// On-demand Scryfall detail fetch for a deck — one batch pass feeds BOTH the
+// singles valuation (Σ price × count at each row's finish, tokens excluded)
+// and the Table view's data columns (mana cost, type, color, rarity, price).
+export async function ensurePreconDetails(file) {
+  if (preconState.pricing.has(file) || preconState.details.has(file)) return;
   const rows = preconCardsFor(file).filter(r => r.board !== 'token');
   if (!rows.length) { toast('No cards mapped for this deck.', 'info'); return; }
   preconState.pricing.add(file);
   render();
   try {
     const uniq = [...new Set(rows.map(r => r.sid))];
-    const bySid = new Map();
+    const details = new Map();
     for (let i = 0; i < uniq.length; i += 75) {
       const data = await fetchScryfallBatch(uniq.slice(i, i + 75));
-      for (const c of (data.data || [])) bySid.set((c.id || '').toLowerCase(), c.prices || {});
+      for (const c of (data.data || [])) {
+        const face = (c.card_faces && c.card_faces[0]) || {};
+        details.set((c.id || '').toLowerCase(), {
+          manaCost: c.mana_cost || face.mana_cost || '',
+          cmc: c.cmc ?? 0,
+          typeLine: c.type_line || face.type_line || '',
+          colors: (c.colors && c.colors.length ? c.colors : (c.color_identity || [])),
+          rarity: c.rarity || '',
+          prices: c.prices || {},
+        });
+      }
     }
+    preconState.details.set(file, details);
     let value = 0, priced = 0;
     for (const r of rows) {
-      const p = bySid.get(r.sid);
-      if (!p) continue;
-      const order = r.finish === 'foil' ? ['usd_foil', 'usd', 'usd_etched']
-        : r.finish === 'etched' ? ['usd_etched', 'usd_foil', 'usd']
-        : ['usd', 'usd_foil', 'usd_etched'];
-      for (const k of order) {
-        const v = parseFloat(p[k]);
-        if (!isNaN(v)) { value += v * (r.count || 1); priced++; break; }
-      }
+      const d = details.get(r.sid);
+      if (!d) continue;
+      const v = rowPrice(d.prices, r.finish);
+      if (v != null) { value += v * (r.count || 1); priced++; }
     }
     preconState.singles.set(file, { value, priced, rows: rows.length, at: Date.now() });
   } catch (e) {
-    toast(`Couldn't price singles: ${e.message}`, 'error');
+    toast(`Couldn't load card details: ${e.message}`, 'error');
   } finally {
     preconState.pricing.delete(file);
     render();
   }
 }
+
+// Back-compat name — the economics banner's button predates the Table view.
+export const pricePreconSingles = ensurePreconDetails;
 
 // ── ownership + want list ────────────────────────────────────────────────────
 

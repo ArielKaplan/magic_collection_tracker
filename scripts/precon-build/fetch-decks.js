@@ -40,7 +40,11 @@ const SCOPE_TYPES = new Set([
   fs.writeFileSync(path.join(CACHE, 'DeckList.json'), JSON.stringify(list));
   console.log(`ok — ${list.length} decks cataloged`);
 
-  const scoped = list.filter(d => SCOPE_TYPES.has(d.type) && d.code !== 'SLD');
+  // SLD decks are the SL Explorer's turf — EXCEPT the Secret Lair Commander
+  // decks (Goblin Storm, Heads I Win…, From Cute to Brute, …), which straddle
+  // both: the SL Explorer shows their SLD printings, the Precon Explorer the
+  // full ~100-card playable deck.
+  const scoped = list.filter(d => SCOPE_TYPES.has(d.type) && (d.code !== 'SLD' || d.type === 'Commander Deck'));
   console.log(`in scope: ${scoped.length} decks (${SCOPE_TYPES.size} types)`);
 
   let fetched = 0, cached = 0, failed = 0;

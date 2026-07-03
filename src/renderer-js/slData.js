@@ -147,8 +147,14 @@ export function buildSlModel(json, opts = {}) {
   };
 
   // ── Pass P: one product per secret_lair SKU, cards from deck contents ─────
+  // subtype 'commander' = the Secret Lair Commander decks (Goblin Storm, Heads
+  // I Win…, From Cute to Brute, …) — full ~100-card decks whose cards mostly
+  // carry no subsets, so skipping them left those drops nearly empty.
   for (const p of sealed) {
-    if (p.subtype !== 'secret_lair') continue;
+    if (p.subtype !== 'secret_lair' && p.subtype !== 'commander') continue;
+    // A few multi-drop bundles are mislabeled subtype 'secret_lair' — they're
+    // packaging, not drops, and have no deck contents (empty-drop clutter).
+    if (/^\s*secret lair bundle\b/i.test(p.name || '')) continue;
     const cleaned = cleanProductName(p.name);
     if (!cleaned) continue;
     let { baseName, finishLabel } = splitFinish(cleaned);

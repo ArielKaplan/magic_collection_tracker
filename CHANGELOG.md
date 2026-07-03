@@ -11,6 +11,15 @@ in-app "What's New" screen — from that version's section. Keep entries
 user-facing: what changed, not how.
 
 ## [Unreleased]
+### Added
+- **Table view for precon decklists.** Every precon deck page now has a **🖼 Gallery / 📊 Table** toggle: the table shows each card's **mana cost, color, type, rarity, finish, quantity, and current price** in sortable columns (click any header), with an owned ✓/✗ per card and the same hover previews. Card data loads once per deck from Scryfall and also powers the "Worth it?" singles total.
+- **The Secret Lair Commander decks are in the Precon Explorer.** Goblin Storm, Heads I Win Tails You Lose, From Cute to Brute, Angels, Raining Cats and Dogs, 20 Ways to Win, and Everyone's Invited! now appear as full playable decklists (~100 cards each) under Commander Decks — while the SL Explorer keeps showing their collectible SLD printings. They straddle both worlds, so now they live in both.
+- **New precons arrive on their own.** The daily refresh now quietly checks MTGJSON's deck catalog and appends any newly released precons — no button-clicking required (the ↻ button is still there for impatience).
+
+### Fixed
+- **Secret Lair Commander decks were nearly empty in the Explorer.** Goblin Storm (and the other SL Commander drops) showed only one or two cards — their product records were being skipped. They now show all of their Secret Lair printings (~20 cards each).
+- **Ghost "Secret Lair Bundle …" entries with zero cards** no longer appear — a few multi-drop bundle products were mislabeled in the source data and slipped in as empty drops.
+- **June's drops now group properly.** The built-in Secret Lair dataset was rebuilt from source (362 drops, every one resolved to its superdrop) — Witch's Familiar and the rest of the Cats Are the Best Superdrop, Goblin Storm, and other recent drops now sit under their real superdrops instead of piling up in "Recent Additions" (where the base and Foil versions read like duplicates).
 
 ## [0.29.0] - 2026-07-03
 ### Added

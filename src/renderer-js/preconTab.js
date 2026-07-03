@@ -4,9 +4,9 @@
 // vs. sealed market). Mirrors slTab.js's structure and reuses its card tiles.
 
 import {
-  addPreconMissingToWantList, ensurePreconCards, ownedFinishKeySet,
-  preconCardsFor, preconMsrpDefault, preconOwnedStats, preconState,
-  pricePreconSingles, refreshPreconData, sealedPriceForPrecon,
+  addPreconMissingToWantList, ensurePreconCards, ensurePreconDetails,
+  ownedFinishKeySet, preconCardsFor, preconMsrpDefault, preconOwnedStats,
+  preconState, refreshPreconData, rowPrice, sealedPriceForPrecon,
 } from './preconData.js';
 import { slCardTile } from './slTab.js';
 import { ui } from './state.js';
@@ -32,6 +32,84 @@ function colorPips(colors) {
 }
 
 const BOARD_LABEL = { commander: 'Commander', main: 'Main deck', side: 'Sideboard', token: 'Tokens' };
+const BOARD_RANK = { commander: 0, main: 1, side: 2, token: 3 };
+const RARITY_RANK = { mythic: 0, rare: 1, uncommon: 2, common: 3, special: 4, bonus: 5 };
+
+// The Table view: the decklist as a sortable data grid — mana cost, color,
+// type, rarity, finish, qty, and per-row-finish price. Column data comes from
+// the on-demand Scryfall detail fetch (shared with the singles valuation).
+function deckTable(deck, ownedKeys) {
+  const details = preconState.details.get(deck.file);
+  if (!details) {
+    if (!preconState.pricing.has(deck.file)) ensurePreconDetails(deck.file);
+    return `<div style="padding:40px;text-align:center;color:var(--text-muted)">⏳ Loading card details from Scryfall…</div>`;
+  }
+  const pv = ui.precons;
+  const [field, dir] = (pv.tableSort || 'name_asc').split('_');
+  const mul = dir === 'desc' ? -1 : 1;
+
+  const rows = preconCardsFor(deck.file).filter(r => r.board !== 'token').map(r => {
+    const d = details.get(r.sid) || {};
+    return {
+      ...r,
+      manaCost: d.manaCost || '',
+      cmc: d.cmc ?? null,
+      typeLine: d.typeLine || '',
+      colors: d.colors || [],
+      rarity: d.rarity || '',
+      price: d.prices ? rowPrice(d.prices, r.finish) : null,
+      owned: ownedKeys.has(`${r.sid}|${r.finish}`),
+    };
+  });
+
+  const keyFns = {
+    name:   r => r.name || '',
+    cost:   r => r.cmc ?? -1,
+    color:  r => (r.colors.length ? r.colors.join('') : 'ZZ'),   // colorless last
+    type:   r => r.typeLine,
+    rarity: r => RARITY_RANK[r.rarity] ?? 9,
+    price:  r => r.price ?? -1,
+    owned:  r => Number(r.owned),
+  };
+  const key = keyFns[field] || keyFns.name;
+  rows.sort((a, b) => {
+    const bo = (BOARD_RANK[a.board] ?? 9) - (BOARD_RANK[b.board] ?? 9);
+    if (field === 'name' && bo !== 0) return bo;   // default sort keeps commander on top
+    const av = key(a), bv = key(b);
+    if (typeof av === 'string') return av.localeCompare(bv) * mul || (a.name || '').localeCompare(b.name || '');
+    return (av - bv) * mul || (a.name || '').localeCompare(b.name || '');
+  });
+
+  const th = (label, f) => {
+    const active = field === f;
+    const arrow = active ? (dir === 'desc' ? ' ↓' : ' ↑') : '';
+    return `<th style="cursor:pointer;white-space:nowrap;user-select:none${active ? ';color:var(--accent2)' : ''}"
+      onclick="ui.precons.tableSort='${f}_${active && dir === 'asc' ? 'desc' : 'asc'}';render()">${label}${arrow}</th>`;
+  };
+
+  const body = rows.map(r => `
+    <tr data-precon-sid="${esc(r.sid)}" style="cursor:pointer${r.owned ? '' : ';opacity:.62'}" onclick="showSlViewerModal('${esc(r.sid)}')">
+      <td>${r.owned ? '<span style="color:var(--green)">✓</span>' : '<span style="color:var(--text-muted)">✗</span>'}</td>
+      <td style="font-weight:600;color:var(--text)">${esc(r.name)}${r.board === 'commander' ? ' <span title="Commander">👑</span>' : ''}${r.board === 'side' ? ' <span style="font-size:10px;color:var(--text-muted)">(SB)</span>' : ''}</td>
+      <td style="font-family:var(--mono,monospace);font-size:12px;white-space:nowrap">${esc(r.manaCost)}</td>
+      <td>${colorPips(r.colors.join(''))}</td>
+      <td style="font-size:12px">${esc(r.typeLine)}</td>
+      <td style="text-transform:capitalize;font-size:12px">${esc(r.rarity)}</td>
+      <td style="font-size:12px">${r.finish === 'nonfoil' ? '—' : `<span class="badge badge-${r.finish === 'etched' ? 'etched' : 'foil'}">${r.finish === 'etched' ? 'Etched' : 'Foil'}</span>`}</td>
+      <td style="text-align:center">${r.count}</td>
+      <td style="text-align:right;font-weight:600">${r.price != null ? fmt(r.price) : '<span style="color:var(--text-muted)">—</span>'}</td>
+    </tr>`).join('');
+
+  return `
+    <div style="overflow-x:auto">
+      <table class="cards-table" style="width:100%;font-size:13px">
+        <thead><tr>
+          ${th('Own', 'owned')}${th('Card', 'name')}${th('Cost', 'cost')}${th('Color', 'color')}${th('Type', 'type')}${th('Rarity', 'rarity')}<th>Finish</th><th>Qty</th>${th('Price', 'price')}
+        </tr></thead>
+        <tbody>${body}</tbody>
+      </table>
+    </div>`;
+}
 
 function refreshBar() {
   return `
@@ -137,21 +215,27 @@ export function renderPreconTab() {
     const missing = rows.filter(r => r.board !== 'token' && !ownedKeys.has(`${r.sid}|${r.finish}`));
     const base = deck.variantOf ? preconState.byFile.get(deck.variantOf) : null;
 
-    const boards = ['commander', 'main', 'side', 'token'].map(board => {
-      const bRows = rows.filter(r => r.board === board);
-      if (!bRows.length) return '';
-      const grid = bRows.map(r => slCardTile(r.sid, r.num, r.finish)).join('');
-      return `
-        <div style="margin:14px 0 6px;font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text-muted)">
-          ${BOARD_LABEL[board]} · ${bRows.length}
-        </div>
-        <div class="gallery-grid">${grid}</div>`;
-    }).join('');
+    const body = (pv.deckView === 'table')
+      ? deckTable(deck, ownedKeys)
+      : ['commander', 'main', 'side', 'token'].map(board => {
+          const bRows = rows.filter(r => r.board === board);
+          if (!bRows.length) return '';
+          const grid = bRows.map(r => slCardTile(r.sid, r.num, r.finish)).join('');
+          return `
+            <div style="margin:14px 0 6px;font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text-muted)">
+              ${BOARD_LABEL[board]} · ${bRows.length}
+            </div>
+            <div class="gallery-grid">${grid}</div>`;
+        }).join('');
+
+    const viewBtn = (id, label) =>
+      `<button class="btn ${pv.deckView === id ? 'btn-primary' : 'btn-ghost'}" style="font-size:12px" onclick="ui.precons.deckView='${id}';render()">${label}</button>`;
 
     return refreshBar() + breadcrumb(pv, deck) + `
       <div class="gallery-filters">
         <div class="gallery-filter-row">
           <button class="btn btn-ghost" style="font-size:12px" onclick="ui.precons.deck='';render()">← Back to ${esc(deck.type || 'decks')}</button>
+          ${viewBtn('gallery', '🖼 Gallery')}${viewBtn('table', '📊 Table')}
           ${missing.length ? `<button class="btn btn-ghost" style="font-size:12px" onclick="addPreconMissingToWantList('${escJs(deck.file)}')" title="Add this deck's missing cards to your want list">★ Want ${missing.length} missing</button>` : ''}
           <span style="display:flex;align-items:center;gap:6px;margin-left:8px">${colorPips(deck.colors)}</span>
           <span style="font-size:12px;color:var(--text-muted)">${esc(deck.type || '')} · ${esc(deck.code || '')} · ${esc(deck.date || '—')}${base ? ` · variant of ${esc(base.name)}` : ''}</span>
@@ -162,7 +246,7 @@ export function renderPreconTab() {
         </div>
       </div>
       ${deckEconomicsBanner(deck)}
-      ${boards}`;
+      ${body}`;
   }
 
   // ── Line view (one product line's decks) ───────────────────────────────────

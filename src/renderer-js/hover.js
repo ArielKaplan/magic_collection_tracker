@@ -259,6 +259,13 @@ export function attachContentListeners() {
       el.addEventListener('mouseleave', hideCardHoverPreview);
     });
   }
+  // Precon deck Table view rows carry data-precon-sid — same Scryfall preview.
+  if (ui.activeTab === 'precons') {
+    document.querySelectorAll('tr[data-precon-sid]').forEach(el => {
+      el.addEventListener('mouseenter', () => showSlTileHoverPreview(el, el.dataset.preconSid));
+      el.addEventListener('mouseleave', hideCardHoverPreview);
+    });
+  }
   // Search Results tab: hover on card rows (owned → local card; catalog/printings
   // rows → Scryfall-backed preview via scryfall id).
   if (ui.activeTab === 'search') {

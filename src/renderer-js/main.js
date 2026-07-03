@@ -219,7 +219,10 @@ async function init() {
       window.logger?.info('App', 'First open today — auto-refreshing prices and SL data…');
       setTimeout(async () => {
         await refreshPrices();
-        if (typeof refreshSlData === 'function') refreshSlData();
+        if (typeof refreshSlData === 'function') await refreshSlData();
+        // Precon catalog check is one small index fetch — new decks (a few a
+        // month at most) get appended without anyone clicking the button.
+        await NS_preconData.refreshPreconData({ silent: true });
       }, 800);
     }
   }

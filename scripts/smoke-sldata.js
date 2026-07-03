@@ -114,6 +114,21 @@ const ok = (cond, label) => {
   ok(!!eldraine, 'Eldraine Wonderland product exists');
   if (eldraine) ok(eldraine.finish === 'foil', `foil-only drop detected as foil from contents (${eldraine.finish})`);
 
+  console.log('\n— SL Commander decks (subtype "commander") get full decklists —');
+  const gs = byLegacy.get('Goblin Storm');
+  ok(!!gs, 'Goblin Storm product exists');
+  if (gs) {
+    // The SL Explorer scopes a commander drop to its SLD-set printings (~20+
+    // new cards); the deck's other ~60 reprints live in other sets and are the
+    // Precon Explorer's full-decklist territory. Before the fix this was 1.
+    ok(gs.cards.length >= 15, `commander drop carries its SLD printings, not one straggler (${gs.cards.length} cards)`);
+    ok(!gs.lowConfidence, 'built from real deck contents (not a synthetic shell)');
+  }
+
+  console.log('\n— mislabeled bundles are skipped (no empty-drop clutter) —');
+  const bundles = model.products.filter(p => /^secret lair bundle/i.test(p.legacyDrop));
+  ok(bundles.length === 0, `no "Secret Lair Bundle …" drops (${bundles.length})`);
+
   console.log(`\n${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);
 })().catch(e => { console.error('SMOKE CRASHED:', e); process.exit(1); });
