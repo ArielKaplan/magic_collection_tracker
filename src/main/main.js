@@ -72,6 +72,7 @@ function buildMenu() {
         tabItem('Secret Lair Explorer',     'slviewer',   'CmdOrCtrl+5'),
         tabItem('Failed Lookups',           'failures',   'CmdOrCtrl+6'),
         tabItem('Decks',                    'decks',      'CmdOrCtrl+7'),
+        tabItem('Precon Explorer',          'precons',    'CmdOrCtrl+9'),
         tabItem('Want List',                'wantlist',   'CmdOrCtrl+8'),
         { type: 'separator' },
         { label: 'Toggle Activity Log', accelerator: 'CmdOrCtrl+L', click: () => sendMenu('logs:toggle') },
@@ -235,6 +236,11 @@ function registerIpc() {
   // SL data
   ipcMain.handle('sl:replace',          (_e, dc, std, stn, products) => db.replaceSlData(dc, std, stn, products));
   ipcMain.handle('sl:get',              ()             => db.getSlData());
+
+  // Precon Explorer catalog
+  ipcMain.handle('precon:list',         ()             => db.listPreconDecks());
+  ipcMain.handle('precon:cards',        ()             => db.listPreconDeckCards());
+  ipcMain.handle('precon:upsert',       (_e, decks)    => db.upsertPreconDecks(decks));
 
   // File dialogs
   ipcMain.handle('dialog:openCsv', async () => {

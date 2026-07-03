@@ -210,6 +210,39 @@ CREATE TABLE IF NOT EXISTS portfolio_snapshots (
   created_at    TEXT DEFAULT (datetime('now'))
 );
 
+-- Precon Explorer (v0.29.0) — every physical preconstructed deck, seeded from
+-- a baked MTGJSON snapshot (src/main/precon-seed.json, imported at init when
+-- the table is empty) and appended to by the in-app "Check for new precons"
+-- sync. Decklists are immutable once printed, so rows are only ever added,
+-- never rewritten (except a re-seed after a pipeline refresh).
+CREATE TABLE IF NOT EXISTS precon_decks (
+  file_name             TEXT PRIMARY KEY,   -- MTGJSON deck fileName (stable id)
+  name                  TEXT NOT NULL,
+  deck_type             TEXT,               -- Commander Deck | Theme Deck | …
+  set_code              TEXT,
+  release_date          TEXT,
+  colors                TEXT DEFAULT '',    -- WUBRG-ordered color identity, '' = colorless
+  commander             TEXT DEFAULT '',    -- display name(s), '' for non-commander decks
+  variant_of            TEXT,               -- base deck file_name (Collector's Editions)
+  tcgplayer_product_id  TEXT,               -- reserved for the exact-join upgrade
+  msrp                  REAL,               -- reserved; era/type default computed in renderer
+  card_count            INTEGER DEFAULT 0   -- total copies across boards (tile display)
+);
+CREATE INDEX IF NOT EXISTS idx_precon_decks_type ON precon_decks(deck_type);
+
+CREATE TABLE IF NOT EXISTS precon_deck_cards (
+  deck_file    TEXT NOT NULL,
+  scryfall_id  TEXT NOT NULL,
+  card_name    TEXT,
+  count        INTEGER DEFAULT 1,
+  finish       TEXT NOT NULL DEFAULT 'nonfoil',  -- nonfoil | foil | etched
+  board        TEXT NOT NULL DEFAULT 'main',     -- main | side | commander | token
+  set_code     TEXT,
+  number       TEXT,
+  PRIMARY KEY (deck_file, scryfall_id, finish, board)
+);
+CREATE INDEX IF NOT EXISTS idx_precon_cards_sid ON precon_deck_cards(scryfall_id);
+
 -- Key-value bag for misc settings (eBay creds, last_price_refresh, sl_data_updated_at, etc.)
 CREATE TABLE IF NOT EXISTS settings (
   key    TEXT PRIMARY KEY,

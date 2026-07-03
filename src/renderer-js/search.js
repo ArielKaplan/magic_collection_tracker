@@ -14,6 +14,7 @@
 import { cardCurrentValue } from './analytics.js';
 import { filteredCards } from './cardsTab.js';
 import { hideModal } from './modals.js';
+import { preconState } from './preconData.js';
 import { render } from './render.js';
 import { showSlViewerModal } from './slTab.js';
 import { collection, tcgcsvCache, ui } from './state.js';
@@ -132,6 +133,12 @@ export function quickSearch(query, cap = CAP) {
     slDrops.sort((a, b) => Number(b.owned) - Number(a.owned) || a.name.localeCompare(b.name));
   }
 
+  // Preconstructed decks (catalog — name, commander, set code, product line)
+  const precons = (preconState.decks || [])
+    .filter(d => match(d.name, d.commander, d.code, d.type))
+    .map(d => ({ type: 'precon', name: d.name, sub: `${d.type || 'Precon'}${d.date ? ' · ' + d.date.slice(0, 4) : ''}`, file: d.file }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+
   // Failed lookups
   const failed = (collection.failedLookups || [])
     .filter(f => match(f.name, f.setCode, f.collectorNumber))
@@ -145,6 +152,7 @@ export function quickSearch(query, cap = CAP) {
     ['decks', 'Decks', decks],
     ['want', 'Want List', wantlist],
     ['sldrops', 'Secret Lair Drops', slDrops],
+    ['precons', 'Precon Decks', precons],
     ['failed', 'Failed Lookups', failed],
   ];
   const groups = defs
@@ -260,6 +268,8 @@ function pickItem(item) {
       ui.wantList.search = item.name; goToTab('wantlist'); break;
     case 'sldrop':
       ui.slViewer.drop = item.name; ui.slViewer.superdrop = item.sub || ''; ui.slViewer.view = 'drops'; goToTab('slviewer'); break;
+    case 'precon':
+      ui.precons.deck = item.file; ui.precons.line = ''; goToTab('precons'); break;
     case 'failed':
       goToTab('failures'); break;
     case 'scrycard':   // live Scryfall card → detail popup

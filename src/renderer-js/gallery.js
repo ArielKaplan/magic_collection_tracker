@@ -48,6 +48,10 @@ export function showGalleryModal(cardId) {
             <span style="color:var(--text-muted)">Superdrop</span>
             <span>${esc(s.superdrop)}</span>
           `).join('') : ''}
+          ${(typeof preconsContaining === 'function' ? preconsContaining(card.scryfallId) : []).slice(0, 3).map(p => `
+            <span style="color:var(--text-muted)">Precon</span>
+            <span><a class="bc-link" onclick="hideModal();ui.precons.line='';ui.precons.deck='${escJs(p.file)}';ui.activeTab='precons';render()">${esc(p.name)}</a> <span style="color:var(--text-muted);font-size:11px">${esc(p.type || '')}</span></span>
+          `).join('')}
         </div>
 
         <div style="display:flex;gap:20px;margin-bottom:14px;flex-wrap:wrap">

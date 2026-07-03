@@ -52,6 +52,12 @@ function init(dbPath) {
     try { db.exec(stmt); } catch (e) { /* column already exists */ }
   }
 
+  // Seed the Precon Explorer catalog from the baked MTGJSON snapshot on first
+  // run (or after a resetAll). Decklists are immutable, so this only ever
+  // fires when precon_decks is empty; the in-app sync appends new decks later.
+  try { seedPreconsIfEmpty(); }
+  catch (e) { console.error('[precon] seed failed:', e.message); }
+
   // Migrate price_history to include source column + updated PK if needed
   const phCols = db.prepare('PRAGMA table_info(price_history)').all().map(c => c.name);
   if (!phCols.includes('source')) {
@@ -546,6 +552,74 @@ function getSlData() {
   return { dropCards, scryfallToDrops, scryfallToName, products, updatedAt: getSetting('sl_data_updated_at') };
 }
 
+// ── Precon Explorer catalog ──────────────────────────────────────────────────
+// Deck rows arrive in the seed/sync shape: { file, name, type, code, date,
+// colors, commander, variantOf, cards: [[sid, name, count, finish, board,
+// setCode, number], …] }. Upserts replace a deck wholesale (delete + insert)
+// so a pipeline re-seed can correct old data, but normal sync only adds.
+function upsertPreconDecks(decks) {
+  const tx = db.transaction(() => {
+    const delDeck  = db.prepare('DELETE FROM precon_decks WHERE file_name=?');
+    const delCards = db.prepare('DELETE FROM precon_deck_cards WHERE deck_file=?');
+    const insDeck = db.prepare(`INSERT INTO precon_decks
+      (file_name, name, deck_type, set_code, release_date, colors, commander, variant_of, tcgplayer_product_id, msrp, card_count)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+    const insCard = db.prepare(`INSERT OR IGNORE INTO precon_deck_cards
+      (deck_file, scryfall_id, card_name, count, finish, board, set_code, number)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`);
+    for (const d of (decks || [])) {
+      if (!d || !d.file || !d.name) continue;
+      delDeck.run(d.file);
+      delCards.run(d.file);
+      const cardCount = (d.cards || []).reduce((s, c) => s + (c[2] || 1), 0);
+      insDeck.run(d.file, d.name, d.type || null, d.code || null, d.date || null,
+        d.colors || '', d.commander || '', d.variantOf || null,
+        d.tcgplayerProductId != null ? String(d.tcgplayerProductId) : null,
+        d.msrp != null ? d.msrp : null, cardCount);
+      for (const c of (d.cards || []))
+        insCard.run(d.file, c[0], c[1] || null, c[2] || 1, c[3] || 'nonfoil', c[4] || 'main', c[5] || null, c[6] || null);
+    }
+  });
+  tx();
+  return (decks || []).length;
+}
+
+// Deck headers only — cheap enough to load at startup (~1k rows).
+function listPreconDecks() {
+  return db.prepare('SELECT * FROM precon_decks').all().map(r => ({
+    file: r.file_name, name: r.name, type: r.deck_type, code: r.set_code,
+    date: r.release_date, colors: r.colors || '', commander: r.commander || '',
+    variantOf: r.variant_of, tcgplayerProductId: r.tcgplayer_product_id,
+    msrp: r.msrp, cardCount: r.card_count || 0,
+  }));
+}
+
+// The full membership map, compact (array-of-arrays — ~40k rows). Loaded
+// lazily by the renderer the first time the Precon tab opens.
+function listPreconDeckCards() {
+  return db.prepare('SELECT deck_file, scryfall_id, card_name, count, finish, board, set_code, number FROM precon_deck_cards')
+    .all().map(r => [r.deck_file, r.scryfall_id, r.card_name, r.count, r.finish, r.board, r.set_code, r.number]);
+}
+
+function clearPrecons() {
+  const tx = db.transaction(() => {
+    db.prepare('DELETE FROM precon_decks').run();
+    db.prepare('DELETE FROM precon_deck_cards').run();
+  });
+  tx();
+}
+
+function seedPreconsIfEmpty() {
+  const n = db.prepare('SELECT COUNT(*) n FROM precon_decks').get().n;
+  if (n > 0) return false;
+  const seedPath = path.join(__dirname, 'precon-seed.json');
+  if (!fs.existsSync(seedPath)) return false;
+  const seed = JSON.parse(fs.readFileSync(seedPath, 'utf-8'));
+  const count = upsertPreconDecks(seed.decks || []);
+  console.log(`[precon] seeded ${count} decks from baked snapshot (${seed.generatedAt || '?'})`);
+  return true;
+}
+
 // ── Clear / reset ────────────────────────────────────────────────────────────
 function clearCards()         { return db.prepare('DELETE FROM cards').run().changes; }
 function clearSealed()        { return db.prepare('DELETE FROM sealed').run().changes; }
@@ -623,8 +697,13 @@ function resetAll() {
     db.prepare('DELETE FROM portfolio_snapshots').run();
     db.prepare('DELETE FROM want_list').run();
     db.prepare('DELETE FROM settings').run();
+    db.prepare('DELETE FROM precon_decks').run();
+    db.prepare('DELETE FROM precon_deck_cards').run();
   });
   tx();
+  // The precon catalog is app data, not user data — restore it immediately
+  // from the baked seed so the Explorer isn't empty until the next restart.
+  try { seedPreconsIfEmpty(); } catch (e) { /* non-fatal */ }
   // VACUUM can't run inside a transaction; do it separately to reclaim disk
   try { db.exec('VACUUM'); } catch (e) { /* ignore — non-fatal */ }
   return { ok: true };
@@ -652,6 +731,8 @@ module.exports = {
   getSetting, setSetting, getAllSettings, clearSettings,
   // SL
   replaceSlData, getSlData, clearSlData,
+  // Precon Explorer catalog
+  upsertPreconDecks, listPreconDecks, listPreconDeckCards, clearPrecons,
   // backup / integrity / lifecycle
   backupTo, integrityCheck, integrityCheckFile, close,
   // nuclear

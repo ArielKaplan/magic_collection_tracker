@@ -61,6 +61,11 @@ contextBridge.exposeInMainWorld('api', {
     replace:  (dc, std, stn, products)  => inv('sl:replace', dc, std, stn, products),
     get:      ()                        => inv('sl:get'),
   },
+  precons: {
+    list:    ()      => inv('precon:list'),
+    cards:   ()      => inv('precon:cards'),
+    upsert:  (decks) => inv('precon:upsert', decks),
+  },
   dialog: {
     openCsv:   ()      => inv('dialog:openCsv'),
     openDeck:  ()      => inv('dialog:openDeck'),

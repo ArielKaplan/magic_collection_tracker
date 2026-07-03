@@ -273,7 +273,8 @@ function slCollectorSortKey(num) {
 // requiredFinish (optional, 'nonfoil'|'foil'|'etched') scopes the owned check
 // to copies of that finish — a drop-detail tile for a Foil Edition SKU only
 // lights up for foil copies. Omitted (collector view) = any finish counts.
-function slCardTile(scryfallId, numLabel, requiredFinish) {
+// Exported: the Precon Explorer renders its decklists with the same tiles.
+export function slCardTile(scryfallId, numLabel, requiredFinish) {
   const id = scryfallId.toLowerCase();
   const img = `https://cards.scryfall.io/normal/front/${id[0]}/${id[1]}/${id}.jpg`;
   const ownedPrintings = ownedCards().filter(c => c.scryfallId === scryfallId
@@ -1165,6 +1166,10 @@ export async function showSlViewerModal(scryfallId) {
           <span style="color:var(--text-muted)">SL Drop</span><span class="sl-type-badge">${esc(s.drop)}</span>
           <span style="color:var(--text-muted)">Superdrop</span><span>${esc(s.superdrop)}</span>
         `).join('') : ''}
+        ${(typeof preconsContaining === 'function' ? preconsContaining(scryfallId) : []).slice(0, 3).map(p => `
+          <span style="color:var(--text-muted)">Precon</span>
+          <span><a class="bc-link" onclick="hideModal();ui.precons.line='';ui.precons.deck='${escJs(p.file)}';ui.activeTab='precons';render()">${esc(p.name)}</a> <span style="color:var(--text-muted);font-size:11px">${esc(p.type || '')}</span></span>
+        `).join('')}
         <span style="color:var(--text-muted)">In binder</span><span style="color:#f87171;font-weight:600">Not owned</span>
       </div>
       ${data.prices?.usd ? `<div style="font-size:22px;font-weight:700;color:var(--text);margin-bottom:14px">$${data.prices.usd}</div>` : ''}

@@ -1,0 +1,3 @@
+# Downloaded source data (large, re-fetchable) — do not commit
+cache/
+out/

@@ -248,8 +248,9 @@ export function attachContentListeners() {
       el.addEventListener('mouseleave', hideCardHoverPreview);
     });
   }
-  // SL Explorer + Want List gallery: tiles have onclick="showSlViewerModal('scryfallId')"
-  if (ui.activeTab === 'slviewer' || ui.activeTab === 'wantlist') {
+  // SL Explorer + Precon Explorer + Want List gallery: tiles have
+  // onclick="showSlViewerModal('scryfallId')" (precons reuse slCardTile)
+  if (ui.activeTab === 'slviewer' || ui.activeTab === 'wantlist' || ui.activeTab === 'precons') {
     document.querySelectorAll('.gallery-card[onclick*="showSlViewerModal"]').forEach(el => {
       const m = el.getAttribute('onclick').match(/showSlViewerModal\('([^']+)'\)/);
       const scryfallId = m ? m[1] : null;

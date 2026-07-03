@@ -3,6 +3,7 @@ import { renderDecks } from './decks.js';
 import { renderFailedLookupsTab } from './failures.js';
 import { attachContentListeners } from './hover.js';
 import { updateRefreshUI } from './prices.js';
+import { renderPreconTab } from './preconTab.js';
 import { renderSealed } from './sealedTab.js';
 import { renderSearchTab } from './search.js';
 import { renderSlViewer } from './slTab.js';
@@ -39,6 +40,7 @@ export function render() {
       case 'sealed':    content.innerHTML = renderSealed();            break;
       case 'decks':     content.innerHTML = renderDecks();             break;
       case 'slviewer':  content.innerHTML = renderSlViewer();          break;
+      case 'precons':   content.innerHTML = renderPreconTab();         break;
       case 'wantlist':  content.innerHTML = renderWantList();          break;
       case 'failures':  content.innerHTML = renderFailedLookupsTab();  break;
       case 'search':    content.innerHTML = renderSearchTab();         break;
