@@ -11,6 +11,8 @@ in-app "What's New" screen — from that version's section. Keep entries
 user-facing: what changed, not how.
 
 ## [Unreleased]
+
+## [0.30.0] - 2026-07-03
 ### Added
 - **Table view for precon decklists.** Every precon deck page now has a **🖼 Gallery / 📊 Table** toggle: the table shows each card's **mana cost, color, type, rarity, finish, quantity, and current price** in sortable columns (click any header), with an owned ✓/✗ per card and the same hover previews. Card data loads once per deck from Scryfall and also powers the "Worth it?" singles total.
 - **The Secret Lair Commander decks are in the Precon Explorer.** Goblin Storm, Heads I Win Tails You Lose, From Cute to Brute, Angels, Raining Cats and Dogs, 20 Ways to Win, and Everyone's Invited! now appear as full playable decklists (~100 cards each) under Commander Decks — while the SL Explorer keeps showing their collectible SLD printings. They straddle both worlds, so now they live in both.
