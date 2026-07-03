@@ -11,6 +11,8 @@ in-app "What's New" screen — from that version's section. Keep entries
 user-facing: what changed, not how.
 
 ## [Unreleased]
+
+## [0.29.0] - 2026-07-03
 ### Added
 - **The Precon Explorer.** A new section in the rail (Ctrl+9) that catalogs **every physical preconstructed deck Magic has ever sold — 975 decks from 1993 to today**: Commander precons, Challenger and Duel Decks, Theme Decks, Intro Packs, Planeswalker Decks, World Championship decks, Guild Kits, and more. Browse product line → deck → full decklist with the same card tiles, hover previews, and owned/missing indicators as the Secret Lair Explorer — ownership is finish-aware, so a Collector's Edition foil slot only lights up for a foil copy. Each deck shows its **color identity, commander, release date, and completion bar**, and a **"Worth it?" panel** compares the deck's assumed MSRP against the current value of its singles (priced on demand) and the sealed market price, with a verdict. **★ Want missing** turns any partly-owned precon into a shopping list.
 - **Precons in global search.** Deck names, commanders, and set codes now match in the command-bar search — jump straight to any precon's decklist.
