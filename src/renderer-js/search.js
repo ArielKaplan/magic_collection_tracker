@@ -14,7 +14,7 @@
 import { cardCurrentValue } from './analytics.js';
 import { filteredCards } from './cardsTab.js';
 import { hideModal } from './modals.js';
-import { preconState } from './preconData.js';
+import { ensurePreconCards, preconNameIndex, preconState } from './preconData.js';
 import { render } from './render.js';
 import { showSlViewerModal } from './slTab.js';
 import { collection, tcgcsvCache, ui } from './state.js';
@@ -101,17 +101,36 @@ export function quickSearch(query, cap = CAP) {
   }
   const binders = [...binderMap.values()].filter(b => match(b.name)).sort((a, b) => b.count - a.count);
 
-  // Sealed products (owned)
-  const sealed = (collection.sealed || [])
-    .filter(s => match(s.name, s.dropName, s.type))
-    .map(s => ({ type: 'sealed', name: s.name || s.dropName, sub: s.type, owned: (s.status !== 'sold'), id: s.id }))
-    .sort((a, b) => a.name.localeCompare(b.name));
+  // Sealed products (owned). Matches the product's own name/type, OR — the
+  // "this card is inside a sealed product" case — a card in the Secret Lair
+  // drop the product is linked to (dropName → SL_DROP_CARDS).
+  const sealed = [];
+  for (const s of (collection.sealed || [])) {
+    const nameHit = match(s.name, s.dropName, s.type);
+    let viaCard = null;
+    if (!nameHit && s.dropName && typeof SL_DROP_CARDS !== 'undefined') {
+      for (const cardName of (SL_DROP_CARDS[s.dropName] || [])) {
+        if (match(cardName)) { viaCard = cardName; break; }
+      }
+    }
+    if (nameHit || viaCard) sealed.push({ type: 'sealed', name: s.name || s.dropName, sub: s.type, owned: (s.status !== 'sold'), id: s.id, viaCard });
+  }
+  sealed.sort((a, b) => Number(!!a.viaCard) - Number(!!b.viaCard) || a.name.localeCompare(b.name));
 
-  // Decks
-  const decks = (collection.decks || [])
-    .filter(d => match(d.name))
-    .map(d => ({ type: 'deck', name: d.name, id: d.id, count: (d.cards || []).length }))
-    .sort((a, b) => a.name.localeCompare(b.name));
+  // Decks — match the deck name, OR a card inside the deck (so a card search
+  // surfaces every deck that plays it → click jumps to that deck).
+  const decks = [];
+  for (const d of (collection.decks || [])) {
+    const nameHit = match(d.name);
+    let viaCard = null, viaId = null;
+    if (!nameHit) {
+      for (const c of (d.cards || [])) {
+        if (match(c.name)) { viaCard = c.name; viaId = c.scryfallId; break; }
+      }
+    }
+    if (nameHit || viaCard) decks.push({ type: 'deck', name: d.name, id: d.id, count: (d.cards || []).length, viaCard, scryfallId: viaId });
+  }
+  decks.sort((a, b) => Number(!!a.viaCard) - Number(!!b.viaCard) || a.name.localeCompare(b.name));
 
   // Want list
   const wantlist = (collection.wantList || [])
@@ -119,25 +138,60 @@ export function quickSearch(query, cap = CAP) {
     .map(w => ({ type: 'want', name: w.name, sub: w.setName, scryfallId: w.scryfallId }))
     .sort((a, b) => a.name.localeCompare(b.name));
 
-  // Secret Lair drops + superdrops (baked catalog)
+  // Secret Lair drops + superdrops. Matches drop/superdrop names, OR a card
+  // that appears in the drop (SL_CARD_TO_DROPS) — so a card search surfaces
+  // every Secret Lair it shows up in.
   const slDrops = [];
   if (typeof SL_DROP_TO_SUPERDROP !== 'undefined') {
     const ownedIds = new Set(collection.cards.filter(c => c.status !== 'sold' && c.scryfallId).map(c => c.scryfallId));
     const idsByDrop = (typeof SL_DROP_TO_SCRYFALL_IDS !== 'undefined') ? SL_DROP_TO_SCRYFALL_IDS : {};
+    const dropVia = new Map();   // drop → matched card name (null = name-matched)
     for (const drop in SL_DROP_TO_SUPERDROP) {
       const sd = SL_DROP_TO_SUPERDROP[drop] || {};
-      if (!match(drop, sd.superdrop)) continue;
-      const owned = (idsByDrop[drop] || []).some(id => ownedIds.has(id));
-      slDrops.push({ type: 'sldrop', name: drop, sub: sd.superdrop, owned });
+      if (match(drop, sd.superdrop)) dropVia.set(drop, null);
     }
-    slDrops.sort((a, b) => Number(b.owned) - Number(a.owned) || a.name.localeCompare(b.name));
+    if (typeof SL_CARD_TO_DROPS !== 'undefined') {
+      for (const cardName in SL_CARD_TO_DROPS) {
+        if (!match(cardName)) continue;
+        for (const drop of SL_CARD_TO_DROPS[cardName]) if (!dropVia.has(drop)) dropVia.set(drop, cardName);
+      }
+    }
+    for (const [drop, viaCard] of dropVia) {
+      const sd = SL_DROP_TO_SUPERDROP[drop] || {};
+      const owned = (idsByDrop[drop] || []).some(id => ownedIds.has(id));
+      slDrops.push({ type: 'sldrop', name: drop, sub: sd.superdrop, owned, viaCard });
+    }
+    slDrops.sort((a, b) => Number(!!a.viaCard) - Number(!!b.viaCard) || Number(b.owned) - Number(a.owned) || a.name.localeCompare(b.name));
   }
 
-  // Preconstructed decks (catalog — name, commander, set code, product line)
-  const precons = (preconState.decks || [])
-    .filter(d => match(d.name, d.commander, d.code, d.type))
-    .map(d => ({ type: 'precon', name: d.name, sub: `${d.type || 'Precon'}${d.date ? ' · ' + d.date.slice(0, 4) : ''}`, file: d.file }))
-    .sort((a, b) => a.name.localeCompare(b.name));
+  // Preconstructed decks. Matches deck name/commander/set/line, OR a card
+  // inside the deck (preconNameIndex) — every precon that plays the card.
+  const precons = [];
+  const seenPrecon = new Set();
+  for (const d of (preconState.decks || [])) {
+    if (match(d.name, d.commander, d.code, d.type)) {
+      precons.push({ type: 'precon', name: d.name, sub: `${d.type || 'Precon'}${d.date ? ' · ' + d.date.slice(0, 4) : ''}`, file: d.file });
+      seenPrecon.add(d.file);
+    }
+  }
+  const pidx = preconNameIndex();   // null until the membership map loads (warmed on search focus)
+  if (pidx) {
+    const PRECON_VIA_CAP = 500;     // a ubiquitous card (Sol Ring) is in hundreds of decks — bound it
+    let viaCount = 0;
+    for (const entry of pidx.values()) {
+      if (viaCount >= PRECON_VIA_CAP) break;
+      if (!match(entry.name)) continue;
+      for (const file of entry.files) {
+        if (seenPrecon.has(file)) continue;
+        seenPrecon.add(file);
+        const d = preconState.byFile.get(file);
+        if (!d) continue;
+        precons.push({ type: 'precon', name: d.name, sub: `${d.type || 'Precon'}${d.date ? ' · ' + d.date.slice(0, 4) : ''}`, file, viaCard: entry.name, scryfallId: entry.sid });
+        if (++viaCount >= PRECON_VIA_CAP) break;
+      }
+    }
+  }
+  precons.sort((a, b) => Number(!!a.viaCard) - Number(!!b.viaCard) || a.name.localeCompare(b.name));
 
   // Failed lookups
   const failed = (collection.failedLookups || [])
@@ -181,9 +235,14 @@ function rowHtml(item, idx) {
   else if (item.type === 'binder')   meta.push(`${item.count} card${item.count !== 1 ? 's' : ''}`);
   else if (item.type === 'deck')     meta.push(`${item.count} card${item.count !== 1 ? 's' : ''}`);
   else if (item.sub)                 meta.push(esc(item.sub));
+  // "contains <card>" — this row matched because the searched card is inside it.
+  if (item.viaCard) meta.push(`contains ${esc(item.viaCard)}`);
 
   const own = (item.owned !== undefined) ? ownDot(item.owned) : '';
-  return `<div class="sr-row" role="option" data-idx="${idx}">
+  // Occurrence rows carry the matched card's id so the full-results view can
+  // show its hover preview (hover.js wires .srt .sr-row[data-scryfall-id]).
+  const sidAttr = item.viaCard && item.scryfallId ? ` data-scryfall-id="${esc(item.scryfallId)}"` : '';
+  return `<div class="sr-row" role="option" data-idx="${idx}"${sidAttr}>
     ${own}
     <span class="sr-row-name">${esc(item.name)}</span>
     ${meta.length ? `<span class="sr-row-meta">${meta.join(' · ')}</span>` : ''}
@@ -498,7 +557,13 @@ export function initSearch() {
     } else if (e.key === 'Escape') { closeDropdown(); input.blur(); }
   });
 
-  input.addEventListener('focus', () => { if (input.value.trim()) renderDropdown(input.value); });
+  // Warm the precon membership map on first search engagement so "which precon
+  // plays this card" containment is ready by the time the user finishes typing
+  // (it's otherwise lazy-loaded only when the Precon tab opens).
+  input.addEventListener('focus', () => {
+    ensurePreconCards();
+    if (input.value.trim()) renderDropdown(input.value);
+  });
 
   // Click-away closes the dropdown
   document.addEventListener('mousedown', e => {

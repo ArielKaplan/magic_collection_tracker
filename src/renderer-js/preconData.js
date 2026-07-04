@@ -156,6 +156,32 @@ export function preconsContaining(scryfallId) {
   return [...files].map(f => preconState.byFile.get(f)).filter(Boolean);
 }
 
+// Card-NAME → decks index, for the global search's "which precons contain a
+// card named X" containment matching (a typed query has a name, not an id).
+// Built once from the membership map and cached until it reloads. Returns null
+// (and kicks off the lazy load) until the map is available, so the first
+// search after launch may miss precons — the next keystroke has them.
+let _preconNameIndex = null;
+let _preconNameIndexFor = null;
+export function preconNameIndex() {
+  if (!preconState.cards) { ensurePreconCards(); return null; }
+  if (_preconNameIndex && _preconNameIndexFor === preconState.cards) return _preconNameIndex;
+  const idx = new Map();
+  for (const [file, rows] of preconState.cards) {
+    for (const r of rows) {
+      if (r.board === 'token') continue;              // tokens aren't "the card" you search for
+      const key = (r.name || '').toLowerCase();
+      if (!key) continue;
+      let e = idx.get(key);
+      if (!e) { e = { name: r.name, sid: r.sid, files: new Set() }; idx.set(key, e); }
+      e.files.add(file);
+    }
+  }
+  _preconNameIndex = idx;
+  _preconNameIndexFor = preconState.cards;
+  return idx;
+}
+
 // ── sync: append-only diff against MTGJSON's DeckList.json ──────────────────
 
 // opts.silent: the daily background check — quiet unless something was added.

@@ -11,6 +11,8 @@ in-app "What's New" screen — from that version's section. Keep entries
 user-facing: what changed, not how.
 
 ## [Unreleased]
+### Added
+- **Search now finds a card everywhere it lives.** Type a card name and, alongside your owned copies, the results now show every place that card turns up: **decks that play it** (click → jump to the deck), **Secret Lair drops that include it**, **precon decks that run it** (click → the decklist), and **sealed products that contain it** — so a sealed Secret Lair shows up when you search a card printed inside it. Each cross-reference row is tagged with "contains <card>" so it's clear why it matched, and occurrence rows in the full results view get the usual hover preview. Searching a product or deck by its own name works exactly as before.
 
 ## [0.31.0] - 2026-07-04
 ### Added
