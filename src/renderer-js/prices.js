@@ -129,9 +129,26 @@ export function sparkline(history, w = 70, h = 22) {
 // SCRYFALL API
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Fetch one batch from Scryfall with automatic retry on rate-limit (429).
-// Waits 2s, 4s, 8s between attempts before giving up.
+// True unless the user turned the daily bulk download off in Settings.
+export function bulkDataEnabled() {
+  return collection.settings?.useBulkData !== false;
+}
+
+// Fetch one batch from Scryfall — the local bulk index first (instant, no
+// rate limits; see src/main/bulkData.js), the network only for ids the index
+// doesn't know. Network path retries on 429 with 2s/4s/8s backoff.
 export async function fetchScryfallBatch(ids) {
+  let bulkHits = [];
+  if (bulkDataEnabled() && window.api?.bulk?.lookup) {
+    try {
+      const r = await window.api.bulk.lookup(ids);
+      if (r && r.found && r.found.length) {
+        bulkHits = r.found;
+        ids = r.missing;
+        if (!ids.length) return { data: bulkHits, not_found: [] };
+      }
+    } catch { /* cold or corrupt index — network path below covers everything */ }
+  }
   const DELAYS = [2000, 4000, 8000];
   for (let attempt = 0; attempt <= DELAYS.length; attempt++) {
     const resp = await netFetch(SCRYFALL_COLLECTION, {
@@ -158,7 +175,8 @@ export async function fetchScryfallBatch(ids) {
       window.logger?.error('Price', `HTTP ${resp.status} from Scryfall`);
       throw new Error(`HTTP ${resp.status}`);
     }
-    return resp.json();
+    const json = await resp.json();
+    return bulkHits.length ? { ...json, data: [...bulkHits, ...(json.data || [])] } : json;
   }
 }
 
@@ -286,6 +304,25 @@ export async function refreshPrices() {
   ui.refreshing = true;
   ui.refreshProgress = 0;
   updateRefreshUI();
+
+  // Refresh the local bulk index first (main process; ~500MB once a day) so
+  // the batches below resolve locally instead of hammering the batch API.
+  // Any failure just means the network path does the work as before.
+  if (bulkDataEnabled() && window.api?.bulk?.ensure) {
+    try {
+      const st = await window.api.bulk.status();
+      const stale = !st?.fetchedAt || (Date.now() - new Date(st.fetchedAt).getTime()) > 20 * 60 * 60 * 1000;
+      if (stale) {
+        window.logger?.info('Price', 'Downloading Scryfall bulk data (~500 MB, once a day) — refresh will be near-instant after this…');
+        const refreshEl = document.getElementById('sb-refresh');
+        if (refreshEl) refreshEl.textContent = '↻ Downloading bulk price data…';
+      }
+      const res = await window.api.bulk.ensure();
+      window.logger?.success('Price', `Bulk index ready — ${(res?.count || 0).toLocaleString()} printings (fetched ${res?.fetchedAt ? new Date(res.fetchedAt).toLocaleTimeString() : '?'})`);
+    } catch (e) {
+      window.logger?.warn('Price', `Bulk data unavailable (${e.message}) — using the batch API`);
+    }
+  }
 
   // Chunk into 75-id batches for Scryfall /cards/collection
   const chunks = [];

@@ -50,7 +50,7 @@ export function showGalleryModal(cardId) {
           `).join('') : ''}
           ${(typeof preconsContaining === 'function' ? preconsContaining(card.scryfallId) : []).slice(0, 3).map(p => `
             <span style="color:var(--text-muted)">Precon</span>
-            <span><a class="bc-link" onclick="hideModal();ui.precons.line='';ui.precons.deck='${escJs(p.file)}';ui.activeTab='precons';render()">${esc(p.name)}</a> <span style="color:var(--text-muted);font-size:11px">${esc(p.type || '')}</span></span>
+            <span><a class="bc-link" data-slact="open-precon" data-arg="${esc(p.file)}">${esc(p.name)}</a> <span style="color:var(--text-muted);font-size:11px">${esc(p.type || '')}</span></span>
           `).join('')}
         </div>
 

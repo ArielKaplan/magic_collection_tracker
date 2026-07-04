@@ -5,9 +5,10 @@ import { fetchScryfallBatch } from './prices.js';
 import { render } from './render.js';
 import { searchTcgcsvLocal } from './sealedPricing.js';
 import { attributeDropFor, buildSlModel, finishGroup, projectLegacy, requiredFinishFor, setSlProducts, slDropModelFinish, slProductForDrop } from './slData.js';
+import { refreshSlWikiData, slWikiGroupFor, slWikiMsrp, upcomingSlDrops } from './slWiki.js';
 import { collection, tcgcsvCache, ui } from './state.js';
-import { esc, escJs, fmt, netFetch, toast } from './utils.js';
-import { addDropMissingToWantList, isCardWanted } from './wantlist.js';
+import { esc, fmt, netFetch, toast } from './utils.js';
+import { addDropMissingToWantList, isCardWanted, toggleSlCardWant } from './wantlist.js';
 
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -21,6 +22,48 @@ import { addDropMissingToWantList, isCardWanted } from './wantlist.js';
 let slOverrides = { drops: {}, superdrops: {}, cards: {} };
 let slBaseHome = null;   // drop -> baseline superdrop (snapshot of sourced grouping)
 let slBaseDate = null;   // superdrop -> baseline date
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DELEGATED ACTIONS — the hardening that gates community curation sync.
+// Untrusted text (drop names, superdrop names, notes — soon other people's
+// curation) must never be interpolated into inline JS: one missed escJs was
+// arbitrary code with full window.api access. Elements carry
+// data-slact="<action>" + data-arg="<value>" (plain HTML attributes, esc()'d
+// like any text) and ONE document-level listener dispatches. escJs remains
+// only where we mint the value ourselves.
+// ─────────────────────────────────────────────────────────────────────────────
+const SL_ACTIONS = {
+  'open-drop':      a => { ui.slViewer.view = 'drops'; ui.slViewer.drop = a; ui.slViewer.page = 0; render(); },
+  'open-superdrop': a => { ui.slViewer.superdrop = a; ui.slViewer.drop = ''; render(); },
+  'card-modal':     a => showSlViewerModal(a),
+  'edit-drop':      a => editSlDrop(a),
+  'reset-drop':     a => resetSlDrop(a),
+  'commit-drop':    a => commitSlDrop(a),
+  'commit-note':    (a, el) => commitSlNote(el.dataset.bucket || 'cards', a),
+  'price-singles':  a => priceSlDropSingles(a),
+  'want-missing':   a => addDropMissingToWantList(a),
+  'edit-sd-note':   a => editSlSuperdropNote(a),
+  'edit-card-note': a => editSlCardNote(a),
+  'toggle-want':    (a, el) => { toggleSlCardWant(a); el.innerHTML = isCardWanted(a) ? '★ On want list' : '☆ Add to want list'; },
+  'open-printings': a => { if (typeof window !== 'undefined' && window.openPrintingsTab) window.openPrintingsTab(a); },
+  'open-precon':    a => { hideModal(); ui.precons.line = ''; ui.precons.deck = a; ui.activeTab = 'precons'; render(); },
+};
+
+// Bound once at startup (renderer main.js); delegation on document reaches
+// both re-rendered tab content and modal HTML.
+export function initSlActionDispatch() {
+  if (typeof document === 'undefined' || window.__slActionsBound) return;
+  window.__slActionsBound = true;
+  document.addEventListener('click', e => {
+    const el = e.target.closest ? e.target.closest('[data-slact]') : null;
+    if (!el) return;
+    const fn = SL_ACTIONS[el.dataset.slact];
+    if (!fn) return;
+    e.preventDefault();
+    e.stopPropagation();
+    fn(el.dataset.arg ?? '', el);
+  });
+}
 
 function captureSlBase() {
   if (slBaseHome) return;
@@ -54,13 +97,24 @@ function rebuildSlGrouping() {
     const base = baseByLower.get(m[1].toLowerCase());
     if (base && base !== drop && home[base]) home[drop] = home[base];
   }
+  // Wiki grouping for drops the baked dataset doesn't know yet — fresh drops
+  // that would otherwise pile into "Recent Additions" until the next re-bake.
+  const wikiSdDate = {};
+  for (const [drop, sdName] of Object.entries(home)) {
+    if (sdName && sdName !== 'Recent Additions') continue;
+    const g = slWikiGroupFor(drop);
+    if (g && g.superdrop) {
+      home[drop] = g.superdrop;
+      if (g.date && (!wikiSdDate[g.superdrop] || g.date < wikiSdDate[g.superdrop])) wikiSdDate[g.superdrop] = g.date;
+    }
+  }
   // apply this user's reassignments
   for (const [drop, ov] of Object.entries(slOverrides.drops)) {
     if (ov && ov.superdrop) home[drop] = ov.superdrop;
   }
   const bySd = {};
   for (const [drop, sdName] of Object.entries(home)) {
-    if (!bySd[sdName]) bySd[sdName] = { superdrop: sdName, date: slBaseDate[sdName] || '', drops: [] };
+    if (!bySd[sdName]) bySd[sdName] = { superdrop: sdName, date: slBaseDate[sdName] || wikiSdDate[sdName] || '', drops: [] };
     bySd[sdName].drops.push(drop);
   }
   const arr = Object.values(bySd).sort((a, b) =>
@@ -128,10 +182,10 @@ export function editSlDrop(drop) {
       <textarea id="sl-ed-note" rows="3" style="width:100%;resize:vertical;font-family:inherit">${esc(note)}</textarea>
     </div>
     <div style="display:flex;gap:10px;justify-content:space-between;align-items:center;margin-top:22px">
-      <button class="btn btn-ghost btn-sm" onclick="resetSlDrop('${escJs(drop)}')"${pristine ? ' disabled' : ''}>↺ Reset to sourced</button>
+      <button class="btn btn-ghost btn-sm" data-slact="reset-drop" data-arg="${esc(drop)}"${pristine ? ' disabled' : ''}>↺ Reset to sourced</button>
       <div style="display:flex;gap:10px">
         <button class="btn" onclick="hideModal()">Cancel</button>
-        <button class="btn btn-primary" onclick="commitSlDrop('${escJs(drop)}')">Save</button>
+        <button class="btn btn-primary" data-slact="commit-drop" data-arg="${esc(drop)}">Save</button>
       </div>
     </div>`);
 }
@@ -166,7 +220,7 @@ export function editSlSuperdropNote(sd) {
     </div>
     <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:18px">
       <button class="btn" onclick="hideModal()">Cancel</button>
-      <button class="btn btn-primary" onclick="commitSlNote('superdrops','${escJs(sd)}')">Save</button>
+      <button class="btn btn-primary" data-slact="commit-note" data-bucket="superdrops" data-arg="${esc(sd)}">Save</button>
     </div>`);
 }
 export function editSlCardNote(id) {
@@ -178,7 +232,7 @@ export function editSlCardNote(id) {
     </div>
     <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:18px">
       <button class="btn" onclick="hideModal()">Cancel</button>
-      <button class="btn btn-primary" onclick="commitSlNote('cards','${escJs(id)}')">Save</button>
+      <button class="btn btn-primary" data-slact="commit-note" data-bucket="cards" data-arg="${esc(id)}">Save</button>
     </div>`);
 }
 export async function commitSlNote(bucket, key) {
@@ -235,6 +289,7 @@ export async function refreshSlData() {
     }
     applySlDataUpdate(legacy.dropCards, legacy.scryfallToDrops, legacy.scryfallToName);
     setSlProducts(model.products);   // finish-aware registry (ownership, P&L, pricing)
+    await refreshSlWikiData({ silent: true });   // grouping + MSRPs + upcoming, before regrouping
     rebuildSlGrouping(); // re-apply this user's local grouping edits on top of the refreshed data
     await saveSlDataToCache(legacy.dropCards, legacy.scryfallToDrops, legacy.scryfallToName, model.products);
 
@@ -286,7 +341,7 @@ export function slCardTile(scryfallId, numLabel, requiredFinish) {
   const wanted = !owned && isCardWanted(scryfallId);
   return `
     <div class="gallery-card${owned ? ' sl-card-owned' : ' sl-card-missing'}${wanted ? ' sl-card-wanted' : ''}" data-sl-card="${esc(scryfallId)}"
-      onclick="showSlViewerModal('${esc(scryfallId)}')" title="${owned ? `Owned (qty: ${totalQty})` : (wanted ? 'On your want list' : 'Not in collection')}${numLabel ? ` · #${esc(numLabel)}` : ''}">
+      data-slact="card-modal" data-arg="${esc(scryfallId)}" title="${owned ? `Owned (qty: ${totalQty})` : (wanted ? 'On your want list' : 'Not in collection')}${numLabel ? ` · #${esc(numLabel)}` : ''}">
       <img src="${esc(img)}" alt="" loading="lazy"
         onerror="this.closest('.gallery-card').style.display='none'"
         style="${owned ? '' : 'filter:grayscale(60%) brightness(0.65)'}">
@@ -366,9 +421,15 @@ export function computeDropPnL() {
   }
 
   return Object.values(rows).map(r => {
-    // Real linked-sealed cost wins; otherwise assume one drop bought at flat MSRP.
+    // Real linked-sealed cost wins; otherwise assume one drop bought at MSRP —
+    // the wiki's actual per-drop MSRP (finish-aware: a Foil SKU costs the foil
+    // column) when synced, the flat settings default as the last resort.
     const costIsDefault = !(r.sealedCost > 0);
-    const cost = costIsDefault ? slMsrpDefault(r.anyFoil) : r.sealedCost;
+    let cost = r.sealedCost;
+    if (costIsDefault) {
+      const wiki = slWikiMsrp(r.drop, dropFinish(r.drop));
+      cost = wiki != null ? wiki : slMsrpDefault(r.anyFoil);
+    }
     const gain = r.value - cost;
     return { ...r, cost, costIsDefault, gain, gainPct: cost > 0 ? (gain / cost) * 100 : null };
   });
@@ -518,7 +579,7 @@ function renderSlIndexBody(idx) {
               `<span style="color:${gc(idx.totalReturnPct)}">${pct(idx.totalReturnPct)} on cost</span>`, true)}
     </div>`;
 
-  const dropLink = (r) => `<a class="bc-link" onclick="ui.slViewer.view='drops';ui.slViewer.drop='${escJs(r.drop)}';ui.slViewer.page=0;render()" style="font-weight:600">${esc(r.drop)}</a>`;
+  const dropLink = (r) => `<a class="bc-link" data-slact="open-drop" data-arg="${esc(r.drop)}" style="font-weight:600">${esc(r.drop)}</a>`;
   const lbRow = (r) => `
     <div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;padding:5px 0">
       <div style="min-width:0">
@@ -693,8 +754,8 @@ function dropEconomicsBanner(drop) {
     ? `<span style="color:var(--text-muted)">⏳ Pricing…</span>`
     : crack
       ? `<strong style="color:var(--text)">${fmt(crack.value)}</strong> <span style="font-size:11px;color:var(--text-muted)">(${crack.priced}/${crack.names} cards)</span>
-         <button class="btn btn-ghost" style="font-size:11px;padding:2px 8px;margin-left:4px" onclick="priceSlDropSingles('${escJs(drop)}')">↻</button>`
-      : `<button class="btn btn-sm" onclick="priceSlDropSingles('${escJs(drop)}')">💰 Price the singles</button>`;
+         <button class="btn btn-ghost" style="font-size:11px;padding:2px 8px;margin-left:4px" data-slact="price-singles" data-arg="${esc(drop)}">↻</button>`
+      : `<button class="btn btn-sm" data-slact="price-singles" data-arg="${esc(drop)}">💰 Price the singles</button>`;
 
   const sealedCell = sealed
     ? `<strong style="color:var(--text)">${fmt(sealed.price)}</strong>${sealed.source === 'tcgcsv' ? ` <span style="font-size:11px;color:var(--text-muted)" title="${esc(sealed.name || '')}">≈ TCGCSV</span>` : ''}`
@@ -988,7 +1049,7 @@ export function renderSlViewer() {
           if (r.singlesQty) held.push(`${r.singlesQty} single${r.singlesQty !== 1 ? 's' : ''}`);
           return `<tr style="border-top:1px solid var(--border)">
             <td style="padding:8px 10px">
-              <a class="bc-link" onclick="ui.slViewer.view='drops';ui.slViewer.drop='${escJs(r.drop)}';ui.slViewer.page=0;render()" style="font-weight:600">${esc(r.drop)}</a>
+              <a class="bc-link" data-slact="open-drop" data-arg="${esc(r.drop)}" style="font-weight:600">${esc(r.drop)}</a>
               ${best && best.drop === r.drop ? ` <span style="font-size:10px;background:var(--green-dim);color:var(--green);padding:1px 6px;border-radius:99px">★ best</span>` : ''}
               <div style="font-size:11px;color:var(--text-muted)">${esc(r.superdrop)}${held.length ? ' · ' + held.join(', ') : ''}</div>
             </td>
@@ -1047,8 +1108,8 @@ export function renderSlViewer() {
           ${sdSelect()}
           ${drops.length ? dropSelect(drops) : ''}
           <button class="btn btn-ghost" style="font-size:12px" onclick="ui.slViewer.drop='';ui.slViewer.page=0;render()">← Back to Superdrop</button>
-          <button class="btn btn-ghost" style="font-size:12px" onclick="editSlDrop('${escJs(sv.drop)}')">${slDropEdited(sv.drop) ? '✎ Edit (customized)' : '✎ Edit grouping / note'}</button>
-          ${missingIds.length ? `<button class="btn btn-ghost" style="font-size:12px" onclick="addDropMissingToWantList('${escJs(sv.drop)}')" title="Add this drop's missing cards to your want list">★ Want ${missingIds.length} missing${wantedMissing ? ` (${wantedMissing} on list)` : ''}</button>` : ''}
+          <button class="btn btn-ghost" style="font-size:12px" data-slact="edit-drop" data-arg="${esc(sv.drop)}">${slDropEdited(sv.drop) ? '✎ Edit (customized)' : '✎ Edit grouping / note'}</button>
+          ${missingIds.length ? `<button class="btn btn-ghost" style="font-size:12px" data-slact="want-missing" data-arg="${esc(sv.drop)}" title="Add this drop's missing cards to your want list">★ Want ${missingIds.length} missing${wantedMissing ? ` (${wantedMissing} on list)` : ''}</button>` : ''}
           <span style="margin-left:auto;font-size:13px;font-weight:700;color:${stats.owned===stats.total&&stats.total>0?'var(--green)':'var(--text-muted)'}">
             ${stats.owned} / ${stats.total} cards owned (${pct}%)
           </span>
@@ -1075,7 +1136,7 @@ export function renderSlViewer() {
         <div class="gallery-filter-row">
           ${sdSelect()}
           ${dropSelect(allDrops.sort())}
-          <button class="btn btn-ghost" style="font-size:12px;margin-left:auto" onclick="editSlSuperdropNote('${escJs(sv.superdrop)}')">${slSuperdropNote(sv.superdrop) ? '✎ Edit note' : '✎ Add note'}</button>
+          <button class="btn btn-ghost" style="font-size:12px;margin-left:auto" data-slact="edit-sd-note" data-arg="${esc(sv.superdrop)}">${slSuperdropNote(sv.superdrop) ? '✎ Edit note' : '✎ Add note'}</button>
         </div>
       </div>
       ${slSuperdropNote(sv.superdrop) ? `<div style="margin:0 0 14px;padding:9px 13px;background:var(--surface);border-left:3px solid var(--accent2);border-radius:6px;font-size:13px;color:var(--text);white-space:pre-wrap">📝 ${esc(slSuperdropNote(sv.superdrop))}</div>` : ''}
@@ -1086,7 +1147,7 @@ export function renderSlViewer() {
           const stats = dropOwnedNameStats(drop);
           const pct = stats.total ? Math.round(stats.owned / stats.total * 100) : 0;
           return `
-            <div class="sl-superdrop-card" data-sl-drop="${esc(drop)}" onclick="ui.slViewer.drop='${escJs(drop)}';ui.slViewer.page=0;render()">
+            <div class="sl-superdrop-card" data-sl-drop="${esc(drop)}" data-slact="open-drop" data-arg="${esc(drop)}">
               <div class="sl-superdrop-name">${esc(drop)}</div>
               <div class="sl-superdrop-meta">${stats.total} card${stats.total !== 1 ? 's' : ''}</div>
               <div class="sl-progress-bar"><div class="sl-progress-fill" style="width:${pct}%"></div></div>
@@ -1096,9 +1157,23 @@ export function renderSlViewer() {
       </div>`}`;
   }
 
-  // Landing — show all superdrops as completion cards
+  // Landing — show all superdrops as completion cards, with announced-but-
+  // unreleased drops (from the wiki sync) surfaced up top.
+  const upcoming = upcomingSlDrops();
+  const upcomingStrip = upcoming.length ? `
+    <div style="margin:0 0 14px;padding:10px 14px;background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--accent2);border-radius:8px;font-size:13px">
+      <span style="font-weight:700;color:var(--text)">🔮 Upcoming</span>
+      <span style="color:var(--text-muted);font-size:11px;margin-left:6px">announced, not yet released</span>
+      <div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:6px">
+        ${upcoming.slice(0, 8).map(r => `
+          <span><strong style="color:var(--text)">${esc(r.drop)}</strong>
+            <span style="color:var(--text-muted);font-size:12px"> · ${esc(r.superdrop || 'standalone')} · ${esc(r.date)}${r.msrpNonfoil != null ? ` · ${fmt(r.msrpNonfoil)}${r.msrpFoil != null ? ' / ' + fmt(r.msrpFoil) + ' foil' : ''}` : ''}</span>
+          </span>`).join('')}
+        ${upcoming.length > 8 ? `<span style="color:var(--text-muted);font-size:12px">+${upcoming.length - 8} more</span>` : ''}
+      </div>
+    </div>` : '';
   const visibleSuperdrops = sortSuperdrops(SL_SUPERDROPS.filter(sd => superdropMatchesSearch(sd, sv.search)));
-  return viewToggle() + refreshBtn + sortSearchBar() + `
+  return viewToggle() + refreshBtn + sortSearchBar() + upcomingStrip + `
     ${visibleSuperdrops.length === 0
       ? `<div style="padding:30px;text-align:center;color:var(--text-muted);font-size:13px">No superdrops match "${esc(sv.search)}".</div>`
       : `<div class="sl-superdrop-grid">
@@ -1112,7 +1187,7 @@ export function renderSlViewer() {
         }
         const pct = total ? Math.round(owned / total * 100) : 0;
         return `
-          <div class="sl-superdrop-card" data-sl-superdrop="${esc(sd.superdrop)}" onclick="ui.slViewer.superdrop='${escJs(sd.superdrop)}';ui.slViewer.drop='';render()">
+          <div class="sl-superdrop-card" data-sl-superdrop="${esc(sd.superdrop)}" data-slact="open-superdrop" data-arg="${esc(sd.superdrop)}">
             <div class="sl-superdrop-name">${esc(sd.superdrop)}</div>
             <div class="sl-superdrop-meta">${sd.date || '—'} · ${sd.drops.length} drop${sd.drops.length !== 1 ? 's' : ''}</div>
             <div class="sl-progress-bar"><div class="sl-progress-fill" style="width:${pct}%"></div></div>
@@ -1168,16 +1243,16 @@ export async function showSlViewerModal(scryfallId) {
         `).join('') : ''}
         ${(typeof preconsContaining === 'function' ? preconsContaining(scryfallId) : []).slice(0, 3).map(p => `
           <span style="color:var(--text-muted)">Precon</span>
-          <span><a class="bc-link" onclick="hideModal();ui.precons.line='';ui.precons.deck='${escJs(p.file)}';ui.activeTab='precons';render()">${esc(p.name)}</a> <span style="color:var(--text-muted);font-size:11px">${esc(p.type || '')}</span></span>
+          <span><a class="bc-link" data-slact="open-precon" data-arg="${esc(p.file)}">${esc(p.name)}</a> <span style="color:var(--text-muted);font-size:11px">${esc(p.type || '')}</span></span>
         `).join('')}
         <span style="color:var(--text-muted)">In binder</span><span style="color:#f87171;font-weight:600">Not owned</span>
       </div>
       ${data.prices?.usd ? `<div style="font-size:22px;font-weight:700;color:var(--text);margin-bottom:14px">$${data.prices.usd}</div>` : ''}
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
         <a href="${esc(scryfallUrl)}" target="_blank" class="btn btn-ghost" style="font-size:12px;text-decoration:none">View on Scryfall ↗</a>
-        <button class="btn btn-ghost" style="font-size:12px" onclick="openPrintingsTab('${escJs(data.name || '')}')">View all printings ◇</button>
-        <button class="btn btn-ghost" style="font-size:12px" onclick="toggleSlCardWant('${escJs(scryfallId)}');this.innerHTML=isCardWanted('${escJs(scryfallId)}')?'★ On want list':'☆ Add to want list'">${isCardWanted(scryfallId) ? '★ On want list' : '☆ Add to want list'}</button>
-        <button class="btn btn-ghost" style="font-size:12px" onclick="editSlCardNote('${escJs(scryfallId)}')">✎ ${slCardNote(scryfallId) ? 'Edit' : 'Add'} note</button>
+        <button class="btn btn-ghost" style="font-size:12px" data-slact="open-printings" data-arg="${esc(data.name || '')}">View all printings ◇</button>
+        <button class="btn btn-ghost" style="font-size:12px" data-slact="toggle-want" data-arg="${esc(scryfallId)}">${isCardWanted(scryfallId) ? '★ On want list' : '☆ Add to want list'}</button>
+        <button class="btn btn-ghost" style="font-size:12px" data-slact="edit-card-note" data-arg="${esc(scryfallId)}">✎ ${slCardNote(scryfallId) ? 'Edit' : 'Add'} note</button>
       </div>
       ${slCardNote(scryfallId) ? `<div style="margin-top:12px;padding:9px 13px;background:var(--surface);border-left:3px solid var(--accent2);border-radius:6px;font-size:13px;color:var(--text);white-space:pre-wrap">📝 ${esc(slCardNote(scryfallId))}</div>` : ''}`;
   } catch (e) {

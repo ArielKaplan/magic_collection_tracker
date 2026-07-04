@@ -248,9 +248,16 @@ export function attachContentListeners() {
       el.addEventListener('mouseleave', hideCardHoverPreview);
     });
   }
-  // SL Explorer + Precon Explorer + Want List gallery: tiles have
-  // onclick="showSlViewerModal('scryfallId')" (precons reuse slCardTile)
+  // SL Explorer + Precon Explorer + Want List gallery. slCardTile now uses
+  // delegated data-slact="card-modal" (hardened path); wantlist's own tiles
+  // still use the inline onclick — support both until they migrate.
   if (ui.activeTab === 'slviewer' || ui.activeTab === 'wantlist' || ui.activeTab === 'precons') {
+    document.querySelectorAll('.gallery-card[data-slact="card-modal"]').forEach(el => {
+      const scryfallId = el.dataset.arg;
+      if (!scryfallId) return;
+      el.addEventListener('mouseenter', () => showSlTileHoverPreview(el, scryfallId));
+      el.addEventListener('mouseleave', hideCardHoverPreview);
+    });
     document.querySelectorAll('.gallery-card[onclick*="showSlViewerModal"]').forEach(el => {
       const m = el.getAttribute('onclick').match(/showSlViewerModal\('([^']+)'\)/);
       const scryfallId = m ? m[1] : null;

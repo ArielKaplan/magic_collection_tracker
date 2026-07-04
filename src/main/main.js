@@ -2,6 +2,7 @@ const { app, BrowserWindow, Menu, ipcMain, dialog, shell, net } = require('elect
 const path = require('path');
 const fs   = require('fs');
 const db   = require('./db');
+const bulkData = require('./bulkData');
 const { autoUpdater } = require('electron-updater');
 
 const isDev = process.argv.includes('--dev');
@@ -157,6 +158,7 @@ const ALLOWED_FETCH_HOSTS = new Set([
   'mtgjson.com',
   'tcgcsv.com',
   'www.pricecharting.com',
+  'mtg.wiki',           // Drop Series table: superdrop grouping + per-drop MSRPs + upcoming drops
 ]);
 
 // ── IPC handlers ─────────────────────────────────────────────────────────────
@@ -241,6 +243,11 @@ function registerIpc() {
   ipcMain.handle('precon:list',         ()             => db.listPreconDecks());
   ipcMain.handle('precon:cards',        ()             => db.listPreconDeckCards());
   ipcMain.handle('precon:upsert',       (_e, decks)    => db.upsertPreconDecks(decks));
+
+  // Scryfall bulk-data engine — daily download in main, instant lookups after
+  ipcMain.handle('bulk:ensure',         (_e, force)    => bulkData.ensureFresh(force, msg => console.log('[bulk]', msg)));
+  ipcMain.handle('bulk:lookup',         (_e, ids)      => bulkData.lookup(ids));
+  ipcMain.handle('bulk:status',         ()             => bulkData.status());
 
   // File dialogs
   ipcMain.handle('dialog:openCsv', async () => {
@@ -447,6 +454,7 @@ if (!app.requestSingleInstanceLock()) {
 
   app.whenReady().then(() => {
     db.init(dbPath());
+    bulkData.init(app.getPath('userData'));
     registerIpc();
     createWindow();
     scheduleStartupUpdateCheck();

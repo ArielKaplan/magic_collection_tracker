@@ -66,6 +66,11 @@ contextBridge.exposeInMainWorld('api', {
     cards:   ()      => inv('precon:cards'),
     upsert:  (decks) => inv('precon:upsert', decks),
   },
+  bulk: {
+    ensure:  (force) => inv('bulk:ensure', force),
+    lookup:  (ids)   => inv('bulk:lookup', ids),
+    status:  ()      => inv('bulk:status'),
+  },
   dialog: {
     openCsv:   ()      => inv('dialog:openCsv'),
     openDeck:  ()      => inv('dialog:openDeck'),

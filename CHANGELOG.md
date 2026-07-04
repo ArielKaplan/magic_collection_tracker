@@ -11,6 +11,12 @@ in-app "What's New" screen — from that version's section. Keep entries
 user-facing: what changed, not how.
 
 ## [Unreleased]
+### Added
+- **Live wiki sync — real MSRPs, fresh superdrops, and upcoming drops.** "Check for New Cards" now also pulls the community wiki's Drop Series table: **Drop P&L uses each drop's actual MSRP** (non-foil and foil priced separately — a $51.99 drop no longer pretends it cost $29.99), brand-new drops land under their **real superdrop** the moment the wiki knows it instead of waiting in "Recent Additions" for an app update, and the Explorer's landing page shows a **🔮 Upcoming** strip of announced-but-unreleased drops with their dates and prices.
+- **Scryfall bulk data — price refreshes in seconds.** The app now downloads Scryfall's complete daily price file (~500 MB, once a day, in the background) and prices everything locally: full collection refreshes, Secret Lair singles pricing, precon tables, and printings tabs all skip the rate-limited API — no more 429 backoffs mid-refresh. It's on by default and can be turned off in Settings → Price Data if bandwidth matters more than speed.
+
+### Changed
+- **Security hardening in the Secret Lair Explorer.** All interactive elements in the Explorer (and the card tiles it shares with the Precon Explorer) moved off inline JavaScript onto a safer delegated event system — groundwork for safely importing community-shared curation down the road.
 
 ## [0.30.0] - 2026-07-03
 ### Added

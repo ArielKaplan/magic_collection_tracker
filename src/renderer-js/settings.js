@@ -89,6 +89,19 @@ export function showSettings() {
       </div>
     </div>
 
+    <h3 style="margin-top:22px">Price Data</h3>
+    <p style="font-size:13px;color:var(--text-dim);margin-bottom:10px;line-height:1.55">
+      With bulk data on, the app downloads Scryfall's full price file once a day (~500 MB)
+      and prices everything locally — full refreshes finish in seconds, with no rate limits.
+      Turn it off to use the slower per-batch API (much less bandwidth).
+    </p>
+    <div class="form-group">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:400">
+        <input type="checkbox" id="cfg-bulk-data" ${collection.settings.useBulkData !== false ? 'checked' : ''}>
+        Use Scryfall bulk data for prices (recommended)
+      </label>
+    </div>
+
     <h3 style="margin-top:22px">Data Management</h3>
     <p style="font-size:12px;color:var(--text-muted);margin-bottom:10px;line-height:1.5">
       Each button below permanently deletes data from the SQLite database.
@@ -155,6 +168,7 @@ export function showSettings() {
     const ff = parseFloat(document.getElementById('cfg-msrp-foil').value);
     collection.settings.slMsrpNonfoil = (!isNaN(nf) && nf >= 0) ? nf : 29.99;
     collection.settings.slMsrpFoil    = (!isNaN(ff) && ff >= 0) ? ff : 39.99;
+    collection.settings.useBulkData   = !!document.getElementById('cfg-bulk-data')?.checked;
     hideModal();
     renderTickerTape();
     autoSave();

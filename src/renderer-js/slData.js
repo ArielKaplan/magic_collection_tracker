@@ -360,3 +360,13 @@ export function slDropModelFinish(drop) {
   const p = slProductForDrop(drop);
   return p ? p.finish : null;
 }
+
+// A legacy drop name's base drop ("Goblingram Rainbow Foil" → "Goblingram") —
+// the product model's word when it knows the drop, name-stripping otherwise.
+// The wiki table and MSRPs are keyed by base drop names.
+export function slBaseDropName(drop) {
+  const p = slProductForDrop(drop);
+  if (p) return p.dropName;
+  const m = (drop || '').match(FINISH_TAIL);
+  return m ? drop.slice(0, m.index).trim() : (drop || '');
+}
