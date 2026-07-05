@@ -11,6 +11,8 @@ in-app "What's New" screen — from that version's section. Keep entries
 user-facing: what changed, not how.
 
 ## [Unreleased]
+
+## [0.34.0] - 2026-07-05
 ### Added
 - **A proper welcome for new users.** On a fresh install the app now greets you with a one-screen intro — what it's for, and a single button to import your collection (ManaBox / Moxfield / Archidekt CSV) — so you're not staring at an empty app wondering where to start. It appears once and never nags again.
 - **One-click restore from a backup.** Settings now has a **Backups & Recovery** section: the app already makes a verified backup every day (keeping the latest 10), and you can now restore any of them with one click — the app checks the backup is healthy, sets your current data aside first (so a restore can be undone), swaps it in, and restarts. There's also a **Back up now** button and a shortcut to open the backups folder. No more needing a techie to recover your data.
