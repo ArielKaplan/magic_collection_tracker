@@ -3,6 +3,7 @@ const path = require('path');
 const fs   = require('fs');
 const db   = require('./db');
 const bulkData = require('./bulkData');
+const backups = require('./backups');
 const { autoUpdater } = require('electron-updater');
 
 const isDev = process.argv.includes('--dev');
@@ -249,6 +250,12 @@ function registerIpc() {
   ipcMain.handle('bulk:lookup',         (_e, ids)      => bulkData.lookup(ids));
   ipcMain.handle('bulk:status',         ()             => bulkData.status());
 
+  // Backups & recovery — list, restore (relaunches), back up now, open folder
+  ipcMain.handle('backups:list',        ()             => listBackups());
+  ipcMain.handle('backups:restore',     (_e, p)        => restoreBackup(p));
+  ipcMain.handle('backups:createNow',   ()             => backupNow());
+  ipcMain.handle('backups:openFolder',  ()             => { const d = backupsDir(); fs.mkdirSync(d, { recursive: true }); return shell.openPath(d); });
+
   // File dialogs
   ipcMain.handle('dialog:openCsv', async () => {
     const res = await dialog.showOpenDialog({
@@ -435,6 +442,20 @@ async function runDailyBackup() {
   } catch (err) {
     console.warn('[backup] failed:', err && err.message);
   }
+}
+
+const backupsDir = () => path.join(app.getPath('userData'), 'backups');
+
+// Backup list / restore / on-demand backup live in ./backups.js (dependency-
+// injected + unit-tested). These thin wrappers supply the live deps.
+function listBackups() { return backups.listBackups(backupsDir()); }
+function backupNow()   { return backups.backupNow({ db, dir: backupsDir(), keep: BACKUP_KEEP }); }
+function restoreBackup(backupPath) {
+  return backups.restoreBackup({
+    db, live: dbPath(), dir: backupsDir(), backupPath,
+    // let the IPC reply flush, then restart into the restored DB
+    onDone: () => { app.relaunch(); setTimeout(() => app.exit(0), 250); },
+  });
 }
 
 // Single-instance lock — CRITICAL for data integrity. Two processes opening the

@@ -71,6 +71,12 @@ contextBridge.exposeInMainWorld('api', {
     lookup:  (ids)   => inv('bulk:lookup', ids),
     status:  ()      => inv('bulk:status'),
   },
+  backups: {
+    list:       ()  => inv('backups:list'),
+    restore:    (p) => inv('backups:restore', p),
+    createNow:  ()  => inv('backups:createNow'),
+    openFolder: ()  => inv('backups:openFolder'),
+  },
   dialog: {
     openCsv:   ()      => inv('dialog:openCsv'),
     openDeck:  ()      => inv('dialog:openDeck'),

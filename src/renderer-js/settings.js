@@ -9,6 +9,53 @@ import { esc, toast } from './utils.js';
 
 
 // ─────────────────────────────────────────────────────────────────────────────
+// BACKUPS & RECOVERY (Settings section) — one-click restore + manual backup
+// ─────────────────────────────────────────────────────────────────────────────
+async function wireBackupsSection() {
+  const listEl = document.getElementById('cfg-backups-list');
+  const nowBtn = document.getElementById('cfg-backup-now');
+  const openBtn = document.getElementById('cfg-open-backups');
+  if (!listEl || !window.api?.backups) { if (listEl) listEl.textContent = 'Backups are unavailable.'; return; }
+
+  if (openBtn) openBtn.addEventListener('click', () => window.api.backups.openFolder());
+  if (nowBtn) nowBtn.addEventListener('click', async () => {
+    nowBtn.disabled = true; nowBtn.textContent = '💾 Backing up…';
+    const r = await window.api.backups.createNow();
+    nowBtn.disabled = false; nowBtn.textContent = '💾 Back up now';
+    toast(r?.ok ? `Backup created (${r.sizeMB} MB)` : (r?.error || 'Backup failed'), r?.ok ? 'success' : 'error');
+    if (r?.ok) renderList();
+  });
+
+  async function renderList() {
+    let backups = [];
+    try { backups = await window.api.backups.list(); } catch { /* leave empty */ }
+    if (!backups.length) {
+      listEl.innerHTML = '<div style="padding:8px 0;color:var(--text-muted)">No backups yet — one is written automatically each day.</div>';
+      return;
+    }
+    listEl.innerHTML = backups.map((b, i) => `
+      <div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-top:1px solid var(--border)">
+        <span style="flex:1"><strong style="color:var(--text)">${esc(b.date)}</strong>
+          <span style="color:var(--text-muted);font-size:12px">· ${b.sizeMB} MB${i === 0 ? ' · latest' : ''}</span></span>
+        <button class="btn btn-ghost btn-sm" data-restore="${i}">↺ Restore</button>
+      </div>`).join('');
+    listEl.querySelectorAll('[data-restore]').forEach(btn => btn.addEventListener('click', async () => {
+      const b = backups[Number(btn.dataset.restore)];
+      if (!b) return;
+      if (!confirm(`Restore the backup from ${b.date}?\n\nThe app will restart and load this backup. Your current data is set aside first (backups/pre-restore) so this can be undone.`)) return;
+      showModal(`<div style="padding:34px;text-align:center">
+        <div style="font-size:24px;margin-bottom:10px">↺</div>
+        <h2 style="margin:0 0 6px">Restoring backup…</h2>
+        <div style="color:var(--text-muted);font-size:13px">The app will restart in a moment.</div></div>`);
+      const r = await window.api.backups.restore(b.path);
+      if (!r || !r.ok) { hideModal(); toast((r && r.error) || 'Restore failed', 'error'); }
+      // On success the main process relaunches the app — nothing more to do here.
+    }));
+  }
+  renderList();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // SETTINGS MODAL
 // ─────────────────────────────────────────────────────────────────────────────
 export function showSettings() {
@@ -102,6 +149,18 @@ export function showSettings() {
       </label>
     </div>
 
+    <h3 style="margin-top:22px">Backups &amp; Recovery</h3>
+    <p style="font-size:13px;color:var(--text-dim);margin-bottom:10px;line-height:1.55">
+      The app writes a verified backup once a day and keeps the latest 10. If something ever
+      goes wrong, restore any of them below — the app restarts into the restored data, and your
+      current data is set aside first (under <code>backups/pre-restore</code>) so a restore can be undone.
+    </p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+      <button class="btn btn-sm" id="cfg-backup-now">💾 Back up now</button>
+      <button class="btn btn-sm" id="cfg-open-backups">📂 Open backups folder</button>
+    </div>
+    <div id="cfg-backups-list" style="font-size:13px;color:var(--text-muted)">Loading backups…</div>
+
     <h3 style="margin-top:22px">Data Management</h3>
     <p style="font-size:12px;color:var(--text-muted);margin-bottom:10px;line-height:1.5">
       Each button below permanently deletes data from the SQLite database.
@@ -146,6 +205,7 @@ export function showSettings() {
     </div>`);
 
   document.getElementById('cfg-cancel').addEventListener('click', hideModal);
+  wireBackupsSection();
 
   // Ticker filter chips toggle on click
   for (const id of ['cfg-ticker-binders', 'cfg-ticker-sets']) {
