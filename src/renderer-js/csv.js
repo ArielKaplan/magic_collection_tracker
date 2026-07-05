@@ -1,6 +1,23 @@
 import { uid } from './utils.js';
 
 
+// Neutralize imported text at the trust boundary. CSVs (and, later, shared
+// curation) are untrusted input rendered all over the app via innerHTML; the
+// render paths escape with esc()/escJs(), but that pattern fails open on a
+// single miss. Stripping the HTML tag characters (and control chars) from
+// imported strings means even a missed downstream escape can't produce markup
+// or a rogue inline handler. No legitimate MTG card/set/binder text contains
+// '<' or '>', so this changes nothing real.
+export function sanitizeText(s) {
+  const stripped = String(s == null ? '' : s).replace(/[<>]/g, '');
+  let out = '';
+  for (const ch of stripped) {
+    const c = ch.charCodeAt(0);
+    if (c >= 32 && c !== 127) out += ch;   // drop C0 control chars + DEL
+  }
+  return out.trim();
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // CSV PARSING
 // ─────────────────────────────────────────────────────────────────────────────
@@ -36,25 +53,26 @@ export function parseCsvHeaders(text) {
 }
 
 export function csvRowToCard(row) {
+  // Free-text fields from the (untrusted) CSV are sanitized; ids/enums/numbers
+  // are constrained by their own parsing below.
   return {
     id: uid(),
-    binderName: row['Binder Name'] || '',
-    binderType: row['Binder Type'] || 'binder',
-    name: row['Name'] || '',
-    setCode: row['Set code'] || '',
-    setName: row['Set name'] || '',
-    collectorNumber: row['Collector number'] || '',
+    binderName: sanitizeText(row['Binder Name'] || ''),
+    binderType: sanitizeText(row['Binder Type'] || 'binder') || 'binder',
+    name: sanitizeText(row['Name'] || ''),
+    setCode: sanitizeText(row['Set code'] || ''),
+    setName: sanitizeText(row['Set name'] || ''),
+    collectorNumber: sanitizeText(row['Collector number'] || ''),
     foil: row['Foil'] || 'normal',
     rarity: (row['Rarity'] || '').toLowerCase(),
     quantity: Math.max(1, parseInt(row['Quantity']) || 1),
-    manaboxId: row['ManaBox ID'] || '',
+    manaboxId: sanitizeText(row['ManaBox ID'] || ''),
     scryfallId: (row['Scryfall ID'] || '').trim().toLowerCase(),
     purchasePrice: parseFloat(row['Purchase price']) || 0,
-    purchasePriceCurrency: row['Purchase price currency'] || 'USD',
+    purchasePriceCurrency: sanitizeText(row['Purchase price currency'] || 'USD') || 'USD',
     misprint: row['Misprint'] === 'true',
     altered: row['Altered'] === 'true',
-    condition: row['Condition'] || 'near_mint',
-    language: row['Language'] || 'en'
+    condition: sanitizeText(row['Condition'] || 'near_mint') || 'near_mint',
+    language: sanitizeText(row['Language'] || 'en') || 'en'
   };
 }
-

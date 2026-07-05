@@ -3,6 +3,20 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!--
+    Content-Security-Policy — defense-in-depth for a local-first app that renders
+    external + shared data. All app network goes through the main process (net:fetch
+    IPC), so the renderer makes no direct connections; card images load from Scryfall
+    and fonts from Google. object/frame/base/form are locked to 'none' to kill those
+    injection vectors, and connect-src is limited to the known data hosts so an
+    injected script can't exfiltrate to an arbitrary server.
+    RESIDUAL: script-src/style-src still allow 'unsafe-inline' because the renderer
+    uses inline event handlers + inline styles throughout; removing that (the full
+    protection against injected inline handlers) is gated on retiring the remaining
+    ~83 inline handlers in the tab renderers — a per-tab migration to do with live
+    UI verification, not a blind big-bang. 'unsafe-eval' is intentionally NOT allowed.
+  -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: https://cards.scryfall.io https://*.scryfall.io https://*.scryfall.com; connect-src 'self' https://api.scryfall.com https://mtgjson.com https://tcgcsv.com https://www.pricecharting.com https://mtg.wiki; object-src 'none'; base-uri 'none'; frame-src 'none'; form-action 'none'; worker-src 'self'">
   <title>Secret Lair Tracker</title>
   <link rel="icon" type="image/png" href="favicon.png?v=2">
   <link rel="stylesheet" href="styles.css">

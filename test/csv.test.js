@@ -1,5 +1,24 @@
 import { describe, it, expect } from 'vitest';
-import { parseCsvLine, parseCsv, parseCsvHeaders, csvRowToCard } from '../src/renderer-js/csv.js';
+import { parseCsvLine, parseCsv, parseCsvHeaders, csvRowToCard, sanitizeText } from '../src/renderer-js/csv.js';
+
+describe('sanitizeText (import trust boundary)', () => {
+  it('strips angle brackets so imported text cannot inject markup', () => {
+    expect(sanitizeText('<img src=x onerror=alert(1)>')).toBe('img src=x onerror=alert(1)');
+    expect(sanitizeText('Sol Ring')).toBe('Sol Ring');
+  });
+  it('drops control characters', () => {
+    expect(sanitizeText('Ab' + String.fromCharCode(0, 9, 31, 127) + 'cd')).toBe('Abcd');
+  });
+  it('leaves legitimate MTG punctuation intact', () => {
+    expect(sanitizeText("Urza's Saga")).toBe("Urza's Saga");
+    expect(sanitizeText('Yidris, Maelstrom Wielder')).toBe('Yidris, Maelstrom Wielder');
+    expect(sanitizeText('Fire // Ice')).toBe('Fire // Ice');
+  });
+  it('coerces null/undefined to empty', () => {
+    expect(sanitizeText(null)).toBe('');
+    expect(sanitizeText(undefined)).toBe('');
+  });
+});
 
 describe('parseCsvLine', () => {
   it('splits plain fields', () => {
@@ -57,5 +76,10 @@ describe('csvRowToCard', () => {
     expect(c.quantity).toBe(1);
     expect(c.condition).toBe('near_mint');
     expect(c.language).toBe('en');
+  });
+  it('sanitizes untrusted free-text fields (a shared CSV cannot inject markup)', () => {
+    const c = csvRowToCard({ 'Name': 'Evil<script>x</script>', 'Binder Name': 'B<b>' });
+    expect(c.name).toBe('Evilscriptx/script');   // angle brackets gone
+    expect(c.binderName).toBe('Bb');
   });
 });
