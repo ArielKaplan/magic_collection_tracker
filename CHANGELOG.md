@@ -11,6 +11,8 @@ in-app "What's New" screen — from that version's section. Keep entries
 user-facing: what changed, not how.
 
 ## [Unreleased]
+
+## [0.35.0] - 2026-07-05
 ### Changed
 - **Every release is now automatically tested before it ships.** The build pipeline runs the full unit-test and smoke-test suite first, and won't publish an update if anything fails — so a regression can't reach your copy of the app.
 
