@@ -43,6 +43,31 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # ── Test gate: a failing test blocks the build & publish below ──────────
+      - name: Unit tests (vitest)
+        run: npm test
+
+      - name: Smoke tests — renderer logic
+        run: npm run test:smoke
+
+      - name: Smoke tests — database layer
+        # better-sqlite3 is built for Node's ABI right after `npm ci` (the
+        # packaging step later rebuilds it for Electron), so these run under
+        # plain node — no display or Electron needed. All self-contained: temp
+        # DBs + the committed precon seed, no network or gitignored fixtures.
+        shell: bash
+        run: |
+          node scripts/smoke-backups.js
+          node scripts/smoke-backup-integrity.js
+          node scripts/smoke-bulkdata.js
+          node scripts/smoke-sldata-db.js
+          node scripts/smoke-precon-db.js
+          node scripts/smoke-realized-db.js
+          node scripts/smoke-portfolio-db.js
+          node scripts/smoke-sealed-db.js
+          node scripts/smoke-decks-db.js
+          node scripts/smoke-wantlist-db.js
+
       - name: Build renderer
         run: npm run build:renderer
 

@@ -12,7 +12,8 @@
     "release": "npm run build:renderer && electron-builder --win --publish always",
     "release:tag": "node scripts/release.js",
     "rebuild": "electron-rebuild -f -w better-sqlite3",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:smoke": "node scripts/smoke-decks.js && node scripts/smoke-decks-render.js && node scripts/smoke-droppnl.js && node scripts/smoke-import.js && node scripts/smoke-portfolio.js && node scripts/smoke-realized.js && node scripts/smoke-search-containment.js && node scripts/smoke-sldrop-search.js && node scripts/smoke-slindex.js && node scripts/smoke-wantlist.js"
   },
   "author": "Akapl",
   "license": "ISC",
