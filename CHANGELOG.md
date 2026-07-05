@@ -11,6 +11,8 @@ in-app "What's New" screen — from that version's section. Keep entries
 user-facing: what changed, not how.
 
 ## [Unreleased]
+
+## [0.36.0] - 2026-07-05
 ### Security
 - **Stronger protection against malicious shared files.** The app now enforces a Content-Security-Policy — locking down where it can load resources from and blocking an injected script from phoning out to anywhere except the known card-data services — and it sanitizes the text in imported CSVs, so a booby-trapped collection file a friend sends you can't slip active content into the app. (Belt-and-suspenders on top of the escaping that was already there.)
 
