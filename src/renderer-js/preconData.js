@@ -18,7 +18,7 @@ import { fetchScryfallBatch } from './prices.js';
 import { render } from './render.js';
 import { searchTcgcsvLocal } from './sealedPricing.js';
 import { finishGroup } from './slData.js';
-import { collection } from './state.js';
+import { collection, tcgcsvCache } from './state.js';
 import { netFetch, toast } from './utils.js';
 import { addToWantList, wantItemByScryfall } from './wantlist.js';
 
@@ -90,6 +90,7 @@ export const PRECON_SCOPE_TYPES = new Set([
   'Guild Kit', 'Premium Deck', 'Archenemy Deck', 'Planechase Deck', 'Box Set',
   'Enhanced Deck', 'Advanced Deck', 'Advanced Pack', 'Clash Pack', 'Starter Kit',
   'Spellslinger Starter Kit', 'Pro Tour Deck', 'Modern Event Deck', 'Dandan Deck',
+  'Jumpstart',   // hidden behind the Explorer's Jumpstart toggle (off by default)
 ]);
 
 // ── state ────────────────────────────────────────────────────────────────────
@@ -277,10 +278,16 @@ export function preconMsrpDefault(type, date) {
   }
 }
 
-// Best-effort sealed market price via the synced TCGCSV index (fuzzy name
-// match — the exact tcgplayerProductId join is a pipeline upgrade later).
+// Best-effort sealed market price from the synced TCGCSV index: the exact
+// TCGplayer-product-id join first (baked from MTGJSON sealedProduct records by
+// scripts/precon-build/resolve-tcg.js), then a fuzzy name match as fallback.
 export function sealedPriceForPrecon(deck) {
   try {
+    if (deck.tcgplayerProductId) {
+      const wanted = String(deck.tcgplayerProductId);
+      const hit = (tcgcsvCache.sealedProducts || []).find(p => String(p.productId ?? '') === wanted);
+      if (hit && hit.marketPrice != null) return { price: hit.marketPrice, name: hit.name, exact: true };
+    }
     for (const q of [deck.name, `${deck.name} ${(deck.type || '').split(' ')[0]}`]) {
       const hit = (searchTcgcsvLocal(q, 1) || [])[0];
       if (hit && hit.marketPrice != null) return { price: hit.marketPrice, name: hit.name };

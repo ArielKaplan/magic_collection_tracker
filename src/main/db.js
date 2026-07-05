@@ -609,14 +609,22 @@ function clearPrecons() {
   tx();
 }
 
+// Seed the Precon Explorer catalog from the baked snapshot on first run, and
+// re-seed (idempotent upsert — adds new decks, updates existing rows like the
+// v2 Jumpstart decks + exact TCGplayer ids) when the baked seed's version
+// outranks what's stored. Decks synced in-app that aren't in the seed are left
+// untouched. Called seedPreconsIfEmpty for back-compat with earlier callers.
 function seedPreconsIfEmpty() {
-  const n = db.prepare('SELECT COUNT(*) n FROM precon_decks').get().n;
-  if (n > 0) return false;
   const seedPath = path.join(__dirname, 'precon-seed.json');
   if (!fs.existsSync(seedPath)) return false;
+  const n = db.prepare('SELECT COUNT(*) n FROM precon_decks').get().n;
   const seed = JSON.parse(fs.readFileSync(seedPath, 'utf-8'));
+  const seedV = seed.version || 1;
+  const storedV = Number(getSetting('precon_seed_version') || 0);
+  if (n > 0 && storedV >= seedV) return false;   // already at or past this seed
   const count = upsertPreconDecks(seed.decks || []);
-  console.log(`[precon] seeded ${count} decks from baked snapshot (${seed.generatedAt || '?'})`);
+  setSetting('precon_seed_version', String(seedV));
+  console.log(`[precon] ${n > 0 ? 'upgraded to' : 'seeded'} v${seedV} — ${count} decks (${seed.generatedAt || '?'})`);
   return true;
 }
 

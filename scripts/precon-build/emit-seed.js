@@ -51,6 +51,13 @@ const OUT = path.join(__dirname, '..', '..', 'src', 'main', 'precon-seed.json');
     decks.push(deck);
   }
 
+  // Exact TCGplayer product ids resolved by resolve-tcg.js (deck → tcgId).
+  let tcgIds = {};
+  try { tcgIds = JSON.parse(fs.readFileSync(path.join(CACHE, 'tcg-ids.json'), 'utf8')); }
+  catch { console.warn('  (no cache/tcg-ids.json — run resolve-tcg.js for exact sealed-price joins)'); }
+  let withTcg = 0;
+  for (const d of decks) { if (tcgIds[d.file]) { d.tcgplayerProductId = tcgIds[d.file]; withTcg++; } }
+
   // Collector's Edition variants → link to their base deck (same code + type).
   const byKey = new Map(decks.map(d => [`${d.code}|${d.type}|${d.name.toLowerCase()}`, d]));
   let variants = 0;
@@ -63,13 +70,16 @@ const OUT = path.join(__dirname, '..', '..', 'src', 'main', 'precon-seed.json');
 
   decks.sort((a, b) => (a.date || '9999').localeCompare(b.date || '9999') || a.name.localeCompare(b.name));
 
-  const seed = { version: 1, generatedAt: new Date().toISOString(), decks };
+  // version 2: adds Jumpstart decks + exact tcgplayerProductId. db.js re-seeds
+  // (idempotent upsert) when the baked version outranks the stored one, so
+  // existing installs pick up the new decks + ids on their next launch.
+  const seed = { version: 2, generatedAt: new Date().toISOString(), decks };
   fs.writeFileSync(OUT, JSON.stringify(seed));
   const cardRows = decks.reduce((s, d) => s + d.cards.length, 0);
   const types = {};
   for (const d of decks) types[d.type] = (types[d.type] || 0) + 1;
   console.log(`Wrote ${OUT}`);
-  console.log(`decks: ${decks.length} (${skipped} skipped) · card rows: ${cardRows.toLocaleString()} · CE variants linked: ${variants}`);
+  console.log(`decks: ${decks.length} (${skipped} skipped) · card rows: ${cardRows.toLocaleString()} · CE variants linked: ${variants} · tcgIds: ${withTcg}`);
   console.log(`size: ${(fs.statSync(OUT).size / 1024 / 1024).toFixed(1)} MB`);
   console.log('types:', JSON.stringify(types));
 })().catch(e => { console.error('EMIT FAILED:', e); process.exit(1); });

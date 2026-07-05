@@ -303,12 +303,23 @@ export function renderPreconTab() {
     if (!byType.has(d.type)) byType.set(d.type, []);
     byType.get(d.type).push(d);
   }
-  const lines = [...byType.keys()].sort((a, b) => {
+  // Jumpstart is 570 half-decks — off by default, revealed by the toggle.
+  const hasJumpstart = byType.has('Jumpstart');
+  let lines = [...byType.keys()].sort((a, b) => {
     const ia = LINE_ORDER.indexOf(a), ib = LINE_ORDER.indexOf(b);
     return (ia < 0 ? 999 : ia) - (ib < 0 ? 999 : ib) || a.localeCompare(b);
   });
+  if (!pv.showJumpstart) lines = lines.filter(l => l !== 'Jumpstart');
 
-  return refreshBar() + breadcrumb(pv) + `
+  const jumpToggle = hasJumpstart ? `
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;padding:6px 12px;background:var(--surface);border:1px solid var(--border);border-radius:8px">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px;color:var(--text-muted)">
+        <input type="checkbox" ${pv.showJumpstart ? 'checked' : ''} onclick="ui.precons.showJumpstart=this.checked;render()">
+        Show Jumpstart (${byType.get('Jumpstart').length} half-decks)
+      </label>
+    </div>` : '';
+
+  return refreshBar() + breadcrumb(pv) + jumpToggle + `
     <div class="sl-superdrop-grid">
       ${lines.map(line => {
         const decks = byType.get(line);

@@ -30,6 +30,7 @@ const SCOPE_TYPES = new Set([
   'Guild Kit', 'Premium Deck', 'Archenemy Deck', 'Planechase Deck', 'Box Set',
   'Enhanced Deck', 'Advanced Deck', 'Advanced Pack', 'Clash Pack', 'Starter Kit',
   'Spellslinger Starter Kit', 'Pro Tour Deck', 'Modern Event Deck', 'Dandan Deck',
+  'Jumpstart',   // 570 half-decks — hidden behind a toggle in the Explorer
 ]);
 
 (async () => {

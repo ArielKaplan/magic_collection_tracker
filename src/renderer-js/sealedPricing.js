@@ -6,7 +6,15 @@ import { netFetch, toast } from './utils.js';
 // ─────────────────────────────────────────────────────────────────────────────
 // SEALED PRODUCT PRICING — TCGCSV (free) + PriceCharting (optional key)
 // ─────────────────────────────────────────────────────────────────────────────
-export const SEALED_KEYWORDS = ['booster box', 'set booster box', 'collector booster', 'bundle', 'secret lair', 'commander deck', 'prerelease kit', 'starter kit'];
+export const SEALED_KEYWORDS = [
+  'booster box', 'set booster box', 'collector booster', 'bundle', 'secret lair',
+  'commander deck', 'prerelease kit', 'starter kit',
+  // Precon product lines — so the Precon Explorer's older decks resolve a
+  // sealed price and these products show up in the sealed catalog search.
+  'theme deck', 'intro pack', 'duel deck', 'planeswalker deck', 'challenger deck',
+  'event deck', 'guild kit', 'planechase', 'archenemy', 'clash pack', 'game night',
+  'brawl deck', 'jumpstart', 'premium deck',
+];
 
 export function updateSyncBtn() {
   const btn = document.getElementById('tcgcsv-sync-btn');

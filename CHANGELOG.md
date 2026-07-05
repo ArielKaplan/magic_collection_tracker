@@ -11,6 +11,12 @@ in-app "What's New" screen — from that version's section. Keep entries
 user-facing: what changed, not how.
 
 ## [Unreleased]
+### Added
+- **Jumpstart decks in the Precon Explorer.** The 570 Jumpstart half-decks (2020, 2022, and the set-based ones) are now in the catalog, tucked behind a **"Show Jumpstart"** toggle on the Explorer's landing page so they don't crowd the everyday product lines.
+- **Exact sealed prices for precons.** Where a precon's sealed product is known to TCGplayer (813 decks), its "Worth it?" sealed price now comes from an exact product-ID match instead of a name guess — the right box, every time. Older product lines (Theme Decks, Intro Packs, Duel Decks, and more) are now indexed by the price sync too, so they can show a sealed price at all.
+
+### Changed
+- **Under the hood: real unit tests.** Added a Vitest suite covering the trickiest pure logic — CSV import parsing, decklist parsing, the search matcher, and the Secret Lair finish-aware model — so these keep working as the app evolves. Your catalog also self-updates to the expanded precon dataset on launch (no reset needed).
 
 ## [0.32.0] - 2026-07-04
 ### Added

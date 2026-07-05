@@ -38,7 +38,7 @@ export let ui = {
   decks: { deckId: null, search: '', view: 'list', ownFilter: 'all' },
   slViewer: { superdrop: '', drop: '', page: 0, sort: 'date_desc', search: '', view: 'drops', pnlSort: 'gainpct_desc' },
   slRefreshing: false,
-  precons: { line: '', deck: '', search: '', sort: 'date_desc', deckView: 'gallery', tableSort: 'name_asc' },
+  precons: { line: '', deck: '', search: '', sort: 'date_desc', deckView: 'gallery', tableSort: 'name_asc', showJumpstart: false },
   failures: { filter: 'all', retrying: false },
   refreshing: false,
   refreshProgress: 0

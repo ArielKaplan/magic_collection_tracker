@@ -25,7 +25,8 @@ const CAP = 5;   // results shown per group in the dropdown before "See all"
 const norm = s => (s == null ? '' : String(s)).toLowerCase().trim();
 
 // Every term must appear somewhere in the concatenated fields (AND match).
-function makeMatcher(query) {
+// Exported for unit tests (word-boundary/prefix semantics are subtle).
+export function makeMatcher(query) {
   const terms = norm(query).split(/\s+/).filter(Boolean);
   return (...fields) => {
     if (!terms.length) return false;
