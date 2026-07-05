@@ -12,6 +12,8 @@ user-facing: what changed, not how.
 
 ## [Unreleased]
 
+## [0.33.2] - 2026-07-05
+
 ## [0.33.1] - 2026-07-05
 ### Added
 - **Jumpstart decks in the Precon Explorer.** The 570 Jumpstart half-decks (2020, 2022, and the set-based ones) are now in the catalog, tucked behind a **"Show Jumpstart"** toggle on the Explorer's landing page so they don't crowd the everyday product lines.
