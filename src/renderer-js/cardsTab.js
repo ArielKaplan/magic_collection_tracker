@@ -62,7 +62,7 @@ export function renderCards() {
 
   // View toggle (Table | Gallery) — same data, two presentations, mirroring the
   // SL Explorer's view switcher. Resets to page 1 so the two paginations agree.
-  const viewBtn = (id, label) => `<button class="btn ${s.view === id ? 'btn-primary' : 'btn-ghost'}" style="font-size:12px;padding:7px 12px;white-space:nowrap" onclick="ui.cards.view='${id}';ui.cards.page=1;render()">${label}</button>`;
+  const viewBtn = (id, label) => `<button class="btn ${s.view === id ? 'btn-primary' : 'btn-ghost'}" style="font-size:12px;padding:7px 12px;white-space:nowrap" data-act="ui-set" data-path="cards.view" data-val="${id}" data-also="cards.page=1">${label}</button>`;
   const viewToggle = `<div style="display:flex;gap:4px;margin-right:2px">${viewBtn('table', '▤ Table')}${viewBtn('gallery', '▦ Gallery')}</div>`;
 
   // Gallery sort bar — the grid has no column headers, so sorting gets its own
@@ -73,7 +73,7 @@ export function renderCards() {
     const active = s.sortField === field;
     const nextDir = active && s.sortDir === 'asc' ? 'desc' : 'asc';
     const arrow = active ? (s.sortDir === 'asc' ? ' ↑' : ' ↓') : '';
-    return `<button class="btn ${active ? 'btn-primary' : 'btn-ghost'}" style="font-size:12px;padding:5px 10px" onclick="ui.cards.sortField='${field}';ui.cards.sortDir='${nextDir}';ui.cards.page=1;render()">${label}${arrow}</button>`;
+    return `<button class="btn ${active ? 'btn-primary' : 'btn-ghost'}" style="font-size:12px;padding:5px 10px" data-act="ui-set" data-path="cards.sortField" data-val="${field}" data-also="cards.sortDir=${nextDir};cards.page=1">${label}${arrow}</button>`;
   };
   const gallerySortBar = `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:12px">
     <span style="font-size:12px;color:var(--text-muted)">Sort:</span>
@@ -88,8 +88,8 @@ export function renderCards() {
           const id  = c.scryfallId.toLowerCase();
           const img = `https://cards.scryfall.io/normal/front/${id[0]}/${id[1]}/${id}.jpg`;
           const val = cardCurrentValue(c);
-          return `<div class="gallery-card" data-card-id="${esc(c.id)}" onclick="showGalleryModal('${esc(c.id)}')" title="${esc(c.name)}">
-            <img src="${esc(img)}" alt="${esc(c.name)}" loading="lazy" onerror="this.closest('.gallery-card').style.display='none'">
+          return `<div class="gallery-card" data-card-id="${esc(c.id)}" data-act="showGalleryModal" data-arg="${esc(c.id)}" title="${esc(c.name)}">
+            <img src="${esc(img)}" alt="${esc(c.name)}" loading="lazy" data-imgerr="hide-card">
             ${c.foil !== 'normal' ? `<span class="gallery-foil">${FOIL_LABEL[c.foil]}</span>` : ''}
             ${val != null ? `<span class="gallery-price">${fmt(val)}</span>` : ''}
           </div>`;
@@ -192,8 +192,8 @@ export function renderCards() {
                 </div>
               </div>` : ''}
             </div>`}
-            <button class="btn" onclick="showImportHub('cards')" style="padding:7px 12px;font-size:12px;white-space:nowrap" title="Import cards from a CSV export">↑ Import</button>
-            <button class="btn" onclick="showExportModal('cards')" style="padding:7px 12px;font-size:12px;white-space:nowrap" title="Export cards to CSV, JSON, Markdown, or text">⤓ Export</button>
+            <button class="btn" data-act="showImportHub" data-arg="cards" style="padding:7px 12px;font-size:12px;white-space:nowrap" title="Import cards from a CSV export">↑ Import</button>
+            <button class="btn" data-act="showExportModal" data-arg="cards" style="padding:7px 12px;font-size:12px;white-space:nowrap" title="Export cards to CSV, JSON, Markdown, or text">⤓ Export</button>
           </div>
           <select id="statusFilter" title="Owned cards, cards you've sold, or both">
             <option value="owned" ${s.status === 'owned' ? 'selected' : ''}>Owned</option>

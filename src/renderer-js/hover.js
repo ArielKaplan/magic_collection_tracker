@@ -45,7 +45,7 @@ export function buildCardHoverHtml(card) {
     : '';
 
   return `
-    ${img ? `<img class="chp-img" src="${esc(img)}" alt="${esc(card.name)}" onerror="this.style.display='none'">` : ''}
+    ${img ? `<img class="chp-img" src="${esc(img)}" alt="${esc(card.name)}" data-imgerr="hide">` : ''}
     <div class="chp-name">${esc(card.name)}${foilBadge}</div>
     <div class="chp-sub">${esc(card.setName || '')} · ${esc((card.setCode||'').toUpperCase())} · #${esc(card.collectorNumber || '?')}</div>
     ${price != null ? `<div class="chp-price">${fmt(price)}</div>` : ''}
@@ -176,7 +176,7 @@ function buildSlUnownedHoverHtml(scryfallId, data) {
   rows.push(`<span class="lbl">Owned</span><span style="color:#f87171;font-weight:600">No</span>`);
 
   return `
-    ${img ? `<img class="chp-img" src="${esc(img)}" alt="${esc(name)}" onerror="this.style.display='none'">` : ''}
+    ${img ? `<img class="chp-img" src="${esc(img)}" alt="${esc(name)}" data-imgerr="hide">` : ''}
     <div class="chp-name">${esc(name)}</div>
     <div class="chp-sub">${sub}</div>
     ${Number.isFinite(priceNum) ? `<div class="chp-price">${fmt(priceNum)}</div>` : ''}
@@ -224,7 +224,7 @@ export function attachContentListeners() {
   if (emptyCsv) emptyCsv.addEventListener('click', () => showImportHub('cards'));
 
   // ── Card hover previews across tabs ─────────────────────────────────────
-  // Card Collection › Gallery view: each .gallery-card has onclick="showGalleryModal('cardId')"
+  // Card Collection › Gallery view: each .gallery-card carries data-act="showGalleryModal" data-arg="cardId"
   if (ui.activeTab === 'cards') {
     document.querySelectorAll('.gallery-card[onclick*="showGalleryModal"]').forEach(el => {
       const m = el.getAttribute('onclick').match(/showGalleryModal\('([^']+)'\)/);

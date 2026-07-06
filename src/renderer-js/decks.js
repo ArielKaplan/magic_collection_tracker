@@ -383,7 +383,7 @@ export function renderDeckTile(deck, maps) {
 
   return `
     <div class="deck-tile" data-deck-id="${esc(deck.id)}">
-      <div class="deck-cover">${coverUrl ? `<img src="${esc(coverUrl)}" alt="" loading="lazy" onerror="this.remove()">` : '<div class="deck-cover-blank">🛡️</div>'}
+      <div class="deck-cover">${coverUrl ? `<img src="${esc(coverUrl)}" alt="" loading="lazy" data-imgerr="remove">` : '<div class="deck-cover-blank">🛡️</div>'}
         <span class="deck-format-badge">${esc(f.label)}</span>
       </div>
       <div class="deck-tile-body">
@@ -419,17 +419,17 @@ export function renderDeckDetail(deck) {
   }).join('');
 
   // View toggle + ownership filter + actions on the cards you don't own yet.
-  const vBtn = (id, label) => `<button class="btn ${ui.decks.view === id ? 'btn-primary' : 'btn-ghost'}" style="font-size:12px" onclick="ui.decks.view='${id}';render()">${label}</button>`;
-  const oBtn = (id, label) => `<button class="btn ${ownF === id ? 'btn-primary' : 'btn-ghost'}" style="font-size:12px" onclick="ui.decks.ownFilter='${id}';render()">${label}</button>`;
+  const vBtn = (id, label) => `<button class="btn ${ui.decks.view === id ? 'btn-primary' : 'btn-ghost'}" style="font-size:12px" data-act="ui-set" data-path="decks.view" data-val="${id}">${label}</button>`;
+  const oBtn = (id, label) => `<button class="btn ${ownF === id ? 'btn-primary' : 'btn-ghost'}" style="font-size:12px" data-act="ui-set" data-path="decks.ownFilter" data-val="${id}">${label}</button>`;
   const deckControls = `
     <div class="deck-controls" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:0 0 12px">
       <div style="display:flex;gap:4px">${vBtn('list', '▤ List')}${vBtn('gallery', '▦ Gallery')}</div>
       <span style="color:var(--text-muted);font-size:12px;margin-left:4px">Show:</span>
       <div style="display:flex;gap:4px">${oBtn('all', 'All')}${oBtn('owned', 'Owned')}${oBtn('missing', 'Missing')}</div>
       ${stats.missingCount ? `<div style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap">
-        <button class="btn btn-ghost" style="font-size:12px" onclick="buyDeckMissingOnTcg('${esc(deck.id)}')" title="Open the missing cards on TCGPlayer Mass Entry (adds them to your cart)">🛒 Buy missing</button>
-        <button class="btn btn-ghost" style="font-size:12px" onclick="addDeckMissingToWantList('${esc(deck.id)}')" title="Add the missing cards to your Want List">★ Want missing</button>
-        <button class="btn btn-ghost" style="font-size:12px" onclick="copyDeckMissing('${esc(deck.id)}')" title="Copy the missing cards as a text list">⧉ Copy</button>
+        <button class="btn btn-ghost" style="font-size:12px" data-act="buyDeckMissingOnTcg" data-arg="${esc(deck.id)}" title="Open the missing cards on TCGPlayer Mass Entry (adds them to your cart)">🛒 Buy missing</button>
+        <button class="btn btn-ghost" style="font-size:12px" data-act="addDeckMissingToWantList" data-arg="${esc(deck.id)}" title="Add the missing cards to your Want List">★ Want missing</button>
+        <button class="btn btn-ghost" style="font-size:12px" data-act="copyDeckMissing" data-arg="${esc(deck.id)}" title="Copy the missing cards as a text list">⧉ Copy</button>
       </div>` : ''}
     </div>`;
 
@@ -529,9 +529,9 @@ function deckGalleryTile(dc, maps) {
   const full  = owned >= need;
   const badgeBg  = full ? 'rgba(27,110,61,.92)' : owned > 0 ? 'rgba(201,155,60,.95)' : 'rgba(179,38,30,.85)';
   const badgeTxt = full ? `✓ ${need}×` : owned > 0 ? `${owned}/${need}` : `✗ ${need}×`;
-  return `<div class="gallery-card${full ? '' : ' sl-card-missing'}" data-deck-entry="${esc(dc.id)}" ${id ? `onclick="showSlViewerModal('${esc(id)}')"` : ''} title="${esc(dc.name)}">
+  return `<div class="gallery-card${full ? '' : ' sl-card-missing'}" data-deck-entry="${esc(dc.id)}" ${id ? `data-act="showSlViewerModal" data-arg="${esc(id)}"` : ''} title="${esc(dc.name)}">
     ${img
-      ? `<img src="${esc(img)}" alt="${esc(dc.name)}" loading="lazy" style="${full ? '' : 'filter:grayscale(45%) brightness(.72)'}" onerror="this.closest('.gallery-card').style.display='none'">`
+      ? `<img src="${esc(img)}" alt="${esc(dc.name)}" loading="lazy" style="${full ? '' : 'filter:grayscale(45%) brightness(.72)'}" data-imgerr="hide-card">`
       : `<div style="aspect-ratio:488/680;display:flex;align-items:center;justify-content:center;padding:8px;text-align:center;font-size:11px;color:var(--text-muted);background:var(--surface2)">${esc(dc.name)}</div>`}
     <span class="sl-owned-badge" style="background:${badgeBg}">${badgeTxt}</span>
   </div>`;

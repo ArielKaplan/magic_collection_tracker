@@ -101,13 +101,13 @@ export function showAbout() {
     </div>
 
     <p style="font-size:11px;color:var(--text-muted);line-height:1.5;margin-bottom:16px">
-      Low prices via <a href="#" onclick="window.api.app.openExternal('https://scryfall.com');return false">Scryfall</a> ·
-      Market prices via <a href="#" onclick="window.api.app.openExternal('https://tcgcsv.com');return false">TCGCSV</a> ·
-      SL drop data via <a href="#" onclick="window.api.app.openExternal('https://mtgjson.com');return false">MTGJSON</a> ·
+      Low prices via <a href="#" data-act="open-url" data-arg="https://scryfall.com">Scryfall</a> ·
+      Market prices via <a href="#" data-act="open-url" data-arg="https://tcgcsv.com">TCGCSV</a> ·
+      SL drop data via <a href="#" data-act="open-url" data-arg="https://mtgjson.com">MTGJSON</a> ·
       Sealed prices via TCGCSV and PriceCharting (optional key in Settings).
     </p>
     <div style="display:flex;justify-content:flex-end">
-      <button class="btn btn-primary" onclick="hideModal()">Close</button>
+      <button class="btn btn-primary" data-act="hideModal">Close</button>
     </div>`);
 }
 

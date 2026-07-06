@@ -44,8 +44,8 @@ export function renderSealed() {
           </div>
         </div>
         <div style="display:flex;gap:6px">
-          <button class="btn" onclick="showImportHub('sealed')" title="Import sealed products from a CSV export">↑ Import</button>
-          <button class="btn" onclick="showExportModal('sealed')" title="Export sealed products to CSV, JSON, Markdown, or text">⤓ Export</button>
+          <button class="btn" data-act="showImportHub" data-arg="sealed" title="Import sealed products from a CSV export">↑ Import</button>
+          <button class="btn" data-act="showExportModal" data-arg="sealed" title="Export sealed products to CSV, JSON, Markdown, or text">⤓ Export</button>
           <button class="btn btn-primary" id="addSealedBtn" title="Search the TCGplayer catalog or browse by set">+ Add Product</button>
         </div>
       </div>
@@ -75,7 +75,7 @@ export function renderSealed() {
         ${collection.sealed.length === 0 ? `
           <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
             <button class="btn btn-primary" id="addSealedBtn2">🔍 Find a Product</button>
-            <button class="btn" onclick="showImportHub('sealed')">↑ Import from CSV</button>
+            <button class="btn" data-act="showImportHub" data-arg="sealed">↑ Import from CSV</button>
           </div>` : ''}
       </div>
     ` : `<div class="sealed-list">${filtered.map(renderSealedItem).join('')}</div>`}`;

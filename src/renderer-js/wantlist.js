@@ -1,10 +1,19 @@
 import { FOIL_LABEL } from './constants.js';
+import { registerActions } from './dispatch.js';
 import { hideModal, showModal } from './modals.js';
 import { getCurrentMarketPrice, getCurrentPrice } from './prices.js';
 import { render } from './render.js';
 import { collection, ui } from './state.js';
 import { autoSave } from './storage.js';
 import { esc, fmt, netFetch, toast, uid } from './utils.js';
+
+// Delegated actions for this tab (see dispatch.js). These need the element +
+// a non-string arg, so they're registered rather than called by the generic
+// window-fn fallback.
+registerActions({
+  'want-target':     (el) => setWantTarget(el.dataset.arg, el.value),
+  'want-add-search': (el) => addWantFromSearch(JSON.parse(el.dataset.payload), el),
+});
 
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -197,7 +206,7 @@ async function runWantSearch(query) {
           </div>
           ${owned ? `<span style="font-size:11px;color:var(--green)">✓ Owned</span>`
             : wanted ? `<span style="font-size:11px;color:var(--accent2)">★ On list</span>`
-            : `<button class="btn btn-ghost" style="font-size:12px;white-space:nowrap" onclick='addWantFromSearch(${payload}, this)'>★ Want</button>`}
+            : `<button class="btn btn-ghost" style="font-size:12px;white-space:nowrap" data-act="want-add-search" data-payload="${payload}">★ Want</button>`}
         </div>`;
     }).join('');
   } catch (e) {
@@ -225,7 +234,7 @@ export function renderWantList() {
         <h3>Your want list is empty</h3>
         <p>Track cards you're hunting and get alerted when they drop to your target price.<br>
         Right-click a missing card (or an incomplete drop) in the <strong>Secret Lair Explorer</strong> to add it here — or search by name.</p>
-        <button class="btn btn-primary" onclick="showWantSearchModal()">＋ Add a card</button>
+        <button class="btn btn-primary" data-act="showWantSearchModal">＋ Add a card</button>
       </div>`;
   }
 
@@ -247,9 +256,9 @@ export function renderWantList() {
     const thumb = id ? `https://cards.scryfall.io/small/front/${id[0]}/${id[1]}/${id}.jpg` : '';
     return `
       <tr data-want-id="${esc(w.id)}" class="${atTarget ? 'want-hit' : ''}">
-        <td style="width:34px">${thumb ? `<img src="${esc(thumb)}" loading="lazy" alt="" style="width:30px;border-radius:3px;display:block" onerror="this.style.display='none'">` : ''}</td>
+        <td style="width:34px">${thumb ? `<img src="${esc(thumb)}" loading="lazy" alt="" style="width:30px;border-radius:3px;display:block" data-imgerr="hide">` : ''}</td>
         <td>
-          <a class="bc-link" onclick="showSlViewerModal('${esc(id)}')" style="font-weight:600">${esc(w.name)}</a>
+          <a class="bc-link" data-act="showSlViewerModal" data-arg="${esc(id)}" style="font-weight:600">${esc(w.name)}</a>
           ${owned ? `<span class="badge" style="background:var(--green-dim);color:var(--green);margin-left:6px">✓ owned</span>` : ''}
           ${w.foil && w.foil !== 'normal' ? `<span class="badge badge-${esc(w.foil)}" style="margin-left:6px">${esc(FOIL_LABEL[w.foil] || w.foil)}</span>` : ''}
         </td>
@@ -257,13 +266,13 @@ export function renderWantList() {
         <td style="text-align:right;font-weight:600;color:var(--text)">${price != null ? fmt(price) : '<span style="color:var(--text-muted)">—</span>'}</td>
         <td style="text-align:right">
           <span style="color:var(--text-muted);font-size:12px">$</span><input type="number" min="0" step="0.01" value="${w.maxPrice ?? ''}" placeholder="—"
-            onchange="setWantTarget('${esc(w.id)}', this.value)"
+            data-act="want-target" data-arg="${esc(w.id)}"
             style="width:64px;padding:3px 6px;background:var(--surface2);border:1px solid var(--border);border-radius:5px;color:var(--text);font-size:12px;text-align:right;font-family:inherit">
         </td>
         <td style="text-align:right;font-weight:700;color:${atTarget ? 'var(--green)' : (delta != null ? 'var(--text-muted)' : 'var(--text-muted)')}">
           ${atTarget ? '🎯 hit' : (delta != null ? `+${fmt(delta)}` : '—')}
         </td>
-        <td style="text-align:center"><button class="btn btn-ghost" style="font-size:12px;padding:2px 8px" onclick="removeFromWantList('${esc(w.id)}')" title="Remove from want list">✕</button></td>
+        <td style="text-align:center"><button class="btn btn-ghost" style="font-size:12px;padding:2px 8px" data-act="removeFromWantList" data-arg="${esc(w.id)}" title="Remove from want list">✕</button></td>
       </tr>`;
   };
 
@@ -283,8 +292,8 @@ export function renderWantList() {
     body = rows.map(rowHtml).join('');
   }
 
-  const groupBtn = `<button class="btn ${s.groupByDrop ? 'btn-primary' : 'btn-ghost'}" style="font-size:12px" onclick="ui.wantList.groupByDrop=!ui.wantList.groupByDrop;render()">Group by drop</button>`;
-  const viewBtn = (id, label) => `<button class="btn ${s.view === id ? 'btn-primary' : 'btn-ghost'}" style="font-size:12px;padding:6px 11px;white-space:nowrap" onclick="ui.wantList.view='${id}';render()">${label}</button>`;
+  const groupBtn = `<button class="btn ${s.groupByDrop ? 'btn-primary' : 'btn-ghost'}" style="font-size:12px" data-act="ui-toggle" data-path="wantList.groupByDrop">Group by drop</button>`;
+  const viewBtn = (id, label) => `<button class="btn ${s.view === id ? 'btn-primary' : 'btn-ghost'}" style="font-size:12px;padding:6px 11px;white-space:nowrap" data-act="ui-set" data-path="wantList.view" data-val="${id}">${label}</button>`;
   const viewToggle = `<div style="display:flex;gap:4px">${viewBtn('table', '▤ Table')}${viewBtn('gallery', '▦ Gallery')}</div>`;
 
   // Gallery presentation — image grid; click opens the card modal (which has the
@@ -294,8 +303,8 @@ export function renderWantList() {
     const img = id ? `https://cards.scryfall.io/normal/front/${id[0]}/${id[1]}/${id}.jpg` : '';
     const price = wantListCurrentPrice(w);
     const atTarget = w.maxPrice != null && price != null && price <= w.maxPrice;
-    return `<div class="gallery-card${atTarget ? ' sl-card-wanted' : ''}" onclick="showSlViewerModal('${esc(id)}')" title="${esc(w.name)}${w.maxPrice != null ? ` · target ${fmt(w.maxPrice)}` : ''}">
-      ${img ? `<img src="${esc(img)}" alt="${esc(w.name)}" loading="lazy" onerror="this.closest('.gallery-card').style.display='none'">` : ''}
+    return `<div class="gallery-card${atTarget ? ' sl-card-wanted' : ''}" data-act="showSlViewerModal" data-arg="${esc(id)}" title="${esc(w.name)}${w.maxPrice != null ? ` · target ${fmt(w.maxPrice)}` : ''}">
+      ${img ? `<img src="${esc(img)}" alt="${esc(w.name)}" loading="lazy" data-imgerr="hide-card">` : ''}
       ${atTarget ? `<span class="sl-want-badge" style="background:rgba(123,216,159,.95);color:#0c2a18">🎯</span>` : ''}
       ${price != null ? `<span class="gallery-price">${fmt(price)}</span>` : ''}
     </div>`;
@@ -326,10 +335,10 @@ export function renderWantList() {
         <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
           ${viewToggle}
           <input type="text" id="wantSearchInput" placeholder="Search…" value="${esc(s.search || '')}"
-            oninput="ui.wantList.search=this.value;render();setTimeout(()=>{const el=document.getElementById('wantSearchInput');if(el){el.focus();el.setSelectionRange(el.value.length,el.value.length)}},0)"
+            data-act="ui-set" data-path="wantList.search" data-refocus="wantSearchInput"
             style="padding:6px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px;font-family:inherit">
           ${isGallery ? '' : groupBtn}
-          <button class="btn btn-primary" style="font-size:12px" onclick="showWantSearchModal()">＋ Add card</button>
+          <button class="btn btn-primary" style="font-size:12px" data-act="showWantSearchModal">＋ Add card</button>
         </div>
       </div>
       ${isGallery ? galleryBody : tableBody}

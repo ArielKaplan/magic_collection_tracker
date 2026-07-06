@@ -304,7 +304,7 @@ export function renderCardOfTheDay() {
       ${imgUrl ? `
         <img src="${esc(imgUrl)}" alt="${esc(card.name)}"
           style="width:155px;flex-shrink:0;border-radius:10px;box-shadow:0 4px 18px rgba(0,0,0,0.6)"
-          onerror="this.style.display='none'">` : ''}
+          data-imgerr="hide">` : ''}
       <div style="flex:1;min-width:0">
         <div style="font-size:15px;font-weight:700;color:var(--text);line-height:1.25;margin-bottom:2px">${esc(card.name)}</div>
         <div style="font-size:11px;color:var(--text-muted);margin-bottom:8px">${esc(card.setName)} · ${esc(card.setCode.toUpperCase())}</div>
@@ -319,7 +319,7 @@ export function renderCardOfTheDay() {
           ? `<div style="font-size:20px;font-weight:700;color:var(--text);margin-bottom:2px">${fmt(value)}</div>
              ${card.quantity > 1 ? `<div style="font-size:11px;color:var(--text-muted);margin-bottom:10px">× ${card.quantity} = ${fmt(totalVal)}</div>` : '<div style="margin-bottom:10px"></div>'}`
           : '<div style="font-size:12px;color:var(--text-muted);margin-bottom:10px">No price data</div>'}
-        <button class="btn btn-ghost" style="font-size:11px;padding:3px 10px" onclick="ui.cotdOffset=(ui.cotdOffset||0)+1;render()">🎲 New Card</button>
+        <button class="btn btn-ghost" style="font-size:11px;padding:3px 10px" data-act="ui-inc" data-path="cotdOffset">🎲 New Card</button>
       </div>
     </div>`;
 }

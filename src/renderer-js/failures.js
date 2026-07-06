@@ -112,7 +112,7 @@ export function renderFailedLookupsTab() {
     const style = active
       ? `background:${rc ? rc.bg : 'rgba(255,255,255,0.08)'};color:${rc ? rc.text : 'var(--text)'};border-color:${rc ? rc.border : 'var(--border)'};font-weight:700`
       : `background:transparent;color:var(--text-muted);border-color:var(--border)`;
-    return `<button onclick="ui.failures.filter='${key}';render()"
+    return `<button data-act="ui-set" data-path="failures.filter" data-val="${key}"
       style="padding:5px 12px;border-radius:99px;font-size:12px;border:1px solid;cursor:pointer;${style}">
       ${esc(label)} <strong>${n}</strong>
     </button>`;
@@ -148,7 +148,7 @@ export function renderFailedLookupsTab() {
           <h2 style="background:linear-gradient(135deg,#f87171,#fbbf24);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;margin:0">Failed Lookups</h2>
         </div>
         ${batchCount > 0 ? `
-        <button class="btn btn-primary" style="font-size:12px;margin-left:auto" onclick="retryFailedLookups()" ${isRetrying ? 'disabled' : ''}>
+        <button class="btn btn-primary" style="font-size:12px;margin-left:auto" data-act="retryFailedLookups" ${isRetrying ? 'disabled' : ''}>
           ${isRetrying ? '⏳ Retrying…' : `↻ Retry ${batchCount} batch error${batchCount !== 1 ? 's' : ''}`}
         </button>` : ''}
       </div>

@@ -184,7 +184,7 @@ export function editSlDrop(drop) {
     <div style="display:flex;gap:10px;justify-content:space-between;align-items:center;margin-top:22px">
       <button class="btn btn-ghost btn-sm" data-slact="reset-drop" data-arg="${esc(drop)}"${pristine ? ' disabled' : ''}>↺ Reset to sourced</button>
       <div style="display:flex;gap:10px">
-        <button class="btn" onclick="hideModal()">Cancel</button>
+        <button class="btn" data-act="hideModal">Cancel</button>
         <button class="btn btn-primary" data-slact="commit-drop" data-arg="${esc(drop)}">Save</button>
       </div>
     </div>`);
@@ -219,7 +219,7 @@ export function editSlSuperdropNote(sd) {
       <textarea id="sl-ed-note" rows="4" style="width:100%;resize:vertical;font-family:inherit" placeholder="Add a note…">${esc(slSuperdropNote(sd))}</textarea>
     </div>
     <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:18px">
-      <button class="btn" onclick="hideModal()">Cancel</button>
+      <button class="btn" data-act="hideModal">Cancel</button>
       <button class="btn btn-primary" data-slact="commit-note" data-bucket="superdrops" data-arg="${esc(sd)}">Save</button>
     </div>`);
 }
@@ -231,7 +231,7 @@ export function editSlCardNote(id) {
       <textarea id="sl-ed-note" rows="4" style="width:100%;resize:vertical;font-family:inherit" placeholder="Add a note…">${esc(slCardNote(id))}</textarea>
     </div>
     <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:18px">
-      <button class="btn" onclick="hideModal()">Cancel</button>
+      <button class="btn" data-act="hideModal">Cancel</button>
       <button class="btn btn-primary" data-slact="commit-note" data-bucket="cards" data-arg="${esc(id)}">Save</button>
     </div>`);
 }
@@ -343,7 +343,7 @@ export function slCardTile(scryfallId, numLabel, requiredFinish) {
     <div class="gallery-card${owned ? ' sl-card-owned' : ' sl-card-missing'}${wanted ? ' sl-card-wanted' : ''}" data-sl-card="${esc(scryfallId)}"
       data-slact="card-modal" data-arg="${esc(scryfallId)}" title="${owned ? `Owned (qty: ${totalQty})` : (wanted ? 'On your want list' : 'Not in collection')}${numLabel ? ` · #${esc(numLabel)}` : ''}">
       <img src="${esc(img)}" alt="" loading="lazy"
-        onerror="this.closest('.gallery-card').style.display='none'"
+        data-imgerr="hide-card"
         style="${owned ? '' : 'filter:grayscale(60%) brightness(0.65)'}">
       ${owned ? `<span class="sl-owned-badge">✓ ${totalQty}</span>` : (wanted ? `<span class="sl-want-badge">★</span>` : `<span class="sl-missing-badge">✗</span>`)}
       ${val != null ? `<span class="gallery-price">${fmt(val)}</span>` : ''}
@@ -629,7 +629,7 @@ function renderSlIndexBody(idx) {
         <span style="font-size:13px;font-weight:700">📦 ${cvk.heldCount} sealed drop${cvk.heldCount === 1 ? '' : 's'} held</span>
         <span style="font-size:13px;color:var(--text-muted)">Keep <strong style="color:var(--text)">${fmt(cvk.keepTotal)}</strong></span>
         <span style="font-size:13px;color:var(--text-muted)">Crack ${cvk.pricedCount ? `<strong style="color:var(--text)">${fmt(cvk.crackTotal)}</strong>` : '<span style="color:var(--text-muted)">— not priced</span>'}</span>
-        ${allPriced ? verdict : `<button class="btn btn-ghost" style="font-size:12px;margin-left:auto" onclick="priceAllSealedDropsSingles()">Price sealed singles (${cvk.heldCount - cvk.pricedCount} left)</button>`}
+        ${allPriced ? verdict : `<button class="btn btn-ghost" style="font-size:12px;margin-left:auto" data-act="priceAllSealedDropsSingles">Price sealed singles (${cvk.heldCount - cvk.pricedCount} left)</button>`}
       </div>`;
   }
 
@@ -852,20 +852,20 @@ export function renderSlViewer() {
       <span style="font-size:12px;color:var(--text-muted);flex:1">${esc(lastUpdated)}</span>
       <button class="btn btn-ghost" style="font-size:12px;white-space:nowrap"
         title="Re-fetches the latest Secret Lair card lists from MTGJSON. Superdrop groupings come from the built-in dataset — edit those with the ✎ buttons below; brand-new drops land under 'Recent Additions' until the dataset is rebuilt."
-        onclick="refreshSlData()" ${ui.slRefreshing ? 'disabled' : ''}>
+        data-act="refreshSlData" ${ui.slRefreshing ? 'disabled' : ''}>
         ${ui.slRefreshing ? '⏳ Checking…' : '↻ Check for New Cards'}
       </button>
     </div>`;
 
   function sdSelect() {
-    return `<select onchange="ui.slViewer.superdrop=this.value;ui.slViewer.drop='';ui.slViewer.page=0;render()">
+    return `<select data-act="ui-set" data-path="slViewer.superdrop" data-also="slViewer.drop=;slViewer.page=0">
       <option value="">All Superdrops</option>
       ${superdrops.map(sd => `<option value="${esc(sd)}"${sv.superdrop===sd?' selected':''}>${esc(sd)}</option>`).join('')}
     </select>`;
   }
 
   function dropSelect(drops) {
-    return `<select onchange="ui.slViewer.drop=this.value;ui.slViewer.page=0;render()">
+    return `<select data-act="ui-set" data-path="slViewer.drop" data-also="slViewer.page=0">
       <option value="">All Drops</option>
       ${drops.map(d => `<option value="${esc(d)}"${sv.drop===d?' selected':''}>${esc(d)}</option>`).join('')}
     </select>`;
@@ -874,11 +874,11 @@ export function renderSlViewer() {
   // Breadcrumb shown above the toolbar — clickable segments walk back up the
   // hierarchy. Last segment is the current page (not clickable, accent color).
   function breadcrumb() {
-    const root = `<a class="bc-link" onclick="ui.slViewer.superdrop='';ui.slViewer.drop='';ui.slViewer.page=0;render()">Secret Lair Explorer</a>`;
+    const root = `<a class="bc-link" data-act="ui-set" data-path="slViewer.superdrop" data-val="" data-also="slViewer.drop=;slViewer.page=0">Secret Lair Explorer</a>`;
     const sep = `<span class="bc-sep">›</span>`;
     if (sv.drop) {
       const sdSeg = sv.superdrop
-        ? `<a class="bc-link" onclick="ui.slViewer.drop='';ui.slViewer.page=0;render()">${esc(sv.superdrop)}</a>`
+        ? `<a class="bc-link" data-act="ui-set" data-path="slViewer.drop" data-val="" data-also="slViewer.page=0">${esc(sv.superdrop)}</a>`
         : '';
       return `<nav class="sl-breadcrumb">${root}${sv.superdrop ? sep + sdSeg : ''}${sep}<span class="bc-current">${esc(sv.drop)}</span></nav>`;
     }
@@ -900,11 +900,11 @@ export function renderSlViewer() {
       <div style="display:flex;gap:8px;align-items:center;margin-bottom:14px;padding:8px 12px;background:var(--surface);border:1px solid var(--border);border-radius:8px">
         <input type="text" id="slSearchInput" placeholder="Search drops, superdrops, cards, or notes…"
           value="${esc(sv.search || '')}"
-          oninput="ui.slViewer.search=this.value;ui.slViewer.page=0;render();setTimeout(()=>{const el=document.getElementById('slSearchInput');if(el){el.focus();el.setSelectionRange(el.value.length,el.value.length)}},0)"
+          data-act="ui-set" data-path="slViewer.search" data-also="slViewer.page=0" data-refocus="slSearchInput"
           style="flex:1;min-width:200px;padding:6px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px;font-family:inherit">
-        ${sv.search ? `<button class="btn btn-ghost" style="font-size:12px;padding:4px 10px" onclick="ui.slViewer.search='';render()">✕</button>` : ''}
+        ${sv.search ? `<button class="btn btn-ghost" style="font-size:12px;padding:4px 10px" data-act="ui-set" data-path="slViewer.search" data-val="">✕</button>` : ''}
         <span style="color:var(--text-muted);font-size:11px;white-space:nowrap">Sort:</span>
-        <select onchange="ui.slViewer.sort=this.value;render()" style="font-size:12px">
+        <select data-act="ui-set" data-path="slViewer.sort" style="font-size:12px">
           ${opts.map(([v, label]) => `<option value="${v}"${sv.sort===v?' selected':''}>${label}</option>`).join('')}
         </select>
       </div>`;
@@ -952,7 +952,7 @@ export function renderSlViewer() {
   // View toggle — hierarchical "by superdrop" vs. flat "by collector number"
   function viewToggle() {
     const v = sv.view || 'drops';
-    const b = (id, label) => `<button class="btn ${v === id ? 'btn-primary' : 'btn-ghost'}" style="font-size:12px" onclick="ui.slViewer.view='${id}';ui.slViewer.page=0;render()">${label}</button>`;
+    const b = (id, label) => `<button class="btn ${v === id ? 'btn-primary' : 'btn-ghost'}" style="font-size:12px" data-act="ui-set" data-path="slViewer.view" data-val="${id}" data-also="slViewer.page=0">${label}</button>`;
     return `<div style="display:flex;gap:8px;margin-bottom:12px">${b('drops', '📦 By Superdrop')}${b('collector', '🔢 By Collector №')}${b('pnl', '💰 P&L')}${b('index', '📈 Index')}</div>`;
   }
 
@@ -976,16 +976,16 @@ export function renderSlViewer() {
     });
     const ownedN = list.reduce((n, c) => n + (ownedIds.has(c.id) ? 1 : 0), 0);
     const v = sv.view || 'drops';
-    const tb = (id, label) => `<button class="btn ${v === id ? 'btn-primary' : 'btn-ghost'}" style="font-size:12px;white-space:nowrap" onclick="ui.slViewer.view='${id}';ui.slViewer.page=0;render()">${label}</button>`;
+    const tb = (id, label) => `<button class="btn ${v === id ? 'btn-primary' : 'btn-ghost'}" style="font-size:12px;white-space:nowrap" data-act="ui-set" data-path="slViewer.view" data-val="${id}" data-also="slViewer.page=0">${label}</button>`;
     // One merged control bar: view toggle + search + owned count, all on a single row.
     const headerBar = `
       <div style="display:flex;gap:10px;align-items:center;padding:8px 12px;background:var(--surface);border:1px solid var(--border);border-radius:8px">
         <div style="display:flex;gap:6px;flex-shrink:0">${tb('drops', '📦 By Superdrop')}${tb('collector', '🔢 By Collector №')}${tb('pnl', '💰 P&L')}${tb('index', '📈 Index')}</div>
         <input type="text" id="slSearchInput" placeholder="Search by collector number, card name, or note…"
           value="${esc(sv.search || '')}"
-          oninput="ui.slViewer.search=this.value;render();setTimeout(()=>{const el=document.getElementById('slSearchInput');if(el){el.focus();el.setSelectionRange(el.value.length,el.value.length)}},0)"
+          data-act="ui-set" data-path="slViewer.search" data-refocus="slSearchInput"
           style="flex:1;min-width:160px;padding:6px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px;font-family:inherit">
-        ${sv.search ? `<button class="btn btn-ghost" style="font-size:12px;padding:4px 10px" onclick="ui.slViewer.search='';render()">✕</button>` : ''}
+        ${sv.search ? `<button class="btn btn-ghost" style="font-size:12px;padding:4px 10px" data-act="ui-set" data-path="slViewer.search" data-val="">✕</button>` : ''}
         <span style="color:var(--text-muted);font-size:12px;white-space:nowrap;flex-shrink:0">${ownedN.toLocaleString()} / ${list.length.toLocaleString()} owned</span>
       </div>`;
     // Fixed header + its own scroll region: the merged bar never moves and nothing
@@ -1006,7 +1006,7 @@ export function renderSlViewer() {
 
   // Secret Lair Index — portfolio headline + leaderboard + distribution
   if (sv.view === 'index') {
-    const tbi = (id, label) => `<button class="btn ${sv.view === id ? 'btn-primary' : 'btn-ghost'}" style="font-size:12px;white-space:nowrap" onclick="ui.slViewer.view='${id}';ui.slViewer.page=0;render()">${label}</button>`;
+    const tbi = (id, label) => `<button class="btn ${sv.view === id ? 'btn-primary' : 'btn-ghost'}" style="font-size:12px;white-space:nowrap" data-act="ui-set" data-path="slViewer.view" data-val="${id}" data-also="slViewer.page=0">${label}</button>`;
     const idxHeader = `
       <div style="display:flex;gap:6px;align-items:center;padding:8px 12px;margin-bottom:14px;background:var(--surface);border:1px solid var(--border);border-radius:8px">
         ${tbi('drops', '📦 By Superdrop')}${tbi('collector', '🔢 By Collector №')}${tbi('pnl', '💰 P&L')}${tbi('index', '📈 Index')}
@@ -1018,7 +1018,7 @@ export function renderSlViewer() {
   if (sv.view === 'pnl') {
     const rows = sortPnlRows(computeDropPnL());
     const v = sv.view;
-    const tb = (id, label) => `<button class="btn ${v === id ? 'btn-primary' : 'btn-ghost'}" style="font-size:12px;white-space:nowrap" onclick="ui.slViewer.view='${id}';ui.slViewer.page=0;render()">${label}</button>`;
+    const tb = (id, label) => `<button class="btn ${v === id ? 'btn-primary' : 'btn-ghost'}" style="font-size:12px;white-space:nowrap" data-act="ui-set" data-path="slViewer.view" data-val="${id}" data-also="slViewer.page=0">${label}</button>`;
     const tot = rows.reduce((a, r) => { a.cost += r.cost; a.value += r.value; return a; }, { cost: 0, value: 0 });
     const totGain = tot.value - tot.cost;
     const totPct = tot.cost > 0 ? (totGain / tot.cost * 100) : null;
@@ -1038,7 +1038,7 @@ export function renderSlViewer() {
         </span>
       </div>`;
 
-    const th = (field, label, align = 'right') => `<th onclick="sortSlPnl('${field}')" style="cursor:pointer;text-align:${align};padding:8px 10px;position:sticky;top:0;background:var(--bg);white-space:nowrap;user-select:none;border-bottom:1px solid var(--border)">${label}${arrow(field)}</th>`;
+    const th = (field, label, align = 'right') => `<th data-act="sortSlPnl" data-arg="${field}" style="cursor:pointer;text-align:${align};padding:8px 10px;position:sticky;top:0;background:var(--bg);white-space:nowrap;user-select:none;border-bottom:1px solid var(--border)">${label}${arrow(field)}</th>`;
 
     const body = rows.length === 0
       ? `<tr><td colspan="5" style="padding:34px;text-align:center;color:var(--text-muted)">No Secret Lair P&L yet.<br>Own singles from a drop, or add a sealed drop with its purchase price (right-click a drop → "Add drop to Sealed Collection"), to see gain/loss here.</td></tr>`
@@ -1107,7 +1107,7 @@ export function renderSlViewer() {
         <div class="gallery-filter-row">
           ${sdSelect()}
           ${drops.length ? dropSelect(drops) : ''}
-          <button class="btn btn-ghost" style="font-size:12px" onclick="ui.slViewer.drop='';ui.slViewer.page=0;render()">← Back to Superdrop</button>
+          <button class="btn btn-ghost" style="font-size:12px" data-act="ui-set" data-path="slViewer.drop" data-val="" data-also="slViewer.page=0">← Back to Superdrop</button>
           <button class="btn btn-ghost" style="font-size:12px" data-slact="edit-drop" data-arg="${esc(sv.drop)}">${slDropEdited(sv.drop) ? '✎ Edit (customized)' : '✎ Edit grouping / note'}</button>
           ${missingIds.length ? `<button class="btn btn-ghost" style="font-size:12px" data-slact="want-missing" data-arg="${esc(sv.drop)}" title="Add this drop's missing cards to your want list">★ Want ${missingIds.length} missing${wantedMissing ? ` (${wantedMissing} on list)` : ''}</button>` : ''}
           <span style="margin-left:auto;font-size:13px;font-weight:700;color:${stats.owned===stats.total&&stats.total>0?'var(--green)':'var(--text-muted)'}">
@@ -1122,7 +1122,7 @@ export function renderSlViewer() {
         ${shown.map(scryfallId => slCardTile(scryfallId, undefined, requiredFinishFor(sv.drop, scryfallId))).join('')}
       </div>
       ${hasMore ? `<div style="text-align:center;padding:28px 0">
-        <button class="btn btn-primary" onclick="ui.slViewer.page++;render()">Load more — ${(cardIds.length - shown.length).toLocaleString()} remaining</button>
+        <button class="btn btn-primary" data-act="ui-inc" data-path="slViewer.page">Load more — ${(cardIds.length - shown.length).toLocaleString()} remaining</button>
       </div>` : ''}`;
   }
 
@@ -1216,7 +1216,7 @@ export async function showSlViewerModal(scryfallId) {
     <div style="display:flex;gap:22px;align-items:flex-start;flex-wrap:wrap">
       <img src="${esc(img)}" alt=""
         style="width:240px;border-radius:12px;box-shadow:0 6px 28px rgba(0,0,0,0.65);flex-shrink:0"
-        onerror="this.style.display='none'">
+        data-imgerr="hide">
       <div style="flex:1;min-width:200px">
         <div id="sl-modal-details" style="color:var(--text-muted);font-size:13px;padding-top:8px">Loading card details…</div>
       </div>

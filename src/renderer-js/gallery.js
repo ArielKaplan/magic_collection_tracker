@@ -30,7 +30,7 @@ export function showGalleryModal(cardId) {
     <div style="display:flex;gap:22px;align-items:flex-start;flex-wrap:wrap">
       ${img ? `<img src="${esc(img)}" alt="${esc(card.name)}"
         style="width:240px;border-radius:12px;box-shadow:0 6px 28px rgba(0,0,0,0.65);flex-shrink:0"
-        onerror="this.style.display='none'">` : ''}
+        data-imgerr="hide">` : ''}
       <div style="flex:1;min-width:200px">
         <h2 style="margin:0 0 4px">${esc(card.name)}</h2>
         <div style="color:var(--text-muted);font-size:13px;margin-bottom:14px">${esc(card.setName)} · ${esc((card.setCode||'').toUpperCase())} · #${esc(card.collectorNumber||'?')}</div>
@@ -75,8 +75,8 @@ export function showGalleryModal(cardId) {
         </div>` : ''}
 
         <div style="display:flex;gap:8px;flex-wrap:wrap">
-          <button class="btn btn-ghost" style="font-size:12px" onclick="viewInCollection('${escJs(card.name)}')">View in collection →</button>
-          <button class="btn btn-ghost" style="font-size:12px" onclick="openPrintingsTab('${escJs(card.name)}')">View all printings ◇</button>
+          <button class="btn btn-ghost" style="font-size:12px" data-act="viewInCollection" data-arg="${esc(card.name)}">View in collection →</button>
+          <button class="btn btn-ghost" style="font-size:12px" data-act="openPrintingsTab" data-arg="${esc(card.name)}">View all printings ◇</button>
           ${scryfallUrl ? `<a href="${esc(scryfallUrl)}" target="_blank" class="btn btn-ghost" style="font-size:12px;text-decoration:none">View on Scryfall ↗</a>` : ''}
         </div>
       </div>

@@ -84,11 +84,11 @@ function deckTable(deck, ownedKeys) {
     const active = field === f;
     const arrow = active ? (dir === 'desc' ? ' ↓' : ' ↑') : '';
     return `<th style="cursor:pointer;white-space:nowrap;user-select:none${active ? ';color:var(--accent2)' : ''}"
-      onclick="ui.precons.tableSort='${f}_${active && dir === 'asc' ? 'desc' : 'asc'}';render()">${label}${arrow}</th>`;
+      data-act="ui-set" data-path="precons.tableSort" data-val="${f}_${active && dir === 'asc' ? 'desc' : 'asc'}">${label}${arrow}</th>`;
   };
 
   const body = rows.map(r => `
-    <tr data-precon-sid="${esc(r.sid)}" style="cursor:pointer${r.owned ? '' : ';opacity:.62'}" onclick="showSlViewerModal('${esc(r.sid)}')">
+    <tr data-precon-sid="${esc(r.sid)}" style="cursor:pointer${r.owned ? '' : ';opacity:.62'}" data-act="showSlViewerModal" data-arg="${esc(r.sid)}">
       <td>${r.owned ? '<span style="color:var(--green)">✓</span>' : '<span style="color:var(--text-muted)">✗</span>'}</td>
       <td style="font-weight:600;color:var(--text)">${esc(r.name)}${r.board === 'commander' ? ' <span title="Commander">👑</span>' : ''}${r.board === 'side' ? ' <span style="font-size:10px;color:var(--text-muted)">(SB)</span>' : ''}</td>
       <td style="font-family:var(--mono,monospace);font-size:12px;white-space:nowrap">${esc(r.manaCost)}</td>
@@ -117,17 +117,17 @@ function refreshBar() {
       <span style="font-size:12px;color:var(--text-muted);flex:1">${preconState.decks.length.toLocaleString()} preconstructed decks · 1993 → today · decklists never change, new ones are fetched on demand</span>
       <button class="btn btn-ghost" style="font-size:12px;white-space:nowrap"
         title="Checks MTGJSON's deck catalog for precons released since this dataset was built and fetches just the new ones."
-        onclick="refreshPreconData()" ${preconState.syncing ? 'disabled' : ''}>
+        data-act="refreshPreconData" ${preconState.syncing ? 'disabled' : ''}>
         ${preconState.syncing ? '⏳ Checking…' : '↻ Check for New Precons'}
       </button>
     </div>`;
 }
 
 function breadcrumb(pv, deck) {
-  const root = `<a class="bc-link" onclick="ui.precons.line='';ui.precons.deck='';render()">Precon Explorer</a>`;
+  const root = `<a class="bc-link" data-act="ui-set" data-path="precons.line" data-val="" data-also="precons.deck=">Precon Explorer</a>`;
   const sep = `<span class="bc-sep">›</span>`;
   if (deck) {
-    const line = `<a class="bc-link" onclick="ui.precons.deck='';render()">${esc(deck.type || 'Decks')}</a>`;
+    const line = `<a class="bc-link" data-act="ui-set" data-path="precons.deck" data-val="">${esc(deck.type || 'Decks')}</a>`;
     return `<nav class="sl-breadcrumb">${root}${sep}${line}${sep}<span class="bc-current">${esc(deck.name)}</span></nav>`;
   }
   if (pv.line) return `<nav class="sl-breadcrumb">${root}${sep}<span class="bc-current">${esc(pv.line)}</span></nav>`;
@@ -146,8 +146,8 @@ function deckEconomicsBanner(deck) {
     ? `<span style="color:var(--text-muted)">⏳ Pricing…</span>`
     : singles
       ? `<strong style="color:var(--text)">${fmt(singles.value)}</strong> <span style="font-size:11px;color:var(--text-muted)">(${singles.priced}/${singles.rows} priced)</span>
-         <button class="btn btn-ghost" style="font-size:11px;padding:2px 8px;margin-left:4px" onclick="pricePreconSingles('${escJs(file)}')">↻</button>`
-      : `<button class="btn btn-sm" onclick="pricePreconSingles('${escJs(file)}')">💰 Price the singles</button>`;
+         <button class="btn btn-ghost" style="font-size:11px;padding:2px 8px;margin-left:4px" data-act="pricePreconSingles" data-arg="${esc(file)}">↻</button>`
+      : `<button class="btn btn-sm" data-act="pricePreconSingles" data-arg="${esc(file)}">💰 Price the singles</button>`;
 
   const sealedCell = sealed
     ? `<strong style="color:var(--text)">${fmt(sealed.price)}</strong> <span style="font-size:11px;color:var(--text-muted)" title="${esc(sealed.name || '')}">≈ TCGCSV</span>`
@@ -189,7 +189,7 @@ export function renderPreconTab() {
     return `<div style="padding:40px;text-align:center;color:var(--text-muted)">
       No precon catalog loaded.<br>The baked dataset seeds on first launch — try restarting the app,
       or click ↻ Check for New Precons after a restart.<br><br>
-      <button class="btn" onclick="refreshPreconData()">↻ Check for New Precons</button>
+      <button class="btn" data-act="refreshPreconData">↻ Check for New Precons</button>
     </div>`;
   }
 
@@ -229,14 +229,14 @@ export function renderPreconTab() {
         }).join('');
 
     const viewBtn = (id, label) =>
-      `<button class="btn ${pv.deckView === id ? 'btn-primary' : 'btn-ghost'}" style="font-size:12px" onclick="ui.precons.deckView='${id}';render()">${label}</button>`;
+      `<button class="btn ${pv.deckView === id ? 'btn-primary' : 'btn-ghost'}" style="font-size:12px" data-act="ui-set" data-path="precons.deckView" data-val="${id}">${label}</button>`;
 
     return refreshBar() + breadcrumb(pv, deck) + `
       <div class="gallery-filters">
         <div class="gallery-filter-row">
-          <button class="btn btn-ghost" style="font-size:12px" onclick="ui.precons.deck='';render()">← Back to ${esc(deck.type || 'decks')}</button>
+          <button class="btn btn-ghost" style="font-size:12px" data-act="ui-set" data-path="precons.deck" data-val="">← Back to ${esc(deck.type || 'decks')}</button>
           ${viewBtn('gallery', '🖼 Gallery')}${viewBtn('table', '📊 Table')}
-          ${missing.length ? `<button class="btn btn-ghost" style="font-size:12px" onclick="addPreconMissingToWantList('${escJs(deck.file)}')" title="Add this deck's missing cards to your want list">★ Want ${missing.length} missing</button>` : ''}
+          ${missing.length ? `<button class="btn btn-ghost" style="font-size:12px" data-act="addPreconMissingToWantList" data-arg="${esc(deck.file)}" title="Add this deck's missing cards to your want list">★ Want ${missing.length} missing</button>` : ''}
           <span style="display:flex;align-items:center;gap:6px;margin-left:8px">${colorPips(deck.colors)}</span>
           <span style="font-size:12px;color:var(--text-muted)">${esc(deck.type || '')} · ${esc(deck.code || '')} · ${esc(deck.date || '—')}${base ? ` · variant of ${esc(base.name)}` : ''}</span>
           ${deck.commander ? `<span style="font-size:12px;color:var(--text-muted)">👑 ${esc(deck.commander)}</span>` : ''}
@@ -268,11 +268,11 @@ export function renderPreconTab() {
       <div style="display:flex;gap:8px;align-items:center;margin-bottom:14px;padding:8px 12px;background:var(--surface);border:1px solid var(--border);border-radius:8px">
         <input type="text" id="preconSearchInput" placeholder="Search decks, commanders, or set codes…"
           value="${esc(pv.search || '')}"
-          oninput="ui.precons.search=this.value;render();setTimeout(()=>{const el=document.getElementById('preconSearchInput');if(el){el.focus();el.setSelectionRange(el.value.length,el.value.length)}},0)"
+          data-act="ui-set" data-path="precons.search" data-refocus="preconSearchInput"
           style="flex:1;min-width:200px;padding:6px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px;font-family:inherit">
-        ${pv.search ? `<button class="btn btn-ghost" style="font-size:12px;padding:4px 10px" onclick="ui.precons.search='';render()">✕</button>` : ''}
+        ${pv.search ? `<button class="btn btn-ghost" style="font-size:12px;padding:4px 10px" data-act="ui-set" data-path="precons.search" data-val="">✕</button>` : ''}
         <span style="color:var(--text-muted);font-size:11px;white-space:nowrap">Sort:</span>
-        <select onchange="ui.precons.sort=this.value;render()" style="font-size:12px">
+        <select data-act="ui-set" data-path="precons.sort" style="font-size:12px">
           ${opts.map(([v, l]) => `<option value="${v}"${pv.sort === v ? ' selected' : ''}>${l}</option>`).join('')}
         </select>
       </div>
@@ -283,7 +283,7 @@ export function renderPreconTab() {
             const s = statsFor(d.file);
             const pc = s.total ? Math.round(s.owned / s.total * 100) : 0;
             return `
-              <div class="sl-superdrop-card" onclick="ui.precons.deck='${escJs(d.file)}';render()">
+              <div class="sl-superdrop-card" data-act="ui-set" data-path="precons.deck" data-val="${esc(d.file)}">
                 <div class="sl-superdrop-name">${esc(d.name)}</div>
                 <div class="sl-superdrop-meta" style="display:flex;align-items:center;gap:6px">
                   ${colorPips(d.colors)}
@@ -314,7 +314,7 @@ export function renderPreconTab() {
   const jumpToggle = hasJumpstart ? `
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;padding:6px 12px;background:var(--surface);border:1px solid var(--border);border-radius:8px">
       <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px;color:var(--text-muted)">
-        <input type="checkbox" ${pv.showJumpstart ? 'checked' : ''} onclick="ui.precons.showJumpstart=this.checked;render()">
+        <input type="checkbox" ${pv.showJumpstart ? 'checked' : ''} data-act="ui-set" data-path="precons.showJumpstart">
         Show Jumpstart (${byType.get('Jumpstart').length} half-decks)
       </label>
     </div>` : '';
@@ -329,7 +329,7 @@ export function renderPreconTab() {
         const dates = decks.map(d => (d.date || '').slice(0, 4)).filter(Boolean).sort();
         const range = dates.length ? (dates[0] === dates[dates.length - 1] ? dates[0] : `${dates[0]}–${dates[dates.length - 1]}`) : '—';
         return `
-          <div class="sl-superdrop-card" onclick="ui.precons.line='${escJs(line)}';ui.precons.search='';render()">
+          <div class="sl-superdrop-card" data-act="ui-set" data-path="precons.line" data-val="${esc(line)}" data-also="precons.search=">
             <div class="sl-superdrop-name">${esc(line)}s</div>
             <div class="sl-superdrop-meta">${range} · ${decks.length} deck${decks.length !== 1 ? 's' : ''}</div>
             <div class="sl-progress-bar"><div class="sl-progress-fill" style="width:${pc}%"></div></div>
