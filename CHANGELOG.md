@@ -11,6 +11,8 @@ in-app "What's New" screen — from that version's section. Keep entries
 user-facing: what changed, not how.
 
 ## [Unreleased]
+
+## [0.37.0] - 2026-07-07
 ### Security
 - **Locked-down scripting (the last hardening step).** Every button, link, and control in the app moved off inline JavaScript onto a single safe event system, so the app can now enforce a strict Content-Security-Policy that forbids inline scripts entirely. In plain terms: even if hostile text ever slipped past the app's other defenses — from a shared collection file or, later, community-shared curation — the browser engine simply won't run it. This closes the last known avenue for a malicious file to execute code in the app.
 
