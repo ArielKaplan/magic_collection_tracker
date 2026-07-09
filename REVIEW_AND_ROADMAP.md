@@ -5,6 +5,10 @@ product strategy that came out of it. **Read PROJECT_CONTEXT.md first** for curr
 architecture; this document preserves the reasoning behind the decisions so a new session
 can pick up the conversation without re-deriving it.
 
+**Current plan of record:** see **"Journey to 1.0 → Steam → monetization"** (July 9, 2026)
+at the bottom of this file — 1.0 stamping, the Steam free-release path, and why the app
+can't be sold.
+
 ## Status of the review findings
 
 The review below was written against v0.9.0 *before* remediation. Two phases were
@@ -450,3 +454,143 @@ Next remaining product roadmap item is the **curation UI export/import + communi
 community SL dataset). Then sold/realized-gains tracking (REVIEW #5). Phase 2 (vitest) /
 Phase 3 (Svelte + CSP) still open; this work added more inline-`onclick`/window-global surface
 (the want-list table + context-menu entries) that Phase 3 retires.
+
+---
+
+# Journey to 1.0 → Steam → monetization (July 9, 2026)
+
+Assessment + agreed plan from the July 9 session, written against **v0.37.0**. This section
+is the reference for "what sits between here and a public release." (Everything between
+v0.17 and v0.37 — realized gains, SL Index, finish-aware data model, Precon Explorer,
+left-rail shell, global search, CSP/inline-handler retirement — shipped without handoffs
+in this file; see CHANGELOG.md and the auto-memory notes.)
+
+## 1.0 status: the app is there — stamp it
+
+All six definition-of-done criteria (agreed 2026-07-05) are shipped as of v0.35–v0.37:
+
+1. First-run onboarding (`firstRun.js` welcome → import/restore/skip)
+2. One-click verified backup restore (Settings → Backups & Recovery)
+3. CI test gate — release workflow runs vitest + smoke suites before building/publishing
+4. Strict CSP — `script-src 'self'`, zero inline handlers, no unsafe-inline/eval (v0.36–0.37)
+5. Source-drift resilience — all six external feeds fail soft on outage AND shape drift
+6. README/identity refresh ("financial & reference terminal for SL + precons")
+
+**v0.37.0 is 1.0 in substance.** What remains before stamping:
+
+1. **Clean-machine test (the only real gate).** Install the release build on a fresh
+   Windows user/VM: first-run flow → sample CSV import → price refresh → restart →
+   backup restore. Years of dogfooding state on the dev machine can mask first-run bugs;
+   this is the highest-value pre-1.0 hour.
+2. `npm run release:tag -- major` → **v1.0.0** with a milestone CHANGELOG entry.
+
+**Community Curation Sync stays the 1.1 headline** (unblocked since v0.31.0); Alerts +
+Collection Report remain fast-follows. Nothing else gates 1.0. Consciously still NOT
+doing: cloud/accounts/social, scanning, multi-currency.
+
+## Steam — as a FREE release
+
+Steam accepts non-game software (Software → Utilities); collection managers exist there.
+Two sides of work:
+
+### Valve's side (process, ~2–4 weeks elapsed, mostly waiting)
+
+- **Steamworks partner account:** identity verification, tax interview, bank details —
+  required even for a free app.
+- **$100 Steam Direct fee** per product; recoupable only after $1,000 adjusted gross
+  revenue — i.e. never, for a free app. Treat as shelf-space cost.
+  (https://partner.steamgames.com/doc/gettingstarted/appfee)
+- **Store assets:** ~6 capsule image sizes, ≥5 screenshots at 1920×1080, short + long
+  descriptions. Only `build/icon.png` exists today — a small but real design task. The
+  P&L ledger and SL Explorer views are the pitch; screenshot those.
+- **Two review gates:** store-page review (days), then build review pre-launch; the page
+  must sit public as "Coming Soon" ~2 weeks before release.
+- **Content survey:** includes an AI-generated-content disclosure (answer honestly given
+  how this app is built) and a requires-internet note ("runs offline with last-good
+  data" is a good store-page line, and true).
+
+### Our side (packaging, ~2–4 sessions)
+
+1. **Steam takes the unpacked app directory, not the NSIS installer.** Add a
+   `dir`/win-unpacked packaging path and upload via SteamPipe (`steamcmd`) as a Windows
+   x64 depot. NSIS remains the GitHub-channel artifact.
+2. **Distribution-channel flag — the one real code change.** Steam builds must fully
+   disable electron-updater: no `checkForUpdates`, no update pill, no Settings updater
+   section, no GitHub `publish` step. Steam owns updating; self-updating out from under
+   it breaks depot file verification. Design it as a channel concept (build-time flag)
+   so GitHub + Steam builds coexist.
+3. **Already correct, no change needed:** DB in `%APPDATA%\secret-lair-tracker` survives
+   Steam install/verify/uninstall; single-instance lock covers Steam double-launch;
+   graceful offline degradation.
+4. **Steamworks SDK: skip at launch.** No achievements/overlay needed for software
+   titles; zero SDK integration is fine. **No Steam Cloud for `collection.db`** — WAL
+   sync is exactly the corruption class this app learned the hard way (see
+   db-corruption history).
+5. **Code signing: not needed for the Steam channel** (Steam is the trust layer).
+   SmartScreen only affects the GitHub NSIS channel — separate, optional decision.
+
+**The real gate is IP review:** submission affirms we have the rights to the content we
+ship. That's the monetization/naming section below — the IP question and the money
+question are the same question.
+
+## Monetization — researched verdict (July 9, 2026): can't charge for it
+
+The code is 100% ours and every dependency (Electron, better-sqlite3, chart.js,
+interactjs) is MIT/permissive — no blocker there. The blocker is that the app's entire
+visible surface is WotC IP + community data whose terms require free access:
+
+- **WotC Fan Content Policy** — the only license we have to display card images, card
+  names, and the Secret Lair product line: *"You can't require payments, surveys,
+  downloads, subscriptions, or email registration to access your Fan Content"* and
+  *"You can't sell or license your Fan Content to any third parties for any type of
+  compensation."* A price tag exits the policy entirely — at which point it's selling
+  WotC's copyrighted card images with no license at all.
+  (https://company.wizards.com/en/legal/fancontentpolicy)
+- **Scryfall API terms** (primary price/image/metadata source) independently prohibit
+  paywalling: you may not require payment or subscriptions in exchange for access to
+  Scryfall data; the API is offered free *under* the Fan Content Policy.
+  (https://scryfall.com/docs/api/ , https://scryfall.com/docs/terms)
+- **TCGCSV (TCGplayer prices) and mtg.wiki** (MSRPs, superdrop grouping) carry the same
+  community/non-commercial expectations — weaker legal teeth, same direction.
+- Paid MTG apps exist (Delver Lens, TopDecked) in a **selectively-tolerated gray zone** —
+  a bad foundation on a storefront where one trademark complaint pulls the listing.
+- Economics anyway: at $0.99 minus Valve's 30%, recouping the $100 fee alone takes
+  **~1,450 sales**. Free-with-affiliate-links almost certainly out-earns a price tag.
+
+### Sanctioned money paths
+
+The policy explicitly allows *"sponsorships, ad revenue, and donations"*:
+
+1. **Free app + donation link** (Ko-fi/Patreon in Settings/About) — the Scryfall /
+   Moxfield model.
+2. **TCGplayer affiliate program** — the buy actions already exist ("Buy on TCGplayer
+   Mass Entry", per-card buys in decks/want list); adding a partner/affiliate code to
+   those URLs is the natural, fully-sanctioned path in this ecosystem.
+
+### Naming — action required regardless of price
+
+The policy also says *"Don't use Wizards' logos and trademarks"* — and **"Secret Lair"
+is WotC's product trademark.** In store *description* text, "a collection tracker for
+Magic: The Gathering Secret Lair drops" is defensible nominative use; as the product
+*title* on a commercial storefront it is not — it's the single most exposed thing about
+this plan, more than the card images. Before any store page goes up:
+
+- Pick a storefront name that doesn't contain the mark (the README's "financial
+  terminal" framing is raw material).
+- Rename only the product surface: title bar, `productName`/installer branding, store
+  copy. **Keep `package.json` `name` (`secret-lair-tracker` → the `%APPDATA%` userData
+  path) and `appId` (`com.akapl.secretlairtracker`) stable** — changing those orphans
+  every existing install's database and breaks auto-update continuity for the GitHub
+  channel.
+
+## Agreed sequence
+
+1. Clean-machine install test → stamp **v1.0.0**.
+2. Choose the storefront name; rename the product surface (internal IDs stay).
+3. Build the Steam channel: `dir` packaging target + updater kill-switch flag →
+   Steamworks onboarding → store assets → page + build reviews.
+4. Ship **free**, with a donation link and TCGplayer affiliate codes wired into the
+   existing buy actions.
+5. Optional stepping stone: **itch.io** first (no fee, no review queue) — same
+   "strangers install this cold" learning, flushes out first-run bugs while Valve's
+   review runs.
