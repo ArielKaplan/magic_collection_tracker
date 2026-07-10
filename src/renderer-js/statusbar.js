@@ -57,11 +57,11 @@ export function showAbout() {
   const termStyle = 'font-weight:600;color:var(--text);white-space:nowrap';
   const defStyle  = 'color:var(--text-dim);font-size:12px;line-height:1.55';
   showModal(`
-    <h2 style="margin-bottom:4px">Secret Lair Tracker</h2>
+    <h2 style="margin-bottom:4px">Mana Ledger</h2>
     <p style="color:var(--text-dim);font-size:13px;margin:4px 0 14px">Desktop edition · Electron + SQLite</p>
 
     <div style="display:grid;grid-template-columns:auto 1fr;gap:5px 16px;font-size:13px;line-height:1.7;margin-bottom:18px">
-      <span style="color:var(--text-muted)">Version</span><span>0.4.0</span>
+      <span style="color:var(--text-muted)">Version</span><span id="about-version">…</span>
       <span style="color:var(--text-muted)">Cards</span><span>${collection.cards.length.toLocaleString()}</span>
       <span style="color:var(--text-muted)">Sealed</span><span>${(collection.sealed || []).length.toLocaleString()}</span>
       <span style="color:var(--text-muted)">Last refresh</span><span>${collection.lastPriceRefresh ? new Date(collection.lastPriceRefresh).toLocaleString() : 'Never'}</span>
@@ -109,5 +109,10 @@ export function showAbout() {
     <div style="display:flex;justify-content:flex-end">
       <button class="btn btn-primary" data-act="hideModal">Close</button>
     </div>`);
+  // Fill the real installed version (was a hardcoded, permanently stale string).
+  window.api?.app?.version?.().then(v => {
+    const el = document.getElementById('about-version');
+    if (el && v) el.textContent = `v${v}`;
+  }).catch(() => {});
 }
 

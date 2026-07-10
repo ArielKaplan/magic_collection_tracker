@@ -1,4 +1,6 @@
-# Secret Lair Tracker
+# Mana Ledger
+
+*(formerly Secret Lair Tracker — same app, same data; renamed for storefront release since "Secret Lair" is a Wizards of the Coast trademark)*
 
 **A financial and reference terminal for Magic: The Gathering — built around Secret Lair drops and preconstructed decks.** Track what you own, what it's worth, and whether it paid off, with depth that general collection trackers don't touch. Local-first: your data lives in a single SQLite file on your machine, backed up automatically. Windows desktop app (Electron).
 

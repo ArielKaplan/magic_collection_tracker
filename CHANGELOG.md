@@ -1,7 +1,7 @@
 # Changelog
 
-All notable changes to Secret Lair Tracker are recorded here. The format follows
-[Keep a Changelog](https://keepachangelog.com/).
+All notable changes to Mana Ledger (formerly Secret Lair Tracker) are recorded here.
+The format follows [Keep a Changelog](https://keepachangelog.com/).
 
 **How this works:** add notes under **[Unreleased]** as you make changes.
 `npm run release:tag -- <patch|minor|major>` promotes that section to the new
@@ -11,6 +11,14 @@ in-app "What's New" screen — from that version's section. Keep entries
 user-facing: what changed, not how.
 
 ## [Unreleased]
+
+### Milestone
+- **Version 1.0 — and a new name: Mana Ledger.** Same app, same data — nothing moves, nothing re-imports, updates keep arriving automatically. The new name is one that can stand on a public storefront (a free Steam release is in the works; "Secret Lair" is Wizards of the Coast's trademark, so it stays in the app's descriptions, not its title). The 1.0 stamp marks what the last months built: a first-run welcome, one-click verified backup restore, releases that can't ship with failing tests, a locked-down renderer (strict Content-Security-Policy), price sources that fail soft instead of crashing — and the deepest Secret Lair + precon dataset of any tracker.
+
+### Changed
+- **Window title, installer, and in-app branding now say Mana Ledger.** Your database location, settings, and backups are completely untouched by the rename.
+- **About dialog now shows the real installed version** (it was stuck displaying "0.4.0" forever).
+- **Steam groundwork under the hood:** a Steam-channel build that leaves all updating to Steam. GitHub-channel installs (this one) are unaffected and keep self-updating.
 
 ## [0.38.0] - 2026-07-10
 ### Added

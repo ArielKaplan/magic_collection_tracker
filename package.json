@@ -39,7 +39,7 @@
   },
   "build": {
     "appId": "com.akapl.secretlairtracker",
-    "productName": "Secret Lair Tracker",
+    "productName": "Mana Ledger",
     "directories": {
       "output": "dist"
     },

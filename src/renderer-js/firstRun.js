@@ -31,7 +31,7 @@ export function showFirstRun() {
   showModal(`
     <div style="text-align:center;padding:6px 4px 2px">
       <div style="font-size:30px;margin-bottom:6px">📦✨</div>
-      <h2 style="margin:0 0 6px">Welcome to Secret Lair Tracker</h2>
+      <h2 style="margin:0 0 6px">Welcome to Mana Ledger</h2>
       <p style="color:var(--text-muted);font-size:13.5px;line-height:1.6;max-width:450px;margin:0 auto">
         Track your Magic collection with a focus on <strong style="color:var(--text)">Secret Lair</strong> drops and
         <strong style="color:var(--text)">preconstructed decks</strong> — see what you own, what a drop or precon is

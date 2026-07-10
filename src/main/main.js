@@ -19,7 +19,7 @@ const SELF_UPDATES = CHANNEL === 'github';
 
 // Test/portable hook: point the whole profile (DB, backups, bulk cache, the
 // single-instance lock) at a custom directory, so a fresh-install run can
-// coexist with the real one:  "Secret Lair Tracker.exe" --user-data-dir=D:\tmp\slt
+// coexist with the real one:  "Mana Ledger.exe" --user-data-dir=D:\tmp\slt
 // Must run before the single-instance lock and before anything touches userData.
 const udArg = process.argv.find(a => a.startsWith('--user-data-dir='));
 if (udArg) {
@@ -116,7 +116,7 @@ function buildMenu() {
       submenu: [
         { label: 'Open Database Folder', click: () => shell.openPath(app.getPath('userData')) },
         ...(SELF_UPDATES ? [{ label: 'Check for Updates…', click: () => sendMenu('updates:check') }] : []),
-        { label: 'About Secret Lair Tracker', click: () => sendMenu('about:show') },
+        { label: 'About Mana Ledger', click: () => sendMenu('about:show') },
       ],
     },
   ];
