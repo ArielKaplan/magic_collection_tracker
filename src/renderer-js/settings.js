@@ -4,7 +4,7 @@ import { render } from './render.js';
 import { collection } from './state.js';
 import { autoSave } from './storage.js';
 import { renderTickerTape, tickerSettings } from './ticker.js';
-import { wireUpdaterUI } from './updaterUI.js';
+import { updaterUI, wireUpdaterUI } from './updaterUI.js';
 import { esc, toast } from './utils.js';
 
 
@@ -172,6 +172,7 @@ export function showSettings() {
       <button class="btn btn-danger btn-sm" id="cfg-clear-hist">Clear Price History</button>
     </div>
 
+    ${updaterUI.channel === 'github' ? `
     <h3 style="margin-top:22px">Updates</h3>
     <p style="font-size:13px;color:var(--text-dim);margin-bottom:10px;line-height:1.55">
       Check GitHub Releases for a newer version. If one exists, the app will download it and
@@ -189,7 +190,13 @@ export function showSettings() {
         <div id="upd-progress-bar" style="background:var(--accent,#6366f1);height:100%;width:0%;transition:width .2s"></div>
       </div>
       <div id="upd-progress-text" style="font-size:11px;color:var(--text-muted);margin-top:4px"></div>
-    </div>
+    </div>` : `
+    <h3 style="margin-top:22px">Updates</h3>
+    <p style="font-size:13px;color:var(--text-dim);margin-bottom:10px;line-height:1.55">
+      This build is updated by ${esc(updaterUI.channel === 'steam' ? 'Steam' : updaterUI.channel)} —
+      new versions install automatically from your library.
+      <span id="upd-current" style="color:var(--text-muted)"></span>
+    </p>`}
 
     <h3 style="margin-top:22px;color:#f87171">Danger Zone</h3>
     <p style="font-size:12px;color:var(--text-muted);margin-bottom:10px;line-height:1.5">

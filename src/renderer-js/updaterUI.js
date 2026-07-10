@@ -18,6 +18,7 @@ export const updaterUI = {
   downloading: false,
   downloaded: false,    // an update is downloaded and ready to install
   autoInstall: false,   // restart-to-install automatically once downloaded
+  channel: 'github',    // distribution channel — non-github builds (Steam) hide all update UI
 };
 
 // electron-updater's releaseNotes is either a string or an array of
@@ -137,6 +138,8 @@ export async function wireUpdateBadge() {
   if (!updaterUI.current) {
     try { updaterUI.current = await window.api.app.version(); } catch {}
   }
+  // Channel decides whether Settings shows update controls (Steam builds don't).
+  try { updaterUI.channel = (await window.api.app.channel?.()) || 'github'; } catch {}
   pill.addEventListener('click', () => {
     const state = pill.dataset.state;
     if (state === 'ready') installUpdate();

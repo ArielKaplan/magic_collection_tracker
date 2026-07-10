@@ -91,6 +91,7 @@ contextBridge.exposeInMainWorld('api', {
     dbPath:        ()       => inv('app:dbPath'),
     openExternal:  (url)    => inv('app:openExternal', url),
     version:       ()       => inv('app:version'),
+    channel:       ()       => inv('app:channel'),
     backupHealth:  ()       => inv('app:backupHealth'),
     platform:      process.platform,
   },

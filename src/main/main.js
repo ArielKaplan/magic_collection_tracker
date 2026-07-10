@@ -9,6 +9,24 @@ const { autoUpdater } = require('electron-updater');
 const isDev = process.argv.includes('--dev');
 let mainWindow = null;
 
+// Distribution channel — baked into the packaged package.json at build time
+// (electron-builder --config.extraMetadata.slChannel=steam, see build:steam).
+// 'github' (default) self-updates from GitHub Releases; any other channel
+// (e.g. 'steam') never touches electron-updater — the store owns updating,
+// and a self-update would break its file verification.
+const CHANNEL = require('../../package.json').slChannel || 'github';
+const SELF_UPDATES = CHANNEL === 'github';
+
+// Test/portable hook: point the whole profile (DB, backups, bulk cache, the
+// single-instance lock) at a custom directory, so a fresh-install run can
+// coexist with the real one:  "Secret Lair Tracker.exe" --user-data-dir=D:\tmp\slt
+// Must run before the single-instance lock and before anything touches userData.
+const udArg = process.argv.find(a => a.startsWith('--user-data-dir='));
+if (udArg) {
+  const dir = udArg.slice('--user-data-dir='.length).replace(/^"+|"+$/g, '');
+  if (dir) app.setPath('userData', path.resolve(dir));
+}
+
 // electron-updater: we drive everything from the UI, no auto downloads
 autoUpdater.autoDownload = false;
 autoUpdater.autoInstallOnAppQuit = true;
@@ -97,7 +115,7 @@ function buildMenu() {
       label: '&Help',
       submenu: [
         { label: 'Open Database Folder', click: () => shell.openPath(app.getPath('userData')) },
-        { label: 'Check for Updates…', click: () => sendMenu('updates:check') },
+        ...(SELF_UPDATES ? [{ label: 'Check for Updates…', click: () => sendMenu('updates:check') }] : []),
         { label: 'About Secret Lair Tracker', click: () => sendMenu('about:show') },
       ],
     },
@@ -124,7 +142,7 @@ function runUpdateCheck(reason) {
   });
 }
 function scheduleStartupUpdateCheck() {
-  if (isDev) return;
+  if (isDev || !SELF_UPDATES) return;
   setTimeout(() => runUpdateCheck('startup'), 8000);
   setInterval(() => runUpdateCheck('periodic'), UPDATE_RECHECK_MS);
 }
@@ -331,10 +349,12 @@ function registerIpc() {
     if (parsed.protocol === 'http:' || parsed.protocol === 'https:') return shell.openExternal(url);
   });
   ipcMain.handle('app:version',        () => app.getVersion());
+  ipcMain.handle('app:channel',        () => CHANNEL);
   ipcMain.handle('app:backupHealth',   () => backupHealth);
 
-  // Updater
+  // Updater — inert on non-github channels (the store owns updating)
   ipcMain.handle('updater:check', async () => {
+    if (!SELF_UPDATES) return { ok: false, channel: CHANNEL };
     if (isDev) {
       sendUpdater('error', { message: 'Update checks are disabled in dev mode. Build an installed copy to test.' });
       return { ok: false, devMode: true };
@@ -347,6 +367,7 @@ function registerIpc() {
     }
   });
   ipcMain.handle('updater:download', async () => {
+    if (!SELF_UPDATES) return { ok: false, channel: CHANNEL };
     try {
       await autoUpdater.downloadUpdate();
       return { ok: true };
@@ -355,6 +376,7 @@ function registerIpc() {
     }
   });
   ipcMain.handle('updater:install', () => {
+    if (!SELF_UPDATES) return { ok: false, channel: CHANNEL };
     // quitAndInstall(isSilent, isForceRunAfter)
     autoUpdater.quitAndInstall(false, true);
     return { ok: true };
