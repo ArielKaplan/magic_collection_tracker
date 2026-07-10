@@ -11,6 +11,8 @@ in-app "What's New" screen — from that version's section. Keep entries
 user-facing: what changed, not how.
 
 ## [Unreleased]
+
+## [0.38.0] - 2026-07-10
 ### Added
 - **Filter your collection by color.** The Card Collection filter bar now has the five mana-color pips plus colorless. Select any combination and the view narrows to cards whose color identity fits inside it — pick blue + green and you'll see your mono-blue, mono-green, and Simic cards, nothing else. Works in Table, Gallery, and Sold views, and stacks with search and every other filter.
 
