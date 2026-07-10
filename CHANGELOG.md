@@ -12,6 +12,8 @@ user-facing: what changed, not how.
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-07-10
+
 ### Milestone
 - **Version 1.0 — and a new name: Mana Ledger.** Same app, same data — nothing moves, nothing re-imports, updates keep arriving automatically. The new name is one that can stand on a public storefront (a free Steam release is in the works; "Secret Lair" is Wizards of the Coast's trademark, so it stays in the app's descriptions, not its title). The 1.0 stamp marks what the last months built: a first-run welcome, one-click verified backup restore, releases that can't ship with failing tests, a locked-down renderer (strict Content-Security-Policy), price sources that fail soft instead of crashing — and the deepest Secret Lair + precon dataset of any tracker.
 
