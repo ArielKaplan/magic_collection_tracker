@@ -418,6 +418,18 @@ export function attachContentListeners() {
     if (el) el.addEventListener('change', e => { ui.cards[key] = e.target.value; ui.cards.page = 1; render(); });
   });
 
+  // Color-identity pips — toggle a color in/out of the selection; filteredCards
+  // subset-matches card identities against it (colorIdentityMatches in utils.js).
+  document.querySelectorAll('.color-pip').forEach(pip => {
+    pip.addEventListener('click', () => {
+      const c = pip.dataset.color;
+      const cur = ui.cards.colors || [];
+      ui.cards.colors = cur.includes(c) ? cur.filter(x => x !== c) : [...cur, c];
+      ui.cards.page = 1;
+      render();
+    });
+  });
+
   // Column sort
   document.querySelectorAll('thead th[data-sort]').forEach(th => {
     th.addEventListener('click', () => {

@@ -11,6 +11,11 @@ in-app "What's New" screen — from that version's section. Keep entries
 user-facing: what changed, not how.
 
 ## [Unreleased]
+### Added
+- **Filter your collection by color.** The Card Collection filter bar now has the five mana-color pips plus colorless. Select any combination and the view narrows to cards whose color identity fits inside it — pick blue + green and you'll see your mono-blue, mono-green, and Simic cards, nothing else. Works in Table, Gallery, and Sold views, and stacks with search and every other filter.
+
+### Changed
+- **The Binders button found a better home.** It moved from the floating pill in the bottom-left corner (where it sat on top of the vault area) into the filter bar next to the Table/Gallery toggle — and it now lights up whenever a binder filter is active, so you can tell at a glance why your list looks short.
 
 ## [0.37.0] - 2026-07-07
 ### Security

@@ -6,7 +6,7 @@ import { getCurrentMarketPrice, getCurrentPrice, getPriceChange, getPriceHistory
 import { render } from './render.js';
 import { collection, ui } from './state.js';
 import { autoSave } from './storage.js';
-import { esc, fmt, fmtPct, toast } from './utils.js';
+import { colorIdentityMatches, esc, fmt, fmtPct, toast } from './utils.js';
 
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -150,8 +150,22 @@ export function renderCards() {
   }, { proceeds: 0, cost: 0, gain: 0 });
   const gainColor = realizedTot.gain >= 0 ? 'var(--green)' : '#f87171';
 
+  // Color-identity pips — subset match against Scryfall metadata (see
+  // colorIdentityMatches in utils.js). Letter hints its color when off,
+  // fills like a mana symbol when on.
+  const PIP_TITLES = { W: 'White', U: 'Blue', B: 'Black', R: 'Red', G: 'Green', C: 'Colorless' };
+  const colorPips = `<div class="color-pips" title="Color identity — shows cards using only the selected colors">
+    ${['W', 'U', 'B', 'R', 'G', 'C'].map(c =>
+      `<button class="color-pip pip-${c.toLowerCase()}${s.colors.includes(c) ? ' pip-on' : ''}" data-color="${c}" title="${PIP_TITLES[c]}">${c}</button>`
+    ).join('')}
+  </div>`;
+
+  // Binder toggle — lives in the filter bar (was a bottom-left FAB that
+  // covered the rail's vault footer). Lights up while a binder filter is on.
+  const binderActive = s.binder.include.length > 0 || s.binder.exclude.length > 0;
+  const binderBtn = `<button class="btn${binderActive ? ' btn-primary' : ''}" id="binder-toggle-fab" style="padding:7px 12px;font-size:12px;white-space:nowrap" title="Filter by binder">☰ Binders</button>`;
+
   return `
-    <button class="binder-toggle-fab" id="binder-toggle-fab" title="Toggle Binders (B)">Binders</button>
     <div class="cards-layout">
       <div class="binder-sidebar">
         <div class="binder-sidebar-title">Binders</div>
@@ -179,6 +193,7 @@ export function renderCards() {
       <div>
         <div class="filter-bar">
           <div style="display:flex;gap:6px;align-items:center">
+            ${binderBtn}
             ${isSold ? '' : viewToggle}
             <input type="text" id="cardSearch" placeholder="Search name, set, type, or oracle text… (Enter to search)" value="${esc(s.search)}" style="flex:1;min-width:200px">
             <button class="btn" id="cardSearchBtn" style="padding:7px 14px;font-size:13px">Search</button>
@@ -223,6 +238,7 @@ export function renderCards() {
             <option value="all" ${s.language === 'all' ? 'selected' : ''}>All Languages</option>
             ${langs.map(l => `<option value="${l}" ${s.language === l ? 'selected' : ''}>${l.toUpperCase()}</option>`).join('')}
           </select>
+          ${colorPips}
         </div>
 
         <div class="results-info">
@@ -384,6 +400,10 @@ export function filteredCards() {
   if (s.rarity !== 'all')    cards = cards.filter(c => c.rarity === s.rarity);
   if (s.condition !== 'all') cards = cards.filter(c => c.condition === s.condition);
   if (s.language !== 'all')  cards = cards.filter(c => c.language === s.language);
+  if (s.colors?.length) {
+    cards = cards.filter(c =>
+      colorIdentityMatches(collection.cardMetadata?.[c.scryfallId]?.color_identity, s.colors));
+  }
 
   const { sortField, sortDir } = s;
   return [...cards].sort((a, b) => {

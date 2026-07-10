@@ -23,6 +23,7 @@ export let ui = {
     binder: { include: [], exclude: [] },
     search: '', foil: 'all', rarity: 'all',
     condition: 'all', language: 'all', status: 'owned',  // owned | sold | all
+    colors: [],      // color-identity pips (W/U/B/R/G/C) — subset match, empty = off
     sortField: 'name', sortDir: 'asc',
     page: 1, perPage: 50,
     columns: {

@@ -41,6 +41,18 @@ export function esc(str) {
     .replace(/"/g, '&quot;');
 }
 
+// Color-identity pip filter: with pips selected, a card matches when its
+// identity is a non-empty subset of the selection (U+G → mono-U, mono-G, or
+// exactly UG). The C pip admits colorless (empty-identity) cards. Cards with
+// no cached Scryfall metadata can't be classified and are hidden while pips
+// are active.
+export function colorIdentityMatches(identity, selected) {
+  if (!selected || !selected.length) return true;
+  if (!Array.isArray(identity)) return false;
+  if (!identity.length) return selected.includes('C');
+  return identity.every(c => selected.includes(c));
+}
+
 // Escape a string for safe use inside a JS literal in an inline onclick.
 // HTML-escape (so the attribute value is valid) AND backslash-escape JS quotes.
 export function escJs(str) {
