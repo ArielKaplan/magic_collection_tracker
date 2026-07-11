@@ -11,6 +11,8 @@ in-app "What's New" screen — from that version's section. Keep entries
 user-facing: what changed, not how.
 
 ## [Unreleased]
+### Changed
+- **The coffee cup moved up front.** The Ko-fi support button now sits next to the Mana Ledger logo in the top-left corner — one click, always visible, instead of tucked away in Settings and the Help menu (it's still in those places too).
 
 ## [1.0.2] - 2026-07-11
 ### Added
