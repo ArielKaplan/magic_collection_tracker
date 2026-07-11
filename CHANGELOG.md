@@ -11,6 +11,8 @@ in-app "What's New" screen — from that version's section. Keep entries
 user-facing: what changed, not how.
 
 ## [Unreleased]
+
+## [1.0.9] - 2026-07-11
 ### Changed
 - **Mana Ledger has a new home.** The project now lives under its studio, Sarcastic Software Studios — new website at sarcasticsoftwarestudio.github.io/magic_collection_tracker. Nothing changes on your end: updates keep arriving automatically, and your data is untouched.
 
