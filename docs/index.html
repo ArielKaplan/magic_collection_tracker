@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mana Ledger — the financial terminal for your Magic: The Gathering collection</title>
+  <meta name="description" content="Free Windows desktop app for Magic: The Gathering collectors. Per-drop Secret Lair P&L, crack-or-keep verdicts, 1,500+ precons, want lists with price alerts — local-first, no account, no telemetry.">
+  <link rel="icon" type="image/png" href="img/icon.png">
+  <!-- impact-verification: paste Impact.com meta tag on the next line -->
+
+  <style>
+    :root {
+      --ink: #131118; --ink2: #1c1725; --panel: #1a1622; --edge: #2b2536;
+      --gold: #c9a13f; --cream: #efe9dc; --text: #d6d2dc; --muted: #8d8699;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      background: var(--ink); color: var(--text);
+      font-family: "Segoe UI", system-ui, sans-serif;
+      line-height: 1.6;
+    }
+    .wrap { max-width: 1080px; margin: 0 auto; padding: 0 24px; }
+
+    /* hero */
+    .hero { padding: 72px 0 40px; text-align: center; background: radial-gradient(ellipse 80% 60% at 50% 0%, var(--ink2), var(--ink)); }
+    .mark { width: 72px; height: 72px; border-radius: 16px; background: var(--gold); color: #141021;
+            display: inline-flex; align-items: center; justify-content: center;
+            font-size: 32px; font-weight: 800; font-family: Bahnschrift, "Segoe UI", sans-serif; }
+    h1 { font-family: Bahnschrift, "Segoe UI", sans-serif; font-size: clamp(34px, 6vw, 56px);
+         letter-spacing: .06em; margin: 18px 0 4px; color: var(--cream); }
+    h1 .gold { color: var(--gold); }
+    .tag { color: var(--muted); font-size: clamp(15px, 2.4vw, 19px); max-width: 46ch; margin: 0 auto; }
+    .cta-row { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin: 30px 0 10px; }
+    .btn { display: inline-block; padding: 13px 26px; border-radius: 10px; font-weight: 700;
+           font-size: 15px; text-decoration: none; transition: transform .12s, filter .12s; }
+    .btn:hover { transform: translateY(-1px); filter: brightness(1.1); }
+    .btn-gold { background: var(--gold); color: #141021; }
+    .btn-ghost { border: 1px solid var(--edge); color: var(--text); }
+    .fineprint { color: var(--muted); font-size: 12.5px; margin-top: 10px; }
+    .fineprint a { color: var(--gold); text-decoration: none; }
+
+    /* shots */
+    .shot { border: 1px solid var(--edge); border-radius: 12px; overflow: hidden;
+            box-shadow: 0 24px 60px rgba(0,0,0,.45); margin: 36px auto 0; }
+    .shot img { width: 100%; display: block; }
+    .shot-row { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 20px; }
+    @media (max-width: 720px) { .shot-row { grid-template-columns: 1fr; } }
+
+    /* sections */
+    section { padding: 56px 0; }
+    h2 { font-family: Bahnschrift, "Segoe UI", sans-serif; font-size: 24px; letter-spacing: .05em;
+         color: var(--cream); margin-bottom: 8px; }
+    h2::after { content: ""; display: block; width: 52px; height: 4px; background: var(--gold); margin-top: 10px; }
+    .lead { color: var(--muted); max-width: 68ch; margin-top: 14px; }
+    .lead strong { color: var(--text); }
+
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 18px; margin-top: 28px; }
+    .card { background: var(--panel); border: 1px solid var(--edge); border-radius: 12px; padding: 20px; }
+    .card h3 { font-size: 15px; color: var(--cream); margin-bottom: 6px; }
+    .card p { font-size: 13.5px; color: var(--muted); }
+    .card .k { color: var(--gold); font-family: Bahnschrift, "Segoe UI", sans-serif; letter-spacing: .04em; }
+
+    /* privacy */
+    #privacy .card { max-width: 760px; }
+
+    footer { border-top: 1px solid var(--edge); padding: 34px 0 46px; }
+    footer .row { display: flex; justify-content: space-between; gap: 18px; flex-wrap: wrap; align-items: center; }
+    footer a { color: var(--gold); text-decoration: none; }
+    .legal { color: var(--muted); font-size: 11.5px; max-width: 72ch; margin-top: 16px; line-height: 1.55; }
+    .studio { color: var(--muted); font-size: 12.5px; }
+  </style>
+</head>
+<body>
+
+  <header class="hero">
+    <div class="wrap">
+      <div class="mark">ML</div>
+      <h1>MANA <span class="gold">LEDGER</span></h1>
+      <p class="tag">The financial terminal for your Magic: The Gathering collection — built around Secret Lair drops and preconstructed decks.</p>
+      <div class="cta-row">
+        <a class="btn btn-gold" href="https://github.com/ArielKaplan/magic_collection_tracker/releases/latest">⬇ Download for Windows — Free</a>
+        <a class="btn btn-ghost" href="https://ko-fi.com/sarcasticsoftware">♥ Support on Ko-fi</a>
+      </div>
+      <p class="fineprint">Free forever · No account · Your data never leaves your PC · Coming soon to Steam</p>
+      <div class="shot"><img src="img/01-dashboard.jpg" alt="Mana Ledger dashboard: collection value over time, Secret Lair index, and portfolio KPIs" loading="eager"></div>
+    </div>
+  </header>
+
+  <section>
+    <div class="wrap">
+      <h2>MOST TRACKERS TREAT A SECRET LAIR AS JUST ANOTHER SET CODE.</h2>
+      <p class="lead">Mana Ledger models the <strong>drop</strong> and the <strong>deck</strong> as real products with a
+      purchase price and a knowable value — so it answers what collectors actually ask:
+      <strong>Which drops made me money? Should I crack this sealed one or keep it? Is the new drop worth buying at MSRP?
+      What am I missing from decks I'm building?</strong></p>
+      <div class="shot-row">
+        <div class="shot"><img src="img/03-sl-pnl.jpg" alt="Per-drop profit and loss ledger: MSRP paid, current value, gain" loading="lazy"></div>
+        <div class="shot"><img src="img/02-sl-explorer.jpg" alt="Secret Lair Explorer with every drop and superdrop" loading="lazy"></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <h2>WHAT'S INSIDE</h2>
+      <div class="grid">
+        <div class="card"><h3><span class="k">P&amp;L</span> — Secret Lair Explorer</h3><p>Every drop and superdrop ever released, finish-aware. MSRP paid → current value → gain per drop, crack-or-keep verdicts on sealed, and the SL Index view of your holdings as an asset class.</p></div>
+        <div class="card"><h3><span class="k">1,500+</span> — Precon Explorer</h3><p>Every preconstructed deck from 1993 to today with full decklists, ownership tracking, and "worth it?" pricing against singles and sealed markets.</p></div>
+        <div class="card"><h3><span class="k">2 SOURCES</span> — Live pricing</h3><p>Scryfall low + TCGplayer market on every card, with price history sparklines, a daily bulk mode with zero rate limits, and sources that fail soft instead of crashing.</p></div>
+        <div class="card"><h3><span class="k">TRACK</span> — Collection &amp; decks</h3><p>Table and gallery views, color and binder filters, sold/realized-gains tracking, deck format legality, and Moxfield / Archidekt / ManaBox / MTG Arena import-export.</p></div>
+        <div class="card"><h3><span class="k">ALERTS</span> — Want list</h3><p>Turn any incomplete drop or deck into a shopping list with per-card target prices — the price watch flags anything at or under target after each refresh.</p></div>
+        <div class="card"><h3><span class="k">YOURS</span> — Local-first</h3><p>One SQLite file on your machine with verified daily backups and one-click restore. No account, no cloud, no telemetry — see the privacy statement below.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="privacy">
+    <div class="wrap">
+      <h2>PRIVACY</h2>
+      <div class="card" style="margin-top:24px">
+        <p style="font-size:14px;color:var(--text)">Mana Ledger collects <strong>nothing</strong>. There is no account, no telemetry, no analytics, and no
+        crash-reporting service. Your collection lives in a single database file on your own machine and never leaves it.
+        The only network traffic is fetching public card data and prices (Scryfall, MTGJSON, TCGCSV, mtg.wiki, and — only
+        if you add your own key — PriceCharting); these requests carry no personal information. Update checks contact
+        GitHub (or are handled by Steam on the Steam build). Feedback is only ever sent when you explicitly write and
+        submit it yourself, and contains only what you typed.</p>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <div class="wrap">
+      <div class="row">
+        <span class="studio">Made by <strong>&lt;/s&gt; Sarcastic Software Studios</strong> · <a href="mailto:sarcasticsoftwarestudio@gmail.com">sarcasticsoftwarestudio@gmail.com</a></span>
+        <span><a href="https://github.com/ArielKaplan/magic_collection_tracker">GitHub</a> · <a href="https://ko-fi.com/sarcasticsoftware">Ko-fi</a></span>
+      </div>
+      <p class="legal">Mana Ledger is unofficial Fan Content permitted under the Wizards of the Coast Fan Content Policy.
+      Not approved or endorsed by Wizards. Portions of the materials used are property of Wizards of the Coast.
+      © Wizards of the Coast LLC. Card data and imagery courtesy of Scryfall; market prices via TCGplayer/TCGCSV.</p>
+    </div>
+  </footer>
+
+</body>
+</html>
