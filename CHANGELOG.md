@@ -11,6 +11,8 @@ in-app "What's New" screen — from that version's section. Keep entries
 user-facing: what changed, not how.
 
 ## [Unreleased]
+
+## [1.0.4] - 2026-07-11
 ### Added
 - **💬 Send Feedback.** Help → Send Feedback (also in Settings → Support) opens a short form; hitting send opens your own email app with the message pre-addressed to the developer. Nothing is sent in the background, and your collection data is never included.
 
