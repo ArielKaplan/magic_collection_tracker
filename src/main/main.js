@@ -22,9 +22,10 @@ const SELF_UPDATES = CHANNEL === 'github';
 const KOFI_URL = 'https://ko-fi.com/sarcasticsoftware';
 const FEEDBACK_EMAIL = 'sarcasticsoftwarestudio@gmail.com';
 // Web3Forms access key for in-app feedback delivery (email relay, no server).
-// Empty = in-app send disabled; the feedback modal falls back to the
-// open-your-email-app flow until a key is configured.
-const FEEDBACK_RELAY_KEY = '';
+// Public-by-design (it can only send mail TO our address); rotate on the
+// Web3Forms dashboard if it ever attracts spam. Empty = in-app send disabled;
+// the feedback modal falls back to the open-your-email-app flow.
+const FEEDBACK_RELAY_KEY = 'b99dc757-aca5-48b8-9eeb-f61312489b15';
 
 // ── Crash guard ──────────────────────────────────────────────────────────────
 // A stranger's crash should end in a dialog with a feedback path, not a
