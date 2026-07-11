@@ -25,14 +25,14 @@
   "devDependencies": {
     "@electron/rebuild": "^3.7.0",
     "@sveltejs/vite-plugin-svelte": "^3.1.2",
-    "electron": "^33.0.0",
+    "electron": "^42.6.1",
     "electron-builder": "^25.0.0",
     "svelte": "^4.2.19",
     "vite": "^5.4.0",
     "vitest": "^4.1.9"
   },
   "dependencies": {
-    "better-sqlite3": "^11.5.0",
+    "better-sqlite3": "^12.11.1",
     "chart.js": "^4.5.1",
     "electron-updater": "^6.8.3",
     "interactjs": "^1.10.27"
