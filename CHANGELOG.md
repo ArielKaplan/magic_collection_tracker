@@ -11,6 +11,8 @@ in-app "What's New" screen — from that version's section. Keep entries
 user-facing: what changed, not how.
 
 ## [Unreleased]
+
+## [1.0.7] - 2026-07-11
 ### Changed
 - **Feedback now sends straight from the app.** Help → Send Feedback delivers your message directly to the developer with one click — no email app needed (there's an optional field for your address if you'd like a reply). If the feedback service is ever unreachable, it falls back to the old open-your-email-app flow.
 
