@@ -14,7 +14,7 @@ const path = require('path');
 const CACHE = path.join(__dirname, 'cache');
 fs.mkdirSync(CACHE, { recursive: true });
 
-const UA = 'SecretLairTracker/1.0 (https://github.com; akaplan.nj@gmail.com)';
+const UA = 'ManaLedger/1.0 (https://github.com/sarcasticsoftwarestudio/magic_collection_tracker; sarcasticsoftwarestudio@gmail.com)';
 const headers = { 'User-Agent': UA, 'Accept': 'application/json' };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const write = (name, obj) =>

@@ -273,7 +273,7 @@ function registerIpc() {
       // net.fetch uses the Chromium network stack — APIs that reject bare
       // Node/undici requests (Scryfall, Cloudflare-fronted hosts) accept it.
       const headers = {
-        'User-Agent': `SecretLairTracker/${app.getVersion()}`,
+        'User-Agent': `ManaLedger/${app.getVersion()} (https://github.com/sarcasticsoftwarestudio/magic_collection_tracker)`,
         'Accept': 'application/json',
         ...(opts?.headers || {}),
       };

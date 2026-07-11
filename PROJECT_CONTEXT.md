@@ -1,4 +1,4 @@
-# Secret Lair Tracker — Project Context
+﻿# Secret Lair Tracker â€” Project Context
 
 A handoff document for new Claude sessions. Read this first before making changes.
 For the June 2026 deep code review, the remediation status of its findings, and the
@@ -11,28 +11,28 @@ full product strategy / feature roadmap reasoning, see **REVIEW_AND_ROADMAP.md**
 A **Windows desktop app** for tracking a Magic: The Gathering collection, with a primary focus on Secret Lair (SLD) drops. Built as an **Electron** shell with the renderer split into **ES modules** (`src/renderer-js/`, Vite-bundled) plus a **Svelte** free-form dashboard. Persistent local storage via **SQLite** (`better-sqlite3`).
 
 Lives at: `C:\Users\Akapl\Documents\Secret Lair Tracker Desktop\`
-Git: https://github.com/ArielKaplan/magic_collection_tracker (branch: `main`)
+Git: https://github.com/sarcasticsoftwarestudio/magic_collection_tracker (branch: `main`)
 Current version: see `package.json` (0.15.x as of June 2026)
 
-Recent (v0.12–0.16, June 2026): **portfolio snapshots shipped** (v0.16 — "Value Over Time"
+Recent (v0.12â€“0.16, June 2026): **portfolio snapshots shipped** (v0.16 â€” "Value Over Time"
 dashboard line chart: total/cards/sealed vs. cost basis, one snapshot per day recorded at the
 end of each price refresh; `portfolio_snapshots` table). The drop-level completion % half of
-that roadmap item was already done — landing superdrop tiles, drop tiles, and the drop-detail
+that roadmap item was already done â€” landing superdrop tiles, drop tiles, and the drop-detail
 header all show `X / Y owned` + progress bars. Before that, the **drop P&L + crack-or-keep**
-headline (v0.13–0.15 — 💰 P&L view in the SL Explorer + per-drop "Singles vs. Sealed" panel;
+headline (v0.13â€“0.15 â€” ðŸ’° P&L view in the SL Explorer + per-drop "Singles vs. Sealed" panel;
 sealed products carry a `dropName`; P&L cost basis defaults to flat SL MSRP ~$29.99/$39.99,
 foil-aware, configurable). Also (v0.12): unowned SL cards show full Scryfall metadata on hover;
 Discord-style in-app updater (top-bar pill + "What's New" modal, notes driven from
 `CHANGELOG.md`); sealed deletions persist (authoritative `replaceSealed`); corruption-aware
 daily backup. See REVIEW_AND_ROADMAP.md handoffs for details.
 
-**Want list + price watch shipped** (Want List tab + ★ in the Explorer + price-threshold alerts on
+**Want list + price watch shipped** (Want List tab + â˜… in the Explorer + price-threshold alerts on
 refresh + dashboard KPI; `want_list` table, `wantlist.js`). **Next roadmap item: curation
 export/import + community sync** (local SL editing already shipped v0.11.0).
 
 The user is a prolific MTG collector tracking thousands of cards (~4,750 entries, 6,200+ copies) across many binders. ManaBox CSV is the source of truth for imports.
 
-There's an **older web app** at `C:\Users\Akapl\Documents\Secret Lair Tracker\` (HTML-only, no Electron). That's the predecessor — don't change it unless explicitly asked.
+There's an **older web app** at `C:\Users\Akapl\Documents\Secret Lair Tracker\` (HTML-only, no Electron). That's the predecessor â€” don't change it unless explicitly asked.
 
 ---
 
@@ -45,15 +45,15 @@ There's an **older web app** at `C:\Users\Akapl\Documents\Secret Lair Tracker\` 
 | Renderer (most tabs) | Vanilla JS as **28 ES modules** in `src/renderer-js/`, Vite-bundled to `src/renderer/dist/app-main.js` |
 | Renderer (Dashboard) | Svelte 4 components in `src/renderer-svelte/`, bundled to `dist/svelte-app.{js,css}` |
 | Drag/resize | Interact.js |
-| Build/packaging | electron-builder → NSIS installer; GitHub Actions release on `v*` tags |
+| Build/packaging | electron-builder â†’ NSIS installer; GitHub Actions release on `v*` tags |
 | Updates | electron-updater against GitHub Releases, driven from Settings UI |
 | Storage | SQLite at `%APPDATA%\secret-lair-tracker\collection.db`; daily backups in `backups\` (keeps 10) |
 
-External data sources (all fetched **via the main process** — `net:fetch` IPC with a host allowlist; no CORS, no proxies):
-- **Scryfall API** — card prices (`/cards/collection` POST, batched 75 IDs), card metadata, deck-import resolution
-- **MTGJSON SLD.json** — Secret Lair drop → card mapping (~15 MB, direct fetch)
-- **TCGCSV** — TCGPlayer market prices for cards + sealed product index
-- **PriceCharting** — optional sealed pricing, user supplies API key in Settings
+External data sources (all fetched **via the main process** â€” `net:fetch` IPC with a host allowlist; no CORS, no proxies):
+- **Scryfall API** â€” card prices (`/cards/collection` POST, batched 75 IDs), card metadata, deck-import resolution
+- **MTGJSON SLD.json** â€” Secret Lair drop â†’ card mapping (~15 MB, direct fetch)
+- **TCGCSV** â€” TCGPlayer market prices for cards + sealed product index
+- **PriceCharting** â€” optional sealed pricing, user supplies API key in Settings
 
 ---
 
@@ -61,44 +61,44 @@ External data sources (all fetched **via the main process** — `net:fetch` IPC 
 
 ```
 src/
-├── main/
-│   ├── main.js          # Electron main: window, menu, IPC, net:fetch allowlist,
-│   │                    # daily DB backup, updater wiring
-│   ├── db.js            # SQLite layer (read/write/migrate/backup)
-│   └── schema.sql       # cards, sealed, decks, deck_cards, price_history,
-│                        # card_metadata, failed_lookups, sl_*, settings
-├── preload.js           # contextBridge — window.api (incl. api.net.fetch)
-├── renderer/
-│   ├── index.html       # Shell: loads secretlair.js (classic) + dist bundles (ESM)
-│   ├── styles.css       # All styling — legacy CSS var names are load-bearing
-│   ├── secretlair.js    # Static SL hierarchy + runtime cache fns (classic script,
-│   │                    # globals consumed by the module bundle)
-│   └── dist/            # Vite output — DO NOT edit (app-main.js, svelte-app.{js,css})
-└── renderer-js/         # The renderer, split from the old app.js monolith (June 2026)
-    ├── main.js          # Entry: imports all modules, exposes exports as window
-    │                    # globals (inline onclick + Svelte bridge contract), init()
-    ├── state.js         # collection / ui / tcgcsvCache (mutated, never reassigned)
-    ├── constants, logger, utils, csv, storage, importWizard, prices,
-    ├── statusbar, sealedPricing, analytics, render, ticker, cardsTab,
-    ├── gallery, slTab, slData, failures, sealedTab, decks, deckIO, modals,
-    ├── productPicker, sealedModals, exportModal, settings, updaterUI, hover
-    │   # slData.js = finish-aware SL product model (v0.28): buildSlModel walks
-    │   # MTGJSON sealedProduct→deck(isFoil)→printings; legacy SL_* maps are
-    │   # projections; registry answers requiredFinishFor/attributeDropFor.
-    │   # Persisted in sl_products/sl_product_cards. See "Secret Lair Data — Deep
-    │   # Dive & Redesign Blueprint.md" (repo root) for the full design + evidence.
-    └── package.json     # {"type":"module"} — scopes ESM so Node can import these
+â”œâ”€â”€ main/
+â”‚   â”œâ”€â”€ main.js          # Electron main: window, menu, IPC, net:fetch allowlist,
+â”‚   â”‚                    # daily DB backup, updater wiring
+â”‚   â”œâ”€â”€ db.js            # SQLite layer (read/write/migrate/backup)
+â”‚   â””â”€â”€ schema.sql       # cards, sealed, decks, deck_cards, price_history,
+â”‚                        # card_metadata, failed_lookups, sl_*, settings
+â”œâ”€â”€ preload.js           # contextBridge â€” window.api (incl. api.net.fetch)
+â”œâ”€â”€ renderer/
+â”‚   â”œâ”€â”€ index.html       # Shell: loads secretlair.js (classic) + dist bundles (ESM)
+â”‚   â”œâ”€â”€ styles.css       # All styling â€” legacy CSS var names are load-bearing
+â”‚   â”œâ”€â”€ secretlair.js    # Static SL hierarchy + runtime cache fns (classic script,
+â”‚   â”‚                    # globals consumed by the module bundle)
+â”‚   â””â”€â”€ dist/            # Vite output â€” DO NOT edit (app-main.js, svelte-app.{js,css})
+â””â”€â”€ renderer-js/         # The renderer, split from the old app.js monolith (June 2026)
+    â”œâ”€â”€ main.js          # Entry: imports all modules, exposes exports as window
+    â”‚                    # globals (inline onclick + Svelte bridge contract), init()
+    â”œâ”€â”€ state.js         # collection / ui / tcgcsvCache (mutated, never reassigned)
+    â”œâ”€â”€ constants, logger, utils, csv, storage, importWizard, prices,
+    â”œâ”€â”€ statusbar, sealedPricing, analytics, render, ticker, cardsTab,
+    â”œâ”€â”€ gallery, slTab, slData, failures, sealedTab, decks, deckIO, modals,
+    â”œâ”€â”€ productPicker, sealedModals, exportModal, settings, updaterUI, hover
+    â”‚   # slData.js = finish-aware SL product model (v0.28): buildSlModel walks
+    â”‚   # MTGJSON sealedProductâ†’deck(isFoil)â†’printings; legacy SL_* maps are
+    â”‚   # projections; registry answers requiredFinishFor/attributeDropFor.
+    â”‚   # Persisted in sl_products/sl_product_cards. See "Secret Lair Data â€” Deep
+    â”‚   # Dive & Redesign Blueprint.md" (repo root) for the full design + evidence.
+    â””â”€â”€ package.json     # {"type":"module"} â€” scopes ESM so Node can import these
 
 src/renderer-svelte/     # Svelte dashboard (18 panels + custom chart builder)
 scripts/                 # smoke tests + release helper (see Verification below)
-vite.config.mjs          # Multi-entry build: app-main + svelte-app → renderer/dist
+vite.config.mjs          # Multi-entry build: app-main + svelte-app â†’ renderer/dist
 ```
 
 ### Renderer module conventions (important)
 
 - The split was mechanical (June 2026, `scripts/split-app.js` documents how). Modules
   import each other freely; circular imports exist and are fine (function refs only).
-- **Every module export is also exposed as a `window` global** by `main.js` — inline
+- **Every module export is also exposed as a `window` global** by `main.js` â€” inline
   `onclick="..."` handlers in rendered HTML and the Svelte panels (`window.app`,
   `window.collection`) depend on this. Don't remove the exposure loop until those are
   migrated to real event wiring.
@@ -110,17 +110,17 @@ vite.config.mjs          # Multi-entry build: app-main + svelte-app → renderer
 
 ---
 
-## Tabs (Ctrl+1,2,3,5,6,7,8 — Ctrl+4 retired with the Gallery tab)
+## Tabs (Ctrl+1,2,3,5,6,7,8 â€” Ctrl+4 retired with the Gallery tab)
 
-1. **Dashboard** — Svelte canvas, 19 drag/resize panels (incl. "Value Over Time" line chart), per-panel binder filter, custom chart builder. Layout in `settings.dashboard_layout_v2`.
-2. **Card Collection** — **Table / Gallery view toggle** (`ui.cards.view`), sharing one binder sidebar + search + filters. *Table:* column picker, dual pricing (Scryfall low + TCG market), Δ price, sparklines. *Gallery:* card-image grid (the old Gallery tab, folded in — `showGalleryModal` lives in `gallery.js`). Search matches name/set/type/oracle.
-3. **Sealed Collection** — sealed products, TCGCSV/PriceCharting lookups, sealed/opened status.
-5. **Secret Lair Explorer** — superdrops → drops → cards, ownership indicators + per-drop owned counts; ★ on missing cards that are on the want list.
-6. **Failed Lookups** — pricing failures by reason, retry button for batch errors.
-7. **Decks** — played lists, format legality (DECK_FORMATS), Moxfield/Archidekt/ManaBox/MTGA import/export. Deck value NEVER counts toward collection value. **List/Gallery view toggle** (`ui.decks.view`) + **All/Owned/Missing** ownership filter (`ui.decks.ownFilter`); missing-card actions: 🛒 Buy on TCGPlayer Mass Entry, ★ add to Want List, ⧉ copy (`deckMissingCards`/`buyDeckMissingOnTcg`/`addDeckMissingToWantList`/`copyDeckMissing` in `decks.js`).
-8. **Want List** (Ctrl+8) — cards to acquire with optional per-card target price; **Table/Gallery view toggle**; price-watch flags items at/under target after each refresh (toast + log + green tab badge). Populated from the SL Explorer (missing cards / incomplete drops), the card popup, or Scryfall name search. `want_list` table; `wantlist.js`.
+1. **Dashboard** â€” Svelte canvas, 19 drag/resize panels (incl. "Value Over Time" line chart), per-panel binder filter, custom chart builder. Layout in `settings.dashboard_layout_v2`.
+2. **Card Collection** â€” **Table / Gallery view toggle** (`ui.cards.view`), sharing one binder sidebar + search + filters. *Table:* column picker, dual pricing (Scryfall low + TCG market), Î” price, sparklines. *Gallery:* card-image grid (the old Gallery tab, folded in â€” `showGalleryModal` lives in `gallery.js`). Search matches name/set/type/oracle.
+3. **Sealed Collection** â€” sealed products, TCGCSV/PriceCharting lookups, sealed/opened status.
+5. **Secret Lair Explorer** â€” superdrops â†’ drops â†’ cards, ownership indicators + per-drop owned counts; â˜… on missing cards that are on the want list.
+6. **Failed Lookups** â€” pricing failures by reason, retry button for batch errors.
+7. **Decks** â€” played lists, format legality (DECK_FORMATS), Moxfield/Archidekt/ManaBox/MTGA import/export. Deck value NEVER counts toward collection value. **List/Gallery view toggle** (`ui.decks.view`) + **All/Owned/Missing** ownership filter (`ui.decks.ownFilter`); missing-card actions: ðŸ›’ Buy on TCGPlayer Mass Entry, â˜… add to Want List, â§‰ copy (`deckMissingCards`/`buyDeckMissingOnTcg`/`addDeckMissingToWantList`/`copyDeckMissing` in `decks.js`).
+8. **Want List** (Ctrl+8) â€” cards to acquire with optional per-card target price; **Table/Gallery view toggle**; price-watch flags items at/under target after each refresh (toast + log + green tab badge). Populated from the SL Explorer (missing cards / incomplete drops), the card popup, or Scryfall name search. `want_list` table; `wantlist.js`.
 
-Most list views now also offer a **Gallery (card-image) view** — Card Collection, Want List, Decks (and the SL Explorer's collector view). Sealed/Failed Lookups stay list-only (no per-card image). Convention: `ui.<tab>.view` toggled by inline buttons mirroring the SL Explorer's switcher; the grid reuses the `.gallery-card` styling.
+Most list views now also offer a **Gallery (card-image) view** â€” Card Collection, Want List, Decks (and the SL Explorer's collector view). Sealed/Failed Lookups stay list-only (no per-card image). Convention: `ui.<tab>.view` toggled by inline buttons mirroring the SL Explorer's switcher; the grid reuses the `.gallery-card` styling.
 
 Native chrome: menu bar with accelerators (Ctrl+I import CSV, F5 refresh prices, Ctrl+L activity log, Ctrl+, settings), status bar, slide-in activity log, card hover previews everywhere, right-click context menus on cards/drops/sealed.
 
@@ -128,13 +128,13 @@ Native chrome: menu bar with accelerators (Ctrl+I import CSV, F5 refresh prices,
 
 ## Data flow
 
-1. **Import** (Ctrl+I) — one unified wizard (`importWizard.js`, `showImportHub(kind?)`) with a type chooser: **Cards** / **Sealed** / **Decks**. Cards & Sealed share a File→Map Columns→Review CSV flow driven by `IMPORT_KINDS` (per-kind field defs + converter + merge); Decks embeds the decklist paste/file form from `deckIO.js` (`deckImportBodyHtml`/`wireDeckImportForm`). Cards dedup on manaboxId + scryfallId + foil; sealed dedup on name + type + setCode (sold records never overwritten). Sealed aliases match the app's own sealed export so export→re-import round-trips. Reached from the File menu, the ↑ Import button on each tab, and empty states.
-2. **Refresh Prices** (F5, auto once per day on first open) — Scryfall batches with 429 backoff (2s/4s/8s), then TCGCSV market-price pass. Foil→etched price fallback is load-bearing (don't remove). Deck cards included.
+1. **Import** (Ctrl+I) â€” one unified wizard (`importWizard.js`, `showImportHub(kind?)`) with a type chooser: **Cards** / **Sealed** / **Decks**. Cards & Sealed share a Fileâ†’Map Columnsâ†’Review CSV flow driven by `IMPORT_KINDS` (per-kind field defs + converter + merge); Decks embeds the decklist paste/file form from `deckIO.js` (`deckImportBodyHtml`/`wireDeckImportForm`). Cards dedup on manaboxId + scryfallId + foil; sealed dedup on name + type + setCode (sold records never overwritten). Sealed aliases match the app's own sealed export so exportâ†’re-import round-trips. Reached from the File menu, the â†‘ Import button on each tab, and empty states.
+2. **Refresh Prices** (F5, auto once per day on first open) â€” Scryfall batches with 429 backoff (2s/4s/8s), then TCGCSV market-price pass. Foilâ†’etched price fallback is load-bearing (don't remove). Deck cards included.
 3. **Price persistence is delta-based**: `storePriceSnapshot`/`storeMarketPriceSnapshot` queue new snapshots; `autoSave()` flushes only the queue (restored on failure). autoSave does NOT rewrite price history.
-   - At the end of `refreshPrices`, `recordPortfolioSnapshot()` (analytics.js) writes one `portfolio_snapshots` row for the day (UPSERT on date — last refresh of the day wins) capturing cards/sealed value + cost basis. Loaded into `collection.portfolioSnapshots` on `autoLoad`; the Dashboard "Value Over Time" chart reads it. Snapshots accrue going forward (no retroactive reconstruction — `price_history` has survivorship bias).
+   - At the end of `refreshPrices`, `recordPortfolioSnapshot()` (analytics.js) writes one `portfolio_snapshots` row for the day (UPSERT on date â€” last refresh of the day wins) capturing cards/sealed value + cost basis. Loaded into `collection.portfolioSnapshots` on `autoLoad`; the Dashboard "Value Over Time" chart reads it. Snapshots accrue going forward (no retroactive reconstruction â€” `price_history` has survivorship bias).
    - Want-list cards (`collection.wantList`) join the refresh price-fetch set so they get priced even though they're unowned; `checkWantListThresholds()` (wantlist.js) then flags any card at/under its `maxPrice`. Want list persists authoritatively like sealed (`replaceWantList`).
-4. **Refresh SL Data** — MTGJSON SLD.json via net:fetch (`json.data.cards`, NOT Object.values), collector-number backfill for foils, stored in SQLite.
-5. **Backups** — main process writes `backups/collection-YYYY-MM-DD.db` once per day on launch, prunes to 10. **Corruption-aware (v0.12.2):** `runDailyBackup` runs `PRAGMA integrity_check` first — if the live DB is malformed it skips the backup AND the prune (so a corrupt copy can't roll a good backup off the rotation), quarantines the bad DB to `backups/corrupt/`, and surfaces a warning to the renderer via `app:backupHealth`; freshly written backups are verified before older ones are pruned.
+4. **Refresh SL Data** â€” MTGJSON SLD.json via net:fetch (`json.data.cards`, NOT Object.values), collector-number backfill for foils, stored in SQLite.
+5. **Backups** â€” main process writes `backups/collection-YYYY-MM-DD.db` once per day on launch, prunes to 10. **Corruption-aware (v0.12.2):** `runDailyBackup` runs `PRAGMA integrity_check` first â€” if the live DB is malformed it skips the backup AND the prune (so a corrupt copy can't roll a good backup off the rotation), quarantines the bad DB to `backups/corrupt/`, and surfaces a warning to the renderer via `app:backupHealth`; freshly written backups are verified before older ones are pruned.
 
 ---
 
@@ -155,12 +155,12 @@ Launch with logs: `$env:ELECTRON_ENABLE_LOGGING="1"; npx electron . --dev`
 ## Known quirks / fragile areas
 
 - **Scryfall IDs normalized to lowercase** at every entry point.
-- **Foil → etched price fallback** in refreshPrices — hundreds of SLD foils only have `usd_etched`. Don't remove.
+- **Foil â†’ etched price fallback** in refreshPrices â€” hundreds of SLD foils only have `usd_etched`. Don't remove.
 - **net:fetch host allowlist** in main.js: api.scryfall.com, mtgjson.com, tcgcsv.com, www.pricecharting.com. New data sources must be added there.
 - **Scryfall rate limits**: sustained full-collection refreshes can 429 partway; failures land in Failed Lookups with a working "Retry batch errors" button. Don't run several full refreshes back-to-back.
-- **MTGJSON `subsets` is patchy for foils** — collector-number backfill catches most. If "I own X but it's unowned", Refresh SL Data first.
+- **MTGJSON `subsets` is patchy for foils** â€” collector-number backfill catches most. If "I own X but it's unowned", Refresh SL Data first.
 - **Superdrop hierarchy hand-curated** in `secretlair.js` SL_SUPERDROPS (filled through 2026-01). Unmapped drops bucket to "Recent Additions". Planned curation UI not built yet.
-- **CSS var names are a load-bearing API** — redefine values, never rename (Svelte panels + inline styles reference them).
+- **CSS var names are a load-bearing API** â€” redefine values, never rename (Svelte panels + inline styles reference them).
 - **Native binaries**: better-sqlite3 needs Electron rebuild. If `npm install` fails: `npm install --ignore-scripts`, then `npx @electron/rebuild -f -w better-sqlite3`, then `node node_modules/electron/install.js`.
 - **Windows Developer Mode must be ON** for electron-builder winCodeSign cache extraction.
 - **PowerShell + git here-strings**: assign the message to `$msg` first, then `git commit -m $msg`.
@@ -184,27 +184,27 @@ These are explicit user-stated preferences. Honor them.
 
 ```powershell
 npm start                  # build renderer + launch Electron
-npm run build              # Windows installer → dist\
+npm run build              # Windows installer â†’ dist\
 npm run build:renderer     # just rebuild dist bundles
 npm run release:tag        # tag-based release (GitHub Actions builds installer)
 ```
 
-Change → what to rebuild:
-- **renderer-js or Svelte module** → `npm run build:renderer`, then Ctrl+R in app (or `npm start`)
-- **main.js / db.js / preload.js** → restart Electron
-- **styles.css / index.html / secretlair.js** → Ctrl+R in app (not bundled)
+Change â†’ what to rebuild:
+- **renderer-js or Svelte module** â†’ `npm run build:renderer`, then Ctrl+R in app (or `npm start`)
+- **main.js / db.js / preload.js** â†’ restart Electron
+- **styles.css / index.html / secretlair.js** â†’ Ctrl+R in app (not bundled)
 
 ---
 
-## Roadmap (decided June 2026 — niche-first strategy)
+## Roadmap (decided June 2026 â€” niche-first strategy)
 
 The differentiator is Secret Lair depth, not general collection management. Priorities:
 
-1. ✅ **Collection value over time** (v0.16.0) — `portfolio_snapshots` table + dashboard "Value Over Time" line chart.
-2. **General "Add card" to collection** — reuse the deck add-card Scryfall search with a binder picker. (Partly covered now: the want list's Scryfall name-search add modal is the same idea — generalize it to add owned cards to a binder.)
-3. ✅ **SL drop completion %** — owned/total on superdrop + drop tiles + drop-detail header.
-4. ✅ **Want list + price watch** (shipped) — Want List tab, ★ in Explorer, target prices, threshold alerts on refresh, dashboard KPI. `want_list` table, `wantlist.js`.
-5. **Sold/realized-gains tracking** — `disposed_at` + `sale_price` instead of hard delete.
-6. **In-app SL superdrop curation UI** — local editing shipped v0.11.0; remaining: export/import + GitHub-hosted community sync. ← *now the top remaining item.*
+1. âœ… **Collection value over time** (v0.16.0) â€” `portfolio_snapshots` table + dashboard "Value Over Time" line chart.
+2. **General "Add card" to collection** â€” reuse the deck add-card Scryfall search with a binder picker. (Partly covered now: the want list's Scryfall name-search add modal is the same idea â€” generalize it to add owned cards to a binder.)
+3. âœ… **SL drop completion %** â€” owned/total on superdrop + drop tiles + drop-detail header.
+4. âœ… **Want list + price watch** (shipped) â€” Want List tab, â˜… in Explorer, target prices, threshold alerts on refresh, dashboard KPI. `want_list` table, `wantlist.js`.
+5. **Sold/realized-gains tracking** â€” `disposed_at` + `sale_price` instead of hard delete.
+6. **In-app SL superdrop curation UI** â€” local editing shipped v0.11.0; remaining: export/import + GitHub-hosted community sync. â† *now the top remaining item.*
 - Decks is feature-complete; don't expand it.
 - Phase 2 of the refactor: vitest for pure modules (csv, deckIO, price fallback, formats). Phase 3: migrate tabs to Svelte one at a time, retiring the window-global bridge.
