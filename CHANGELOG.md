@@ -11,6 +11,8 @@ in-app "What's New" screen — from that version's section. Keep entries
 user-facing: what changed, not how.
 
 ## [Unreleased]
+
+## [1.0.2] - 2026-07-11
 ### Added
 - **♥ Support Mana Ledger.** The app is free and always will be (Wizards' fan-content rules require it, and we like it that way). If it's earned a spot in your toolbox, there's now a Ko-fi donation link in Settings, the About dialog, and the Help menu. Entirely optional — donations fund the coffee that funds the code.
 
