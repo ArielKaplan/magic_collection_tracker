@@ -1,5 +1,5 @@
 <script>
-  import { onMount, onDestroy } from 'svelte';
+  import { onMount, onDestroy, tick } from 'svelte';
   import { Chart, registerables } from 'chart.js';
   import { collectionVersion } from '../stores.js';
 
@@ -15,10 +15,18 @@
   let count = 0;
 
   $: idx = ($collectionVersion, window.app?.computeSlIndex?.() ?? null);
-  $: if (mounted) { $collectionVersion; drawChart(); }
+  $: if (mounted) { $collectionVersion; refresh(); }
 
-  onMount(() => { mounted = true; drawChart(); });
+  onMount(() => { mounted = true; refresh(); });
   onDestroy(() => { if (chart) { chart.destroy(); chart = null; } });
+
+  // count before draw: the {#if count > 0} must mount the canvas first, or
+  // drawChart's canvas guard exits and the chart never appears.
+  async function refresh() {
+    count = slSnaps().length;
+    await tick();
+    drawChart();
+  }
 
   function slSnaps() {
     const arr = (window.collection?.portfolioSnapshots || []).filter(s => s.slValue != null || s.slCost != null);
@@ -32,11 +40,10 @@
   }
 
   function drawChart() {
-    if (!canvas) return;
     if (chart) { chart.destroy(); chart = null; }
+    if (!canvas) return;
 
     const snaps = slSnaps();
-    count = snaps.length;
     if (!snaps.length) return;
 
     const labels = snaps.map(s => shortDate(s.date));

@@ -11,6 +11,8 @@ in-app "What's New" screen — from that version's section. Keep entries
 user-facing: what changed, not how.
 
 ## [Unreleased]
+### Fixed
+- **The "Value Over Time" and "Secret Lair Index" charts were stuck on "no history yet"** even after weeks of daily snapshots — a chicken-and-egg bug where the chart couldn't draw until its canvas appeared, and the canvas couldn't appear until the chart drew. Both dashboard charts now show your full value history.
 
 ## [1.0.5] - 2026-07-11
 ### Added

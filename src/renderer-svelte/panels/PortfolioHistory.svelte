@@ -1,5 +1,5 @@
 <script>
-  import { onMount, onDestroy } from 'svelte';
+  import { onMount, onDestroy, tick } from 'svelte';
   import { Chart, registerables } from 'chart.js';
   import { collectionVersion } from '../stores.js';
 
@@ -15,10 +15,19 @@
   let mounted = false;
   let count = 0;
 
-  $: if (mounted) { $collectionVersion; drawChart(); }
+  $: if (mounted) { $collectionVersion; refresh(); }
 
-  onMount(() => { mounted = true; drawChart(); });
+  onMount(() => { mounted = true; refresh(); });
   onDestroy(() => { if (chart) { chart.destroy(); chart = null; } });
+
+  // count must be set BEFORE drawChart: the {#if} needs to flip and mount the
+  // canvas first, or drawChart's canvas guard exits and the chart never draws
+  // (the empty-state deadlock this replaces).
+  async function refresh() {
+    count = snapshots().length;
+    await tick();
+    drawChart();
+  }
 
   function snapshots() {
     const arr = window.collection?.portfolioSnapshots || [];
@@ -34,11 +43,10 @@
   }
 
   function drawChart() {
-    if (!canvas) return;
     if (chart) { chart.destroy(); chart = null; }
+    if (!canvas) return;
 
     const snaps = snapshots();
-    count = snaps.length;
     if (!snaps.length) return;
 
     const labels = snaps.map(s => shortDate(s.date));
