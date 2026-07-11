@@ -11,6 +11,8 @@ in-app "What's New" screen — from that version's section. Keep entries
 user-facing: what changed, not how.
 
 ## [Unreleased]
+
+## [1.0.1] - 2026-07-11
 ### Security
 - **Major engine update.** The app's underlying browser engine (Electron/Chromium) jumped from a 2024 build to the current, fully security-patched release — nine major versions of Chromium security fixes, applied in one update. Nothing changes in how the app looks or works; this is pure under-the-hood protection, and it's the kind of update that will now happen routinely.
 
