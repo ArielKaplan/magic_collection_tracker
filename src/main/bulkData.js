@@ -18,7 +18,7 @@ const readline = require('readline');
 const { Readable } = require('stream');
 const { pipeline } = require('stream/promises');
 
-const UA = 'ManaLedger/1.0 (https://github.com/sarcasticsoftwarestudio/magic_collection_tracker)';
+const UA = 'ManaLedger/1.0 (https://github.com/sarcasticsoftwarestudio/mana-ledger)';
 const MAX_AGE_MS = 20 * 60 * 60 * 1000;   // one refresh per day, aligned with the daily price refresh
 
 let dir = null;

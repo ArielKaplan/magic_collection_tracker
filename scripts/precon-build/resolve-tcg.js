@@ -1,9 +1,9 @@
-﻿// scripts/precon-build/resolve-tcg.js
+// scripts/precon-build/resolve-tcg.js
 // Resolves each precon deck's TCGplayer product id for an exact TCGCSV sealed-
 // price join. A deck file carries `sealedProductUuids` (uuids only); the
-// uuidâ†’tcgplayerProductId mapping lives in the SET files' `sealedProduct`
+// uuid→tcgplayerProductId mapping lives in the SET files' `sealedProduct`
 // arrays. So: collect the uuids + set codes from the cached deck files, fetch
-// each unique set file once, build a uuidâ†’tcgId map, and write
+// each unique set file once, build a uuid→tcgId map, and write
 // cache/tcg-ids.json = { deckFile: tcgId }. emit-seed.js bakes it in.
 //
 // Run after fetch-decks.js:  node scripts/precon-build/resolve-tcg.js
@@ -16,12 +16,12 @@ const DECKS = path.join(CACHE, 'decks');
 const SETS = path.join(CACHE, 'sets');
 fs.mkdirSync(SETS, { recursive: true });
 
-const UA = 'ManaLedger/1.0 (https://github.com/sarcasticsoftwarestudio/magic_collection_tracker; sarcasticsoftwarestudio@gmail.com)';
+const UA = 'ManaLedger/1.0 (https://github.com/sarcasticsoftwarestudio/mana-ledger; sarcasticsoftwarestudio@gmail.com)';
 const headers = { 'User-Agent': UA, 'Accept': 'application/json' };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 (async () => {
-  // 1. Read cached deck files â†’ { file, code, uuids[] }
+  // 1. Read cached deck files → { file, code, uuids[] }
   const deckFiles = fs.readdirSync(DECKS).filter(f => f.endsWith('.json'));
   const decks = [];
   const codes = new Set();
@@ -34,9 +34,9 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     decks.push({ file: f.replace(/\.json$/, ''), code: raw.code, uuids });
     codes.add(raw.code);
   }
-  console.log(`decks with sealedProductUuids: ${decks.length} Â· unique sets: ${codes.size}`);
+  console.log(`decks with sealedProductUuids: ${decks.length} · unique sets: ${codes.size}`);
 
-  // 2. Fetch each unique set file once (cached/resumable), index uuid â†’ tcgId
+  // 2. Fetch each unique set file once (cached/resumable), index uuid → tcgId
   const uuidToTcg = new Map();
   let fetched = 0, cached = 0, failed = 0, indexed = 0;
   for (const code of codes) {
@@ -53,7 +53,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
         fs.writeFileSync(out, text);
         setData = JSON.parse(text).data;
         fetched++;
-        if ((fetched) % 25 === 0) console.log(`  â€¦ ${fetched} sets fetched, ${cached} cached, ${codes.size - fetched - cached} left`);
+        if ((fetched) % 25 === 0) console.log(`  … ${fetched} sets fetched, ${cached} cached, ${codes.size - fetched - cached} left`);
         await sleep(90);
       } catch (e) { failed++; console.error(`  FAIL ${code}: ${e.message}`); continue; }
     }
@@ -62,9 +62,9 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
       if (p.uuid && tcg) { uuidToTcg.set(p.uuid, String(tcg)); indexed++; }
     }
   }
-  console.log(`sets: ${fetched} fetched, ${cached} cached, ${failed} failed Â· sealedProduct tcg ids indexed: ${indexed}`);
+  console.log(`sets: ${fetched} fetched, ${cached} cached, ${failed} failed · sealedProduct tcg ids indexed: ${indexed}`);
 
-  // 3. Resolve each deck â†’ first sealedProductUuid that has a tcgId
+  // 3. Resolve each deck → first sealedProductUuid that has a tcgId
   const out = {};
   let resolved = 0;
   for (const d of decks) {
@@ -74,5 +74,5 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     }
   }
   fs.writeFileSync(path.join(CACHE, 'tcg-ids.json'), JSON.stringify(out));
-  console.log(`resolved tcgplayerProductId for ${resolved}/${decks.length} decks â†’ cache/tcg-ids.json`);
+  console.log(`resolved tcgplayerProductId for ${resolved}/${decks.length} decks → cache/tcg-ids.json`);
 })().catch(e => { console.error('RESOLVE FAILED:', e.message); process.exit(1); });

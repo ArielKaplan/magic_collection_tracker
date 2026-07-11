@@ -83,4 +83,4 @@ run('git push');
 run(`git push origin v${next}`);
 
 console.log(`\nTag v${next} pushed. GitHub Actions will build and publish the installer.`);
-console.log(`Watch: https://github.com/sarcasticsoftwarestudio/magic_collection_tracker/actions`);
+console.log(`Watch: https://github.com/sarcasticsoftwarestudio/mana-ledger/actions`);

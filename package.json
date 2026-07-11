@@ -20,7 +20,7 @@
   "license": "ISC",
   "repository": {
     "type": "git",
-    "url": "https://github.com/sarcasticsoftwarestudio/magic_collection_tracker.git"
+    "url": "https://github.com/sarcasticsoftwarestudio/mana-ledger.git"
   },
   "devDependencies": {
     "@electron/rebuild": "^3.7.0",
@@ -67,7 +67,7 @@
       {
         "provider": "github",
         "owner": "sarcasticsoftwarestudio",
-        "repo": "magic_collection_tracker",
+        "repo": "mana-ledger",
         "releaseType": "release"
       }
     ]

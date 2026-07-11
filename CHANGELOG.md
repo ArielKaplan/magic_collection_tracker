@@ -14,7 +14,7 @@ user-facing: what changed, not how.
 
 ## [1.0.9] - 2026-07-11
 ### Changed
-- **Mana Ledger has a new home.** The project now lives under its studio, Sarcastic Software Studios — new website at sarcasticsoftwarestudio.github.io/magic_collection_tracker. Nothing changes on your end: updates keep arriving automatically, and your data is untouched.
+- **Mana Ledger has a new home.** The project now lives under its studio, Sarcastic Software Studios — new website at sarcasticsoftwarestudio.github.io/mana-ledger. Nothing changes on your end: updates keep arriving automatically, and your data is untouched.
 
 ## [1.0.8] - 2026-07-11
 ### Fixed
