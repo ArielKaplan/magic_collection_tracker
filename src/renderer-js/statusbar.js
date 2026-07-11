@@ -58,7 +58,7 @@ export function showAbout() {
   const defStyle  = 'color:var(--text-dim);font-size:12px;line-height:1.55';
   showModal(`
     <h2 style="margin-bottom:4px">Mana Ledger</h2>
-    <p style="color:var(--text-dim);font-size:13px;margin:4px 0 14px">Desktop edition · Electron + SQLite</p>
+    <p style="color:var(--text-dim);font-size:13px;margin:4px 0 14px">Desktop edition · Electron + SQLite · a Sarcastic Software Studios production</p>
 
     <div style="display:grid;grid-template-columns:auto 1fr;gap:5px 16px;font-size:13px;line-height:1.7;margin-bottom:18px">
       <span style="color:var(--text-muted)">Version</span><span id="about-version">…</span>
@@ -106,7 +106,9 @@ export function showAbout() {
       SL drop data via <a href="#" data-act="open-url" data-arg="https://mtgjson.com">MTGJSON</a> ·
       Sealed prices via TCGCSV and PriceCharting (optional key in Settings).
     </p>
-    <div style="display:flex;justify-content:flex-end">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+      <button class="btn" data-act="open-url" data-arg="https://ko-fi.com/sarcasticsoftware"
+              title="Mana Ledger is free — donations keep it that way">♥ Support Mana Ledger</button>
       <button class="btn btn-primary" data-act="hideModal">Close</button>
     </div>`);
   // Fill the real installed version (was a hardcoded, permanently stale string).

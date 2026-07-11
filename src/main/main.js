@@ -17,6 +17,10 @@ let mainWindow = null;
 const CHANNEL = require('../../package.json').slChannel || 'github';
 const SELF_UPDATES = CHANNEL === 'github';
 
+// Donations are the sanctioned money path for MTG fan content (WotC Fan
+// Content Policy allows donations/sponsorships; selling is not allowed).
+const KOFI_URL = 'https://ko-fi.com/sarcasticsoftware';
+
 // Test/portable hook: point the whole profile (DB, backups, bulk cache, the
 // single-instance lock) at a custom directory, so a fresh-install run can
 // coexist with the real one:  "Mana Ledger.exe" --user-data-dir=D:\tmp\slt
@@ -116,6 +120,7 @@ function buildMenu() {
       submenu: [
         { label: 'Open Database Folder', click: () => shell.openPath(app.getPath('userData')) },
         ...(SELF_UPDATES ? [{ label: 'Check for Updates…', click: () => sendMenu('updates:check') }] : []),
+        { label: '♥ Support Mana Ledger', click: () => shell.openExternal(KOFI_URL) },
         { label: 'About Mana Ledger', click: () => sendMenu('about:show') },
       ],
     },

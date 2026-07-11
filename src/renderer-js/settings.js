@@ -198,6 +198,13 @@ export function showSettings() {
       <span id="upd-current" style="color:var(--text-muted)"></span>
     </p>`}
 
+    <h3 style="margin-top:22px">Support Mana Ledger</h3>
+    <p style="font-size:13px;color:var(--text-dim);margin-bottom:10px;line-height:1.55">
+      Mana Ledger is free and always will be. If it's earned a spot in your toolbox,
+      a coffee keeps the lights on and the price data flowing.
+    </p>
+    <button class="btn btn-sm" data-act="open-url" data-arg="https://ko-fi.com/sarcasticsoftware">♥ Buy me a coffee on Ko-fi</button>
+
     <h3 style="margin-top:22px;color:#f87171">Danger Zone</h3>
     <p style="font-size:12px;color:var(--text-muted);margin-bottom:10px;line-height:1.5">
       Wipe the entire database — cards, sealed, prices, metadata, settings, SL cache.
