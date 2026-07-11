@@ -11,6 +11,8 @@ in-app "What's New" screen — from that version's section. Keep entries
 user-facing: what changed, not how.
 
 ## [Unreleased]
+
+## [1.0.8] - 2026-07-11
 ### Fixed
 - **The account corner no longer shows a hardcoded name.** The bottom-left vault chip said "Akapl" for every user (a leftover from development); it now reads "My Collection".
 
