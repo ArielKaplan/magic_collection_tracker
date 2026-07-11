@@ -11,6 +11,11 @@ in-app "What's New" screen — from that version's section. Keep entries
 user-facing: what changed, not how.
 
 ## [Unreleased]
+### Added
+- **💬 Send Feedback.** Help → Send Feedback (also in Settings → Support) opens a short form; hitting send opens your own email app with the message pre-addressed to the developer. Nothing is sent in the background, and your collection data is never included.
+
+### Changed
+- **About dialog now carries the Wizards Fan Content Policy notice** (the legal line all MTG fan projects are required to display).
 
 ## [1.0.3] - 2026-07-11
 ### Changed

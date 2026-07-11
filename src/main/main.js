@@ -20,6 +20,7 @@ const SELF_UPDATES = CHANNEL === 'github';
 // Donations are the sanctioned money path for MTG fan content (WotC Fan
 // Content Policy allows donations/sponsorships; selling is not allowed).
 const KOFI_URL = 'https://ko-fi.com/sarcasticsoftware';
+const FEEDBACK_EMAIL = 'sarcasticsoftwarestudio@gmail.com';
 
 // Test/portable hook: point the whole profile (DB, backups, bulk cache, the
 // single-instance lock) at a custom directory, so a fresh-install run can
@@ -121,6 +122,7 @@ function buildMenu() {
         { label: 'Open Database Folder', click: () => shell.openPath(app.getPath('userData')) },
         ...(SELF_UPDATES ? [{ label: 'Check for Updates…', click: () => sendMenu('updates:check') }] : []),
         { label: '♥ Support Mana Ledger', click: () => shell.openExternal(KOFI_URL) },
+        { label: '💬 Send Feedback…', click: () => sendMenu('feedback:show') },
         { label: 'About Mana Ledger', click: () => sendMenu('about:show') },
       ],
     },
@@ -352,6 +354,9 @@ function registerIpc() {
     let parsed;
     try { parsed = new URL(url); } catch { return; }
     if (parsed.protocol === 'http:' || parsed.protocol === 'https:') return shell.openExternal(url);
+    // mailto: allowed ONLY to the feedback address — content can't compose
+    // arbitrary mail links through this bridge.
+    if (parsed.protocol === 'mailto:' && parsed.pathname === FEEDBACK_EMAIL) return shell.openExternal(url);
   });
   ipcMain.handle('app:version',        () => app.getVersion());
   ipcMain.handle('app:channel',        () => CHANNEL);

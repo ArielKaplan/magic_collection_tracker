@@ -3,7 +3,7 @@ import { hideModal, showModal } from './modals.js';
 import { sparkline } from './prices.js';
 import { render } from './render.js';
 import { collection, ui } from './state.js';
-import { fmt, today } from './utils.js';
+import { esc, fmt, toast, today } from './utils.js';
 
 
 // ── Status bar (bottom of window) ───────────────────────────────────────────
@@ -106,6 +106,11 @@ export function showAbout() {
       SL drop data via <a href="#" data-act="open-url" data-arg="https://mtgjson.com">MTGJSON</a> ·
       Sealed prices via TCGCSV and PriceCharting (optional key in Settings).
     </p>
+    <p style="font-size:10.5px;color:var(--text-muted);line-height:1.5;margin-bottom:14px">
+      Mana Ledger is unofficial Fan Content permitted under the Wizards of the Coast Fan Content
+      Policy. Not approved or endorsed by Wizards. Portions of the materials used are property of
+      Wizards of the Coast. © Wizards of the Coast LLC.
+    </p>
     <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
       <button class="btn" data-act="open-url" data-arg="https://ko-fi.com/sarcasticsoftware"
               title="Mana Ledger is free — donations keep it that way">♥ Support Mana Ledger</button>
@@ -116,5 +121,45 @@ export function showAbout() {
     const el = document.getElementById('about-version');
     if (el && v) el.textContent = `v${v}`;
   }).catch(() => {});
+}
+
+// ── Feedback (Help → Send Feedback, Settings → Support) ─────────────────────
+// No server, no telemetry — feedback goes out through the user's own email
+// app via a mailto: link (main process allows mailto: only to this address).
+const FEEDBACK_EMAIL = 'sarcasticsoftwarestudio@gmail.com';
+
+export function showFeedback() {
+  showModal(`
+    <h2>Send Feedback</h2>
+    <p style="color:var(--text-dim);font-size:13px;line-height:1.6;margin:6px 0 14px">
+      Found a bug? Want a feature? Write it below and hit the button — it opens your
+      email app with the message addressed to <strong>${esc(FEEDBACK_EMAIL)}</strong>.
+      Nothing is sent in the background, and your collection data is never included.
+    </p>
+    <div class="form-group">
+      <label>Message</label>
+      <textarea id="feedback-text" rows="6" placeholder="What's working? What's broken? What's missing?"
+                style="width:100%;resize:vertical"></textarea>
+    </div>
+    <div style="display:flex;justify-content:flex-end;align-items:center;gap:8px;flex-wrap:wrap">
+      <button class="btn" data-act="copyFeedbackAddress" title="If the email button doesn't work, copy the address and use any mail app">⧉ Copy address</button>
+      <button class="btn btn-primary" data-act="sendFeedbackEmail">✉ Open in Email App</button>
+      <button class="btn btn-ghost" data-act="hideModal">Close</button>
+    </div>`);
+}
+
+export async function sendFeedbackEmail() {
+  const txt = document.getElementById('feedback-text')?.value?.trim() || '';
+  let ver = '';
+  try { ver = await window.api.app.version(); } catch {}
+  const subject = encodeURIComponent(`Mana Ledger${ver ? ' v' + ver : ''} — feedback`);
+  const body = encodeURIComponent(`${txt}\n\n—\nMana Ledger${ver ? ' v' + ver : ''} · Windows`);
+  window.api.app.openExternal(`mailto:${FEEDBACK_EMAIL}?subject=${subject}&body=${body}`);
+}
+
+export function copyFeedbackAddress() {
+  navigator.clipboard?.writeText(FEEDBACK_EMAIL)
+    .then(() => toast('Email address copied', 'success'))
+    .catch(() => toast(FEEDBACK_EMAIL, 'info', 8000));
 }
 

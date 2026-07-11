@@ -203,7 +203,10 @@ export function showSettings() {
       Mana Ledger is free and always will be. If it's earned a spot in your toolbox,
       a coffee keeps the lights on and the price data flowing.
     </p>
-    <button class="btn btn-sm" data-act="open-url" data-arg="https://ko-fi.com/sarcasticsoftware">♥ Buy me a coffee on Ko-fi</button>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn btn-sm" data-act="open-url" data-arg="https://ko-fi.com/sarcasticsoftware">♥ Buy me a coffee on Ko-fi</button>
+      <button class="btn btn-sm" data-act="showFeedback">💬 Send Feedback</button>
+    </div>
 
     <h3 style="margin-top:22px;color:#f87171">Danger Zone</h3>
     <p style="font-size:12px;color:var(--text-muted);margin-bottom:10px;line-height:1.5">

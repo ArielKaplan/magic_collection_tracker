@@ -45,7 +45,7 @@ import { initSearch } from './search.js';
 import { showSettings } from './settings.js';
 import { computeSlIndex, loadSlOverrides, refreshSlData } from './slTab.js';
 import { collection, ui } from './state.js';
-import { showAbout } from './statusbar.js';
+import { showAbout, showFeedback } from './statusbar.js';
 import { autoLoad, loadCollectionFile, saveCollection } from './storage.js';
 import { esc, fmt, fmtPct, toast, today } from './utils.js';
 
@@ -138,6 +138,7 @@ async function init() {
           }, 50);
           break;
         case 'about:show':       showAbout(); break;
+        case 'feedback:show':    showFeedback(); break;
         case 'logs:toggle':      toggleLogPanel(); break;
       }
     });
