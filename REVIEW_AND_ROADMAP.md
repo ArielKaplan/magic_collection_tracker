@@ -585,12 +585,68 @@ this plan, more than the card images. Before any store page goes up:
 
 ## Agreed sequence
 
-1. Clean-machine install test → stamp **v1.0.0**.
+1. Clean-machine install test → stamp **v1.0.0**. ✅ DONE (v1.0.0 shipped 2026-07-10)
 2. Choose the storefront name; rename the product surface (internal IDs stay).
+   ✅ DONE — **Mana Ledger** (v1.0.0)
 3. Build the Steam channel: `dir` packaging target + updater kill-switch flag →
    Steamworks onboarding → store assets → page + build reviews.
+   ✅ Packaging/assets/copy done; Steamworks onboarding in progress (user side).
 4. Ship **free**, with a donation link and TCGplayer affiliate codes wired into the
-   existing buy actions.
+   existing buy actions. ✅ Ko-fi shipped (v1.0.2/1.0.3); affiliate awaiting
+   TCGplayer/Impact approval (site verified via meta tag on the landing page).
 5. Optional stepping stone: **itch.io** first (no fee, no review queue) — same
    "strangers install this cold" learning, flushes out first-run bugs while Valve's
    review runs.
+
+---
+
+## Queued work — 2026-07-11 (pick up in a fresh session)
+
+Status at queue time: v1.0.9 shipped; repo lives at
+**github.com/sarcasticsoftwarestudio/mana-ledger** (transferred + renamed — old URLs
+redirect, updater verified through the two-hop chain; NEVER recreate repos at the old
+names). Landing page: **sarcasticsoftwarestudio.github.io/mana-ledger**. In-app feedback
+relay live (Web3Forms). Steam capsules + 6 screenshots ready in
+`Documents\Sarcastic Software Branding\mana-ledger-steam\`.
+
+1. **Landing page: direct-download button.** The "Download for Windows" button links to
+   the GitHub releases page; make it start the installer download. Gotcha: the stable
+   `releases/latest/download/<asset>` URL needs a fixed asset name, but our artifact name
+   embeds the version (and the updater's latest.yml references it — don't rename the
+   artifact). Plan: small client-side fetch of
+   `api.github.com/repos/sarcasticsoftwarestudio/mana-ledger/releases/latest` (GitHub API
+   allows CORS), point the button's href at the .exe asset's browser_download_url,
+   keep the releases page as no-JS fallback. Add a caption: version · size · Windows 10/11.
+2. **Windows-only clarity.** Say it plainly on the landing page hero ("Windows 10/11 —
+   no macOS/Linux version"), in the README, and in the Steam store copy; on Steamworks,
+   tick ONLY the Windows platform box.
+3. **Code signing / SmartScreen ("unknown publisher" warning on the GitHub installer).**
+   Options to evaluate in-session, in rough order of preference:
+   - **Azure Trusted Signing** (~$10/mo): cheapest legitimate route, integrates with
+     electron-builder, builds SmartScreen reputation fast. Check current availability of
+     *individual* (non-LLC) identity validation — availability has shifted over time.
+   - **OV code-signing cert** (Certum's open-source dev cert ~€70/yr is the solo-dev
+     favorite; Sectigo/SSL.com ~$200-400/yr): signs the exe, but SmartScreen still warns
+     until download volume builds reputation — signing ≠ instant trust.
+   - **EV cert** (~$300+/yr + hardware token): instant SmartScreen reputation, heavier
+     validation, usually wants a legal entity.
+   - **Do nothing for the GitHub channel** and lean on Steam: Steam installs bypass
+     SmartScreen entirely, and friends already trust the source. Decide how much the
+     GitHub channel matters before spending.
+   CI note: whichever cert route wins, signing happens in the release workflow
+   (electron-builder win.sign config + secrets in GitHub Actions).
+4. **Steam trailer** (deferred item from the release checklist): 30-60s screen capture.
+   Shot list: dashboard (charts) → SL Explorer → drop P&L → crack-or-keep → precons →
+   logo card. OBS on the user's machine; storyboard + title cards can be prepared in
+   session; upload alongside capsules.
+5. **Steam launch announcement + community hub** (deferred): pinned welcome/roadmap
+   thread, "how to report bugs" post (point at Help → Send Feedback), day-one
+   announcement. Draft in session, post at page launch.
+6. **Steam beta branch** (deferred): set up `beta` branch in Steamworks alongside
+   `default`; push builds to beta first (friends opt in via branch code), promote to
+   default after a soak. The Steam-side equivalent of the GitHub-channel dogfooding.
+
+Also still open from earlier: **Steamworks onboarding** (user side — capsules/screens/copy
+all ready to paste), **TCGplayer affiliate wiring** (waiting on Impact approval; then add
+the tracking template to the buy actions), **community curation sync** (the 1.1 headline),
+and the **sarcastic.software domain** (would end the Pages-URL churn permanently).
