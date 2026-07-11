@@ -131,7 +131,7 @@ const FEEDBACK_EMAIL = 'sarcasticsoftwarestudio@gmail.com';
 export function showFeedback() {
   showModal(`
     <h2>Send Feedback</h2>
-    <p style="color:var(--text-dim);font-size:13px;line-height:1.6;margin:6px 0 14px">
+    <p id="feedback-blurb" style="color:var(--text-dim);font-size:13px;line-height:1.6;margin:6px 0 14px">
       Found a bug? Want a feature? Write it below and hit the button — it opens your
       email app with the message addressed to <strong>${esc(FEEDBACK_EMAIL)}</strong>.
       Nothing is sent in the background, and your collection data is never included.
@@ -141,20 +141,75 @@ export function showFeedback() {
       <textarea id="feedback-text" rows="6" placeholder="What's working? What's broken? What's missing?"
                 style="width:100%;resize:vertical"></textarea>
     </div>
+    <div class="form-group" id="feedback-reply-wrap" style="display:none">
+      <label>Your email (optional — only if you'd like a reply)</label>
+      <input type="email" id="feedback-reply" placeholder="you@example.com" style="width:100%">
+    </div>
     <div style="display:flex;justify-content:flex-end;align-items:center;gap:8px;flex-wrap:wrap">
-      <button class="btn" data-act="copyFeedbackAddress" title="If the email button doesn't work, copy the address and use any mail app">⧉ Copy address</button>
-      <button class="btn btn-primary" data-act="sendFeedbackEmail">✉ Open in Email App</button>
+      <button class="btn" data-act="copyFeedbackAddress" title="Copy the developer's email address">⧉ Copy address</button>
+      <button class="btn btn-primary" id="feedback-send-btn" data-act="sendFeedbackEmail">✉ Open in Email App</button>
       <button class="btn btn-ghost" data-act="hideModal">Close</button>
     </div>`);
+  // When the in-app relay is configured, this sends without leaving the app.
+  window.api.feedback?.enabled?.().then(on => {
+    if (!on) return;
+    const blurb = document.getElementById('feedback-blurb');
+    const btn = document.getElementById('feedback-send-btn');
+    const reply = document.getElementById('feedback-reply-wrap');
+    if (blurb) blurb.innerHTML = `Found a bug? Want a feature? Write it below and hit send — it goes
+      straight to the developer. Only what you type here is sent; your collection data never is.`;
+    if (btn) btn.textContent = '📨 Send Feedback';
+    if (reply) reply.style.display = '';
+  }).catch(() => {});
 }
 
 export async function sendFeedbackEmail() {
   const txt = document.getElementById('feedback-text')?.value?.trim() || '';
+  if (!txt) { toast('Write a little something first 🙂', 'info'); return; }
   let ver = '';
   try { ver = await window.api.app.version(); } catch {}
+
+  // In-app relay first (when configured) — falls through to mailto on any failure.
+  const btn = document.getElementById('feedback-send-btn');
+  try {
+    if (await window.api.feedback?.enabled?.()) {
+      if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
+      const replyTo = document.getElementById('feedback-reply')?.value?.trim() || '';
+      const r = await window.api.feedback.send(txt, replyTo);
+      if (r && r.ok) { hideModal(); toast('Feedback sent — thank you! ♥', 'success'); return; }
+      if (btn) { btn.disabled = false; btn.textContent = '📨 Send Feedback'; }
+      toast('Could not reach the feedback service — opening your email app instead', 'warning', 6000);
+    }
+  } catch { /* fall through to mailto */ }
+
   const subject = encodeURIComponent(`Mana Ledger${ver ? ' v' + ver : ''} — feedback`);
   const body = encodeURIComponent(`${txt}\n\n—\nMana Ledger${ver ? ' v' + ver : ''} · Windows`);
   window.api.app.openExternal(`mailto:${FEEDBACK_EMAIL}?subject=${subject}&body=${body}`);
+}
+
+// ── Keyboard shortcuts reference (Help → Keyboard Shortcuts) ─────────────────
+export function showShortcuts() {
+  const row = (keys, what) => `
+    <span style="white-space:nowrap">${keys.split('+').map(k =>
+      `<kbd style="display:inline-block;background:var(--surface2);border:1px solid var(--border2);border-radius:5px;padding:2px 8px;font-family:Consolas,monospace;font-size:12px;margin-right:3px">${esc(k)}</kbd>`
+    ).join('<span style="color:var(--text-dim)">+</span>')}</span>
+    <span style="color:var(--text-dim);font-size:13px">${esc(what)}</span>`;
+  showModal(`
+    <h2>Keyboard Shortcuts</h2>
+    <div style="display:grid;grid-template-columns:auto 1fr auto 1fr;gap:10px 16px;align-items:center;margin:16px 0 18px">
+      ${row('Ctrl+1', 'Dashboard')}          ${row('Ctrl+K', 'Global search')}
+      ${row('Ctrl+2', 'Card Collection')}    ${row('F5', 'Refresh prices')}
+      ${row('Ctrl+3', 'Sealed Collection')}  ${row('Ctrl+I', 'Import…')}
+      ${row('Ctrl+5', 'Secret Lair Explorer')} ${row('Ctrl+D', 'Import deck…')}
+      ${row('Ctrl+6', 'Failed Lookups')}     ${row('Ctrl+S', 'Save collection (JSON)')}
+      ${row('Ctrl+7', 'Decks')}              ${row('Ctrl+O', 'Load collection (JSON)')}
+      ${row('Ctrl+8', 'Want List')}          ${row('Ctrl+L', 'Activity log')}
+      ${row('Ctrl+9', 'Precon Explorer')}    ${row('Ctrl+,', 'Settings')}
+      ${row('Esc', 'Close panel / modal')}   ${row('F11', 'Fullscreen')}
+    </div>
+    <div style="display:flex;justify-content:flex-end">
+      <button class="btn btn-primary" data-act="hideModal">Close</button>
+    </div>`);
 }
 
 export function copyFeedbackAddress() {

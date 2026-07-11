@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, ipcMain, dialog, shell, net } = require('electron');
+const { app, BrowserWindow, Menu, ipcMain, dialog, shell, net, screen, clipboard } = require('electron');
 const path = require('path');
 const fs   = require('fs');
 const db   = require('./db');
@@ -21,6 +21,42 @@ const SELF_UPDATES = CHANNEL === 'github';
 // Content Policy allows donations/sponsorships; selling is not allowed).
 const KOFI_URL = 'https://ko-fi.com/sarcasticsoftware';
 const FEEDBACK_EMAIL = 'sarcasticsoftwarestudio@gmail.com';
+// Web3Forms access key for in-app feedback delivery (email relay, no server).
+// Empty = in-app send disabled; the feedback modal falls back to the
+// open-your-email-app flow until a key is configured.
+const FEEDBACK_RELAY_KEY = '';
+
+// ── Crash guard ──────────────────────────────────────────────────────────────
+// A stranger's crash should end in a dialog with a feedback path, not a
+// silent exit or a dead white window. Data is safe either way: SQLite +
+// daily verified backups live on disk.
+let crashDialogShown = false;
+function showCrashDialog(message, detail) {
+  if (crashDialogShown) return 2;
+  crashDialogShown = true;
+  try {
+    const choice = dialog.showMessageBoxSync({
+      type: 'error',
+      title: 'Mana Ledger',
+      message,
+      detail: `Your collection is not damaged — the database and daily backups are safe on disk.\n\nIf this keeps happening, choose "Copy details" and email them to ${FEEDBACK_EMAIL}.\n\n${String(detail || '').slice(0, 1200)}`,
+      buttons: ['Restart Mana Ledger', 'Copy details && close', 'Close'],
+      defaultId: 0, cancelId: 2, noLink: true,
+    });
+    if (choice === 1) {
+      try { clipboard.writeText(`Mana Ledger v${app.getVersion()} crash report\n\n${message}\n\n${detail}`); } catch { /* clipboard is best-effort */ }
+    }
+    return choice;
+  } catch { return 2; }
+}
+
+process.on('uncaughtException', (err) => {
+  console.error('[crash] uncaught exception in main:', err);
+  try { db.close(); } catch { /* may not be open yet */ }
+  const choice = showCrashDialog('Mana Ledger hit an unexpected error.', err && (err.stack || err.message) || String(err));
+  if (choice === 0) app.relaunch();
+  app.exit(1);
+});
 
 // Test/portable hook: point the whole profile (DB, backups, bulk cache, the
 // single-instance lock) at a custom directory, so a fresh-install run can
@@ -121,6 +157,8 @@ function buildMenu() {
       submenu: [
         { label: 'Open Database Folder', click: () => shell.openPath(app.getPath('userData')) },
         ...(SELF_UPDATES ? [{ label: 'Check for Updates…', click: () => sendMenu('updates:check') }] : []),
+        { label: 'Keyboard Shortcuts', click: () => sendMenu('shortcuts:show') },
+        { type: 'separator' },
         { label: '♥ Support Mana Ledger', click: () => shell.openExternal(KOFI_URL) },
         { label: '💬 Send Feedback…', click: () => sendMenu('feedback:show') },
         { label: 'About Mana Ledger', click: () => sendMenu('about:show') },
@@ -155,9 +193,23 @@ function scheduleStartupUpdateCheck() {
 }
 
 function createWindow() {
+  // Restore the last window geometry (only when it still lands on a live
+  // display — a disconnected monitor must not strand the window off-screen).
+  let saved = null;
+  try {
+    const raw = JSON.parse(db.getSetting('window_bounds') || 'null');
+    if (raw && raw.width >= 1024 && raw.height >= 700 && Number.isFinite(raw.x) && Number.isFinite(raw.y)) {
+      const wa = screen.getDisplayMatching(raw).workArea;
+      const overlapsX = raw.x < wa.x + wa.width - 80 && raw.x + raw.width > wa.x + 80;
+      const overlapsY = raw.y >= wa.y - 20 && raw.y < wa.y + wa.height - 80;
+      if (overlapsX && overlapsY) saved = raw;
+    }
+  } catch { /* fresh profile or malformed — use defaults */ }
+
   mainWindow = new BrowserWindow({
-    width: 1400,
-    height: 900,
+    width: saved ? saved.width : 1400,
+    height: saved ? saved.height : 900,
+    ...(saved ? { x: saved.x, y: saved.y } : {}),
     minWidth: 1024,
     minHeight: 700,
     backgroundColor: '#131118',
@@ -169,12 +221,32 @@ function createWindow() {
       sandbox: true,
     },
   });
+  if (saved && saved.maximized) mainWindow.maximize();
 
   Menu.setApplicationMenu(buildMenu());
   mainWindow.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
   if (isDev) mainWindow.webContents.openDevTools({ mode: 'detach' });
+  // Persist geometry on close (normal bounds, so un-maximizing later restores
+  // the real size rather than the maximized one).
+  mainWindow.on('close', () => {
+    try {
+      const b = mainWindow.getNormalBounds();
+      db.setSetting('window_bounds', JSON.stringify({ ...b, maximized: mainWindow.isMaximized() }));
+    } catch { /* best effort */ }
+  });
   mainWindow.on('closed', () => { mainWindow = null; });
 }
+
+// Renderer death (GPU fault, OOM, …) — offer a restart instead of a dead
+// white window.
+app.on('render-process-gone', (_e, _wc, details) => {
+  if (details.reason === 'clean-exit') return;
+  console.error('[crash] renderer gone:', details.reason);
+  const choice = showCrashDialog(`Mana Ledger's window crashed (${details.reason}).`, `Renderer process gone: ${JSON.stringify(details)}`);
+  crashDialogShown = false; // recoverable — future incidents may dialog again
+  if (choice === 0) app.relaunch();
+  app.exit(1);
+});
 
 // Hosts the renderer is allowed to reach through net:fetch. The main process
 // has no CORS, so this replaces the third-party proxy fallbacks (corsproxy,
@@ -361,6 +433,32 @@ function registerIpc() {
   ipcMain.handle('app:version',        () => app.getVersion());
   ipcMain.handle('app:channel',        () => CHANNEL);
   ipcMain.handle('app:backupHealth',   () => backupHealth);
+
+  // Feedback relay — POSTs to Web3Forms (delivers to FEEDBACK_EMAIL) when a
+  // key is configured; the renderer falls back to the email-app flow when not.
+  ipcMain.handle('feedback:enabled', () => !!FEEDBACK_RELAY_KEY);
+  ipcMain.handle('feedback:send', async (_e, message, replyTo) => {
+    if (!FEEDBACK_RELAY_KEY) return { ok: false, unconfigured: true };
+    if (!message || typeof message !== 'string') return { ok: false, error: 'empty message' };
+    try {
+      const payload = {
+        access_key: FEEDBACK_RELAY_KEY,
+        subject: `Mana Ledger v${app.getVersion()} — feedback`,
+        from_name: `Mana Ledger v${app.getVersion()} (${CHANNEL})`,
+        message: message.slice(0, 8000),
+      };
+      if (replyTo && typeof replyTo === 'string' && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(replyTo)) payload.email = replyTo;
+      const r = await net.fetch('https://api.web3forms.com/submit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const j = await r.json().catch(() => null);
+      return { ok: !!(r.ok && j && j.success) };
+    } catch (err) {
+      return { ok: false, error: err.message || String(err) };
+    }
+  });
 
   // Updater — inert on non-github channels (the store owns updating)
   ipcMain.handle('updater:check', async () => {

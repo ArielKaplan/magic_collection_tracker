@@ -95,6 +95,10 @@ contextBridge.exposeInMainWorld('api', {
     backupHealth:  ()       => inv('app:backupHealth'),
     platform:      process.platform,
   },
+  feedback: {
+    enabled: ()                 => inv('feedback:enabled'),
+    send:    (message, replyTo) => inv('feedback:send', message, replyTo),
+  },
   updater: {
     check:    () => inv('updater:check'),
     download: () => inv('updater:download'),

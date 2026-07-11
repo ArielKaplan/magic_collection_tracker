@@ -11,6 +11,11 @@ in-app "What's New" screen — from that version's section. Keep entries
 user-facing: what changed, not how.
 
 ## [Unreleased]
+### Added
+- **The app now remembers your window.** Size, position, and maximized state are restored on launch (and safely reset if your monitor setup changed).
+- **A crash safety net.** If the app ever hits a fatal error, you'll get a clear dialog — restart, or copy the technical details to send along — instead of a silent exit or a frozen white window. Your collection and backups are untouched either way.
+- **Help → Keyboard Shortcuts** — all the Ctrl-keys on one card.
+- **Groundwork for one-click feedback.** The feedback form can now deliver straight from inside the app once the delivery service is switched on; until then it keeps using your email app.
 
 ## [1.0.4] - 2026-07-11
 ### Added

@@ -86,6 +86,16 @@ npx @electron/rebuild -f -w better-sqlite3
 node node_modules/electron/install.js
 ```
 
+## Privacy
+
+Mana Ledger collects **nothing**. There is no account, no telemetry, no analytics, and no
+crash reporting service. Your collection lives in a single SQLite file on your own machine
+and never leaves it. The only network traffic the app produces is fetching public card data
+and prices (Scryfall, MTGJSON, TCGCSV, mtg.wiki, and — only if you add your own key —
+PriceCharting); these requests carry no personal information. Checking for updates contacts
+GitHub (or is handled by Steam on the Steam build). Feedback is only ever sent when you
+explicitly write and submit it yourself, and contains only what you typed.
+
 ## License
 
 ISC
