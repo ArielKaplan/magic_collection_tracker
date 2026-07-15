@@ -1,17 +1,18 @@
 import { showEditScryfallModal } from './cardsTab.js';
 import { addOwnedCardToDeck, ctxDeckSubmenu, deckById, showDeckCardContextMenu, showDeckTileContextMenu } from './decks.js';
 import { entryRealized } from './analytics.js';
+import { buildOpenedProductCards, buildOwnedCardFromCatalog, catalogFinishOptions, catalogPrice, dropFinishHint } from './acquisition.js';
 import { FOIL_LABEL } from './constants.js';
 import { showGalleryModal } from './gallery.js';
 import { hideCardHoverPreview } from './hover.js';
-import { getCurrentPrice } from './prices.js';
+import { fetchScryfallBatch, getCurrentPrice, storePriceSnapshot } from './prices.js';
 import { showProductPicker } from './productPicker.js';
 import { render } from './render.js';
 import { showAddSealedModal, showUpdatePriceModal } from './sealedModals.js';
 import { showSlViewerModal } from './slTab.js';
 import { collection, ui } from './state.js';
 import { autoSave } from './storage.js';
-import { esc, fmt, toast, today, uid } from './utils.js';
+import { esc, fmt, netFetch, toast, today, uid } from './utils.js';
 import { addDropMissingToWantList, isCardWanted, toggleSlCardWant, wantItemByScryfall } from './wantlist.js';
 
 
@@ -32,6 +33,128 @@ export function hideModal() {
   document.getElementById('modal-overlay').classList.add('hidden');
   const modal = document.querySelector('#modal-overlay .modal');
   if (modal) modal.classList.remove('modal-wide', 'modal-xl');
+}
+
+// Universal exact-printing acquisition flow. It is reachable from live search
+// results, the printings tab, and any unowned card detail modal.
+export async function showAddOwnedCardModal(cardOrId) {
+  let card = cardOrId && typeof cardOrId === 'object' ? cardOrId : null;
+  const sid = card ? card.id : String(cardOrId || '').trim().toLowerCase();
+  if (!card) {
+    showModal('<h2>Add owned card</h2><div class="sr-loading">Loading exact printing details…</div>');
+    try {
+      const resp = await netFetch(`https://api.scryfall.com/cards/${encodeURIComponent(sid)}`);
+      if (!resp.ok) throw new Error(`Scryfall HTTP ${resp.status}`);
+      card = await resp.json();
+    } catch (e) {
+      showModal(`<h2>Add owned card</h2><p style="color:var(--red)">Could not load this printing: ${esc(e.message)}</p><button class="btn" id="aoc-close">Close</button>`);
+      document.getElementById('aoc-close')?.addEventListener('click', hideModal);
+      return;
+    }
+  }
+
+  const finishes = catalogFinishOptions(card);
+  const binders = [...new Set(collection.cards.filter(c => c.status !== 'sold' && c.binderName).map(c => c.binderName))].sort();
+  const image = card.image_uris?.small || card.card_faces?.[0]?.image_uris?.small || '';
+  const defaultFinish = finishes.includes('normal') ? 'normal' : finishes[0];
+  const finishLabel = { normal: 'Non-foil', foil: 'Foil', etched: 'Etched foil' };
+  showModal(`
+    <h2>Add owned card</h2>
+    <div style="display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap">
+      ${image ? `<img src="${esc(image)}" alt="" style="width:145px;border-radius:9px;box-shadow:0 4px 18px rgba(0,0,0,.45)" data-imgerr="hide">` : ''}
+      <div style="flex:1;min-width:280px">
+        <div style="font-size:16px;font-weight:700">${esc(card.name)}</div>
+        <div style="font-size:12px;color:var(--text-muted);margin:3px 0 14px">${esc(card.set_name || '')} · ${esc((card.set || '').toUpperCase())} #${esc(card.collector_number || '?')}</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:11px">
+          <div class="form-group" style="margin:0">
+            <label>Binder / location</label>
+            <input id="aoc-binder" list="aoc-binders" value="Unsorted" placeholder="Unsorted">
+            <datalist id="aoc-binders">${binders.map(b => `<option value="${esc(b)}"></option>`).join('')}</datalist>
+          </div>
+          <div class="form-group" style="margin:0">
+            <label>Finish</label>
+            <select id="aoc-finish">${finishes.map(f => `<option value="${f}"${f === defaultFinish ? ' selected' : ''}>${finishLabel[f]}</option>`).join('')}</select>
+          </div>
+          <div class="form-group" style="margin:0">
+            <label>Quantity</label>
+            <input type="number" id="aoc-qty" min="1" step="1" value="1">
+          </div>
+          <div class="form-group" style="margin:0">
+            <label>Condition</label>
+            <select id="aoc-condition">
+              <option value="near_mint">Near Mint</option><option value="lightly_played">Lightly Played</option>
+              <option value="moderately_played">Moderately Played</option><option value="heavily_played">Heavily Played</option>
+              <option value="damaged">Damaged</option>
+            </select>
+          </div>
+          <div class="form-group" style="margin:0">
+            <label>Unit cost</label>
+            <input type="number" id="aoc-cost" min="0" step="0.01" placeholder="0.00">
+            <div id="aoc-market" style="font-size:11px;color:var(--text-muted);margin-top:3px"></div>
+          </div>
+          <div class="form-group" style="margin:0">
+            <label>Acquired</label>
+            <input type="date" id="aoc-date" value="${today()}">
+          </div>
+          <div class="form-group" style="margin:0">
+            <label>Currency</label>
+            <input id="aoc-currency" value="USD" maxlength="3" style="text-transform:uppercase">
+          </div>
+          <div class="form-group" style="margin:0">
+            <label>Language</label>
+            <input id="aoc-language" value="${esc(card.lang || 'en')}" maxlength="8">
+          </div>
+        </div>
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px">
+      <button class="btn" id="aoc-cancel">Cancel</button>
+      <button class="btn btn-primary" id="aoc-save">Add to collection</button>
+    </div>`, 'wide');
+
+  const $ = id => document.getElementById(id);
+  const updateMarket = () => {
+    const price = catalogPrice(card, $('aoc-finish').value);
+    $('aoc-market').textContent = price == null ? 'No current USD price' : `Current market reference: ${fmt(price)}`;
+  };
+  $('aoc-finish').addEventListener('change', updateMarket);
+  updateMarket();
+  $('aoc-cancel').addEventListener('click', hideModal);
+  $('aoc-save').addEventListener('click', async () => {
+    const save = $('aoc-save');
+    save.disabled = true;
+    try {
+      const owned = buildOwnedCardFromCatalog(card, {
+        id: uid(),
+        foil: $('aoc-finish').value,
+        quantity: $('aoc-qty').value,
+        binderName: $('aoc-binder').value.trim() || 'Unsorted',
+        purchasePrice: $('aoc-cost').value,
+        purchasePriceCurrency: ($('aoc-currency').value.trim() || 'USD').toUpperCase(),
+        condition: $('aoc-condition').value,
+        language: $('aoc-language').value.trim() || 'en',
+        acquiredAt: $('aoc-date').value || today(),
+      });
+      collection.cards.push(owned);
+      collection.cardMetadata[owned.scryfallId] = {
+        colors: card.colors || card.card_faces?.[0]?.colors || [],
+        color_identity: card.color_identity || [], type_line: card.type_line || '',
+        cmc: card.cmc ?? null, power: card.power ?? null, toughness: card.toughness ?? null,
+        oracle_text: card.oracle_text || card.card_faces?.[0]?.oracle_text || '',
+      };
+      const market = catalogPrice(card, owned.foil);
+      if (market != null) storePriceSnapshot(owned.scryfallId, owned.foil, market);
+      const wanted = wantItemByScryfall(owned.scryfallId);
+      if (wanted) collection.wantList = collection.wantList.filter(w => w.id !== wanted.id);
+      await autoSave();
+      hideModal(); render();
+      toast(`${owned.quantity} × ${owned.name} added to ${owned.binderName}`, 'success');
+      window.logger?.success?.('Collection', `Added ${owned.quantity} × ${owned.name} (${owned.setCode.toUpperCase()} #${owned.collectorNumber}) to ${owned.binderName}`);
+    } catch (e) {
+      save.disabled = false;
+      toast(`Could not add card: ${e.message}`, 'error');
+    }
+  });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -474,6 +597,177 @@ export function addDropToSealed(drop) {
   });
 }
 
+export function sealedProductCardIds(item) {
+  const fromDrop = item?.dropName && typeof SL_DROP_TO_SCRYFALL_IDS !== 'undefined'
+    ? (SL_DROP_TO_SCRYFALL_IDS[item.dropName] || [])
+    : [];
+  return [...new Set([...fromDrop, ...(item?.linkedScryfallIds || [])].filter(Boolean).map(id => String(id).toLowerCase()))];
+}
+
+function openedCardsForProduct(item) {
+  return collection.cards.filter(c => c.sourceProductId === item.id);
+}
+
+// Converts one or more sealed Secret Lair units into their exact known card
+// printings. The opened-product row remains as provenance, while its cost basis
+// is transferred across the generated card rows.
+export function showOpenSecretLairModal(item) {
+  if (!item || item.status !== 'sealed') return;
+  const ids = sealedProductCardIds(item);
+  if (!ids.length) {
+    toast('No card list is linked to this product. Choose its Secret Lair drop in Edit Product first.', 'error');
+    return;
+  }
+  const maxQty = Math.max(1, item.quantity || 1);
+  const binders = [...new Set(collection.cards.filter(c => c.status !== 'sold' && c.binderName).map(c => c.binderName))].sort();
+  const finish = dropFinishHint(item.dropName || item.name);
+  const finishText = finish === 'normal' ? 'non-foil' : finish === 'etched' ? 'etched foil' : 'foil';
+  showModal(`
+    <h2>Open into collection</h2>
+    <div style="font-size:15px;font-weight:700;margin-bottom:4px">${esc(item.name)}</div>
+    <p class="wiz-meta">Creates ${ids.length} exact ${finishText} printing${ids.length === 1 ? '' : 's'} per product and links them back to this purchase. Known listed contents are included; randomized bonus cards are not added automatically.</p>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Products to open</label>
+        <input type="number" id="slo-qty" min="1" max="${maxQty}" step="1" value="1">
+      </div>
+      <div class="form-group">
+        <label>Binder / location</label>
+        <input id="slo-binder" list="slo-binders" value="Unsorted" placeholder="Unsorted">
+        <datalist id="slo-binders">${binders.map(b => `<option value="${esc(b)}"></option>`).join('')}</datalist>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Opened date</label>
+        <input type="date" id="slo-date" value="${today()}">
+      </div>
+      <div class="form-group">
+        <label>Cost allocation</label>
+        <select id="slo-allocation">
+          <option value="market">Proportional to current card prices</option>
+          <option value="equal">Equal amount per card</option>
+        </select>
+      </div>
+    </div>
+    <div style="padding:10px 12px;border-radius:8px;background:var(--surface2);font-size:12px;color:var(--text-muted)">
+      ${fmt(item.purchasePrice || 0)} purchase cost per product will move from sealed inventory to the generated cards. Portfolio cost basis will not be counted twice.
+    </div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px">
+      <button class="btn" id="slo-cancel">Cancel</button>
+      <button class="btn btn-primary" id="slo-open">Open product</button>
+    </div>`, 'wide');
+
+  document.getElementById('slo-cancel').addEventListener('click', hideModal);
+  document.getElementById('slo-open').addEventListener('click', async () => {
+    const button = document.getElementById('slo-open');
+    const units = Math.max(1, Math.min(maxQty, parseInt(document.getElementById('slo-qty').value, 10) || 1));
+    button.disabled = true;
+    button.textContent = 'Loading exact printings…';
+    try {
+      const result = await fetchScryfallBatch(ids);
+      const fetched = result?.data || [];
+      const byId = new Map(fetched.map(card => [String(card.id).toLowerCase(), card]));
+      const missing = ids.filter(id => !byId.has(id));
+      if (missing.length) throw new Error(`${missing.length} linked printing${missing.length === 1 ? ' is' : 's are'} unavailable from Scryfall`);
+      const catalogCards = ids.map(id => byId.get(id));
+      const openingId = units < maxQty ? uid() : item.id;
+      const cards = buildOpenedProductCards(catalogCards, {
+        idFactory: uid,
+        foil: finish,
+        quantity: units,
+        binderName: document.getElementById('slo-binder').value.trim() || 'Unsorted',
+        productUnitCost: item.purchasePrice || 0,
+        purchasePriceCurrency: item.purchasePriceCurrency || 'USD',
+        acquiredAt: document.getElementById('slo-date').value || today(),
+        sourceProductId: openingId,
+        sourceProductName: item.name,
+        allocation: document.getElementById('slo-allocation').value,
+      });
+
+      let openedItem = item;
+      if (units < maxQty) {
+        item.quantity = maxQty - units;
+        openedItem = {
+          ...item,
+          id: openingId,
+          status: 'opened',
+          quantity: units,
+          openedFromId: item.id,
+          linkedScryfallIds: ids,
+          priceHistory: [...(item.priceHistory || [])],
+        };
+        collection.sealed.push(openedItem);
+      } else {
+        item.status = 'opened';
+        item.openedFromId = item.openedFromId || '';
+        item.linkedScryfallIds = ids;
+      }
+      collection.cards.push(...cards);
+
+      const acquiredIds = new Set(cards.map(c => c.scryfallId));
+      collection.wantList = collection.wantList.filter(w => !acquiredIds.has((w.scryfallId || '').toLowerCase()));
+      for (const card of catalogCards) {
+        collection.cardMetadata[card.id] = {
+          colors: card.colors || card.card_faces?.[0]?.colors || [],
+          color_identity: card.color_identity || [], type_line: card.type_line || '',
+          cmc: card.cmc ?? null, power: card.power ?? null, toughness: card.toughness ?? null,
+          oracle_text: card.oracle_text || card.card_faces?.[0]?.oracle_text || '',
+        };
+        const generated = cards.find(c => c.scryfallId === card.id);
+        const market = generated ? catalogPrice(card, generated.foil) : null;
+        if (generated && market != null) storePriceSnapshot(generated.scryfallId, generated.foil, market);
+      }
+
+      hideModal();
+      render();
+      await autoSave();
+      toast(`Opened ${units} × ${item.name}: ${cards.length} collection rows created`, 'success');
+      window.logger?.success?.('Collection', `Opened ${units} × ${item.name} into ${cards.length} linked card rows`);
+    } catch (e) {
+      button.disabled = false;
+      button.textContent = 'Open product';
+      toast(`Could not open product: ${e.message}`, 'error');
+      window.logger?.error?.('Collection', `Open product failed: ${e.message}`);
+    }
+  });
+}
+
+export async function undoSecretLairOpen(item) {
+  const generated = openedCardsForProduct(item);
+  if (!generated.length) {
+    toast('No generated cards are linked to this opening.', 'error');
+    return;
+  }
+  if (generated.some(c => c.status === 'sold')) {
+    toast('This opening cannot be undone because one or more generated cards were sold.', 'error');
+    return;
+  }
+  const copies = generated.reduce((sum, c) => sum + (c.quantity || 1), 0);
+  if (!confirm(`Undo opening “${item.name}”?\n\nThis removes ${generated.length} generated card rows (${copies} copies) and restores the sealed quantity.`)) return;
+
+  const removals = await Promise.allSettled(generated.map(c => window.api.cards.remove(c.id)));
+  if (removals.some(r => r.status === 'rejected')) {
+    await autoSave();
+    toast('Could not remove all generated cards; no in-memory changes were made.', 'error');
+    return;
+  }
+  const generatedIds = new Set(generated.map(c => c.id));
+  collection.cards = collection.cards.filter(c => !generatedIds.has(c.id));
+  const parent = item.openedFromId ? collection.sealed.find(s => s.id === item.openedFromId) : null;
+  if (parent) {
+    parent.quantity = (parent.quantity || 0) + (item.quantity || 1);
+    collection.sealed = collection.sealed.filter(s => s.id !== item.id);
+  } else {
+    item.status = 'sealed';
+    item.openedFromId = '';
+  }
+  render();
+  await autoSave();
+  toast(`${item.name} restored to sealed inventory`, 'success');
+  window.logger?.success?.('Collection', `Undid opening for ${item.name}; removed ${generated.length} linked card rows`);
+}
+
 export function showSlDropContextMenu(x, y, drop) {
   const ids = (typeof SL_DROP_TO_SCRYFALL_IDS !== 'undefined' && SL_DROP_TO_SCRYFALL_IDS[drop]) || [];
   const ownedIds = new Set(collection.cards.filter(c => c.status !== 'sold').map(c => c.scryfallId).filter(Boolean));
@@ -527,12 +821,26 @@ export function showSealedContextMenu(x, y, item) {
     ]);
     return;
   }
+  const generated = openedCardsForProduct(item);
+  if (generated.length) {
+    showContextMenu(x, y, [
+      { header: `${item.name} — opened into collection` },
+      { icon: '↩', label: `Undo opening (${generated.length} card rows)…`, action: () => undoSecretLairOpen(item) },
+      '---',
+      { icon: '📋', label: 'Copy name', action: () => copyToClipboard(item.name, 'Name') },
+    ]);
+    return;
+  }
   const sealed = item.status === 'sealed';
+  const canOpenIntoCollection = sealed && sealedProductCardIds(item).length > 0;
   showContextMenu(x, y, [
     { header: item.name },
     { icon: '✎', label: 'Edit product', action: () => showAddSealedModal(item.id) },
     { icon: '💲', label: 'Update price', action: () => showUpdatePriceModal(item.id) },
-    { icon: sealed ? '○' : '●', label: sealed ? 'Mark opened' : 'Mark sealed',
+    ...(canOpenIntoCollection ? [
+      { icon: '📂', label: 'Open into collection…', action: () => showOpenSecretLairModal(item) },
+    ] : []),
+    { icon: sealed ? '○' : '●', label: sealed && canOpenIntoCollection ? 'Mark opened without adding cards' : sealed ? 'Mark opened' : 'Mark sealed',
       action: () => { item.status = sealed ? 'opened' : 'sealed'; render(); autoSave(); toast(`${item.name} marked ${item.status}`, 'info'); } },
     '---',
     { icon: '＋', label: 'Add one', action: () => { item.quantity = (item.quantity || 1) + 1; render(); autoSave(); toast(`${item.name}: ×${item.quantity}`, 'success'); } },

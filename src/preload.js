@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld('api', {
   cards: {
     list:           ()             => inv('cards:list'),
     bulkUpsert:     (cards)        => inv('cards:bulkUpsert', cards),
+    replaceManaged: (cards)        => inv('cards:replaceManaged', cards),
     remove:         (id)           => inv('cards:delete', id),
     updateScryfall: (id, sid)      => inv('cards:updateScry', id, sid),
     clear:          ()             => inv('cards:clear'),

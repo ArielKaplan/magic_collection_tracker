@@ -48,6 +48,9 @@ export const EXPORT_COLUMNS = {
     { key: 'manaboxId',       label: 'ManaBox ID',       get: c => c.manaboxId },
     { key: 'misprint',        label: 'Misprint',         get: c => c.misprint ? 'true' : 'false' },
     { key: 'altered',         label: 'Altered',          get: c => c.altered ? 'true' : 'false' },
+    { key: 'acquiredAt',      label: 'Acquired Date',    get: c => c.acquiredAt || '' },
+    { key: 'sourceProductId', label: 'Source Product ID', get: c => c.sourceProductId || '' },
+    { key: 'sourceProductName', label: 'Source Product', get: c => c.sourceProductName || '' },
   ],
   sealed: [
     { key: 'name',          label: 'Name',           get: i => i.name },

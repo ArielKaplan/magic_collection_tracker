@@ -13,7 +13,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { cardCurrentValue } from './analytics.js';
 import { filteredCards } from './cardsTab.js';
-import { hideModal } from './modals.js';
+import { hideModal, showAddOwnedCardModal } from './modals.js';
 import { ensurePreconCards, preconNameIndex, preconState } from './preconData.js';
 import { render } from './render.js';
 import { showSlViewerModal } from './slTab.js';
@@ -580,6 +580,13 @@ export function initSearch() {
     if (close) { e.stopPropagation(); closeSearchTab(close.dataset.close); return; }
     const tabEl = e.target.closest('.srt-tab');
     if (tabEl) { activateSearchTab(tabEl.dataset.tabid); return; }
+    const addBtn = e.target.closest('[data-add-owned-idx]');
+    if (addBtn) {
+      e.stopPropagation();
+      const item = pageItems[Number(addBtn.dataset.addOwnedIdx)];
+      showAddOwnedCardModal(item?.catalogCard || item?.scryfallId);
+      return;
+    }
     const printBtn = e.target.closest('[data-printings]');
     if (printBtn) { openPrintingsTab(printBtn.dataset.printings); return; }
     const row = e.target.closest('.srt .sr-row');
@@ -656,12 +663,13 @@ function collectionCardRow(item) {
 function scryRow(c, ownedIds) {
   const id = (c.id || '').toLowerCase();
   const price = c.prices?.usd ?? c.prices?.usd_foil ?? c.prices?.usd_etched;
-  const idx = pushRow({ type: 'scrycard', name: c.name, scryfallId: id });
+  const idx = pushRow({ type: 'scrycard', name: c.name, scryfallId: id, catalogCard: c });
   return `<div class="sr-row" data-idx="${idx}" data-scryfall-id="${esc(id)}">
     ${ownDot(ownedIds.has(id))}
     <span class="sr-row-name">${esc(c.name)}</span>
     <span class="sr-row-sub">${esc(c.set_name || '')} · ${esc((c.set || '').toUpperCase())} #${esc(c.collector_number || '?')}</span>
     <span class="sr-row-meta">${price != null ? '$' + price : '—'}</span>
+    <button class="sr-print-link" data-add-owned-idx="${idx}" title="Add this exact printing to your collection">＋ add</button>
     <button class="sr-print-link" data-printings="${esc(c.name)}" title="View all printings">◇ printings</button>
   </div>`;
 }
@@ -678,12 +686,13 @@ function printRow(c, ownedIds) {
   const id = (c.id || '').toLowerCase();
   const price = c.prices?.usd ?? c.prices?.usd_foil ?? c.prices?.usd_etched;
   const finishes = (c.finishes || []).join(' / ') || '—';
-  const idx = pushRow({ type: 'print', scryfallId: id, name: c.name });
+  const idx = pushRow({ type: 'print', scryfallId: id, name: c.name, catalogCard: c });
   return `<div class="sr-row" data-idx="${idx}" data-scryfall-id="${esc(id)}">
     ${ownDot(ownedIds.has(id))}
     <span class="sr-row-name">${esc(c.set_name || '')}</span>
     <span class="sr-row-sub">#${esc(c.collector_number || '?')} · ${esc(finishes)}</span>
     <span class="sr-row-meta">${price != null ? '$' + price : '—'}</span>
+    <button class="sr-print-link" data-add-owned-idx="${idx}" title="Add this exact printing to your collection">＋ add</button>
   </div>`;
 }
 

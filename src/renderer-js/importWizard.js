@@ -1,4 +1,5 @@
 import { PRODUCT_TYPES } from './constants.js';
+import { planCardImport } from './acquisition.js';
 import { parseCsv, parseCsvHeaders } from './csv.js';
 import { deckImportBodyHtml, wireDeckImportForm } from './deckIO.js';
 import { hideModal, showModal } from './modals.js';
@@ -37,6 +38,9 @@ export const IMPORT_FIELD_DEFS = [
   { key: 'manaboxId',             label: 'ManaBox ID',        required: false, aliases: ['manabox id','manabox_id','manaboxid'] },
   { key: 'misprint',              label: 'Misprint',          required: false, aliases: ['misprint','is misprint'] },
   { key: 'altered',               label: 'Altered',           required: false, aliases: ['altered','is altered','modified'] },
+  { key: 'acquiredAt',            label: 'Acquired Date',     required: false, aliases: ['acquired date','acquired_at','purchase date','date acquired','date added'] },
+  { key: 'sourceProductId',       label: 'Source Product ID', required: false, aliases: ['source product id','source_product_id','opened product id'] },
+  { key: 'sourceProductName',     label: 'Source Product',    required: false, aliases: ['source product','source product name','source_product_name','opened from'] },
 ];
 
 // ── Sealed column definitions ─────────────────────────────────────────────────
@@ -102,6 +106,9 @@ export function csvRowToCardWithMapping(row, mapping) {
     language: (get('language') || 'en').toLowerCase(),
     misprint: get('misprint').toLowerCase() === 'true',
     altered: get('altered').toLowerCase() === 'true',
+    acquiredAt: get('acquiredAt') || '',
+    sourceProductId: get('sourceProductId') || '',
+    sourceProductName: get('sourceProductName') || '',
   };
 }
 
@@ -175,6 +182,7 @@ export function showImportHub(kind = null) {
     step: 1,
     fileName: null, filePath: null,
     headers: [], rows: [], mapping: {},
+    importMode: 'merge', reconcileConfirmed: false,
   };
   _renderHub();
 }
@@ -197,6 +205,7 @@ function _backToChooser() {
   _wizard.step = 1;
   _wizard.fileName = null; _wizard.filePath = null;
   _wizard.headers = []; _wizard.rows = []; _wizard.mapping = {};
+  _wizard.importMode = 'merge'; _wizard.reconcileConfirmed = false;
   _renderHub();
 }
 
@@ -234,6 +243,7 @@ function _showChooser() {
       _wizard.step = 1;
       _wizard.fileName = null; _wizard.filePath = null;
       _wizard.headers = []; _wizard.rows = []; _wizard.mapping = {};
+      _wizard.importMode = 'merge'; _wizard.reconcileConfirmed = false;
     }
     _renderHub();
   }));
@@ -383,6 +393,15 @@ function renderCsvStep3() {
   const cfg = IMPORT_KINDS[kind];
   const nameCol = mapping['name'];
   const importable = nameCol ? rows.filter(r => (r[nameCol] || '').trim()).length : 0;
+  const incoming = kind === 'cards'
+    ? rows.map(r => csvRowToCardWithMapping(r, mapping)).filter(Boolean)
+    : [];
+  const canReconcile = kind === 'cards' && !!mapping.manaboxId && incoming.length > 0 && incoming.every(c => c.manaboxId);
+  if (!canReconcile && _wizard.importMode === 'reconcile') _wizard.importMode = 'merge';
+  const plan = kind === 'cards'
+    ? planCardImport(collection.cards, incoming, _wizard.importMode)
+    : null;
+  const needsReconcileConfirmation = _wizard.importMode === 'reconcile' && (plan?.stats.removed || 0) > 0;
   const req = cfg.fields.filter(d => d.required);
   const mappedOpt = cfg.fields.filter(d => !d.required && mapping[d.key]).length;
   const lines = [];
@@ -392,6 +411,30 @@ function renderCsvStep3() {
   }
   lines.push({ ok: true, text: `${mappedOpt} optional field${mappedOpt !== 1 ? 's' : ''} mapped` });
   if (importable === 0) lines.push({ ok: false, text: 'No importable rows found — check your name column mapping' });
+  const modePicker = kind === 'cards' ? `
+    <div class="wiz-section-label" style="margin-top:14px">Repeat-import behavior</div>
+    <div class="wiz-summary" style="margin-top:6px">
+      <label class="wiz-sum-row" style="cursor:pointer">
+        <input type="radio" name="wiz-import-mode" value="merge"${_wizard.importMode !== 'reconcile' ? ' checked' : ''}>
+        <span><strong>Merge</strong> — add new rows and update matches; keep everything else.</span>
+      </label>
+      <label class="wiz-sum-row${canReconcile ? '' : ' wiz-warn'}" style="cursor:${canReconcile ? 'pointer' : 'not-allowed'}">
+        <input type="radio" name="wiz-import-mode" value="reconcile"${_wizard.importMode === 'reconcile' ? ' checked' : ''}${canReconcile ? '' : ' disabled'}>
+        <span><strong>Reconcile ManaBox</strong> — make live ManaBox-managed cards match this export. Manual cards and sold history are preserved.${canReconcile ? '' : ' Map a complete ManaBox ID column to enable this.'}</span>
+      </label>
+    </div>
+    ${_wizard.importMode === 'reconcile' ? `
+      <div class="wiz-summary" style="margin-top:8px">
+        <div class="wiz-sum-row wiz-ok">${plan.stats.added} add · ${plan.stats.updated} update · ${plan.stats.removed} remove</div>
+        ${needsReconcileConfirmation ? `<label class="wiz-sum-row wiz-warn" style="cursor:pointer">
+          <input type="checkbox" id="wiz-reconcile-confirm"${_wizard.reconcileConfirmed ? ' checked' : ''}>
+          <span>I understand ${plan.stats.removed} ManaBox-managed row${plan.stats.removed === 1 ? '' : 's'} absent from this file will be removed.</span>
+        </label>` : ''}
+      </div>` : ''}` : '';
+  const importDisabled = importable === 0 || (needsReconcileConfirmation && !_wizard.reconcileConfirmed);
+  const importLabel = _wizard.importMode === 'reconcile'
+    ? `Reconcile ${importable.toLocaleString()} ${cfg.noun}`
+    : `Import ${importable.toLocaleString()} ${cfg.noun}`;
   return `
     ${_stepBar(3)}
     <h2>Review & Import</h2>
@@ -400,10 +443,11 @@ function renderCsvStep3() {
       ${lines.map(l => `<div class="wiz-sum-row ${l.ok ? 'wiz-ok' : 'wiz-warn'}">${l.ok ? '✓' : '⚠'} ${esc(l.text)}</div>`).join('')}
     </div>
     <p class="wiz-meta" style="margin-top:12px">${cfg.reviewNote}</p>
+    ${modePicker}
     <div class="wiz-footer">
       <button class="btn" id="wiz-back">← Back</button>
-      <button class="btn btn-primary" id="wiz-import"${importable === 0 ? ' disabled' : ''}>
-        Import ${importable.toLocaleString()} ${cfg.noun}
+      <button class="btn btn-primary" id="wiz-import"${importDisabled ? ' disabled' : ''}>
+        ${importLabel}
       </button>
     </div>`;
 }
@@ -433,6 +477,15 @@ function _attachCsvListeners() {
     _showWizardStep();
   });
   document.getElementById('wiz-import')?.addEventListener('click', () => IMPORT_KINDS[_wizard.kind].perform());
+  document.querySelectorAll('input[name="wiz-import-mode"]').forEach(el => el.addEventListener('change', () => {
+    _wizard.importMode = el.value;
+    _wizard.reconcileConfirmed = false;
+    _showWizardStep();
+  }));
+  document.getElementById('wiz-reconcile-confirm')?.addEventListener('change', e => {
+    _wizard.reconcileConfirmed = e.target.checked;
+    _showWizardStep();
+  });
 }
 
 function _showWizardStep() {
@@ -446,28 +499,36 @@ function _showWizardStep() {
 // ─────────────────────────────────────────────────────────────────────────────
 // IMPORT EXECUTION
 // ─────────────────────────────────────────────────────────────────────────────
-function _performCardImport() {
+async function _performCardImport() {
   const { rows, mapping } = _wizard;
   const incoming = rows.map(r => csvRowToCardWithMapping(r, mapping)).filter(Boolean);
-  let added = 0, updated = 0, skipped = 0;
-  for (const card of incoming) {
-    if (!card.name) { skipped++; continue; }
-    let idx = -1;
-    if (card.manaboxId) {
-      idx = collection.cards.findIndex(c =>
-        c.manaboxId === card.manaboxId && c.scryfallId === card.scryfallId && c.foil === card.foil);
-    } else if (card.scryfallId) {
-      idx = collection.cards.findIndex(c =>
-        c.scryfallId === card.scryfallId && c.foil === card.foil && c.binderName === card.binderName);
-    }
-    if (idx >= 0) { collection.cards[idx] = { ...collection.cards[idx], ...card }; updated++; }
-    else { collection.cards.push(card); added++; }
+  const skipped = rows.length - incoming.length;
+  const mode = _wizard.importMode === 'reconcile' ? 'reconcile' : 'merge';
+  if (mode === 'reconcile' && (!mapping.manaboxId || incoming.some(c => !c.manaboxId))) {
+    toast('Reconcile requires a ManaBox ID on every importable row.', 'error');
+    return;
   }
+  const plan = planCardImport(collection.cards, incoming, mode);
+  if (mode === 'reconcile' && plan.stats.removed > 0 && !_wizard.reconcileConfirmed) {
+    toast('Confirm the removals before reconciling.', 'error');
+    return;
+  }
+  if (mode === 'reconcile') {
+    try {
+      await window.api.cards.replaceManaged(plan.managedCards);
+    } catch (err) {
+      window.logger?.error('Import', `ManaBox reconciliation failed: ${err.message}`);
+      toast(`Reconciliation failed: ${err.message}`, 'error');
+      return;
+    }
+  }
+  collection.cards = plan.nextCards;
   _wizardClose();
-  toast(`Imported — ${added} added, ${updated} updated${skipped ? `, ${skipped} skipped` : ''}`, 'success');
-  window.logger?.success('Import', `Cards: ${added} new + ${updated} updated${skipped ? ` + ${skipped} skipped` : ''}`);
+  const action = mode === 'reconcile' ? 'Reconciled' : 'Imported';
+  toast(`${action} — ${plan.stats.added} added, ${plan.stats.updated} updated${plan.stats.removed ? `, ${plan.stats.removed} removed` : ''}${skipped ? `, ${skipped} skipped` : ''}`, 'success');
+  window.logger?.success('Import', `Cards: ${plan.stats.added} new + ${plan.stats.updated} updated${plan.stats.removed ? ` - ${plan.stats.removed} removed` : ''}${skipped ? ` + ${skipped} skipped` : ''}`);
   render();
-  autoSave();
+  await autoSave();
 }
 
 function _performSealedImport() {

@@ -5,7 +5,7 @@ import { showDeckExportModal } from './deckIO.js';
 import { deckById, deckFormat, deckOwnedMaps, deleteDeck, renderDeckTile, showDeckAddCardModal, showNewDeckModal } from './decks.js';
 import { showGalleryModal } from './gallery.js';
 import { showImportHub } from './importWizard.js';
-import { promptText, showSellSealedModal, undoSealedSale } from './modals.js';
+import { promptText, showOpenSecretLairModal, showSellSealedModal, undoSealedSale, undoSecretLairOpen } from './modals.js';
 import { openAddProductFlow } from './productPicker.js';
 import { render } from './render.js';
 import { showAddSealedModal, showUpdatePriceModal } from './sealedModals.js';
@@ -521,6 +521,14 @@ export function attachContentListeners() {
       else if (action === 'toggle-status') {
         const item = collection.sealed.find(i => i.id === id);
         if (item) { item.status = item.status === 'sealed' ? 'opened' : 'sealed'; render(); autoSave(); }
+      }
+      else if (action === 'open-into-collection') {
+        const item = collection.sealed.find(i => i.id === id);
+        if (item) showOpenSecretLairModal(item);
+      }
+      else if (action === 'undo-open') {
+        const item = collection.sealed.find(i => i.id === id);
+        if (item) undoSecretLairOpen(item);
       }
       else if (action === 'toggle-cards') {
         const el = document.getElementById(`sc-${id}`);

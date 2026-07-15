@@ -41,16 +41,24 @@ function init(dbPath) {
     'ALTER TABLE cards ADD COLUMN sale_price REAL',
     'ALTER TABLE cards ADD COLUMN sale_fees REAL DEFAULT 0',
     'ALTER TABLE cards ADD COLUMN sale_note TEXT',
+    'ALTER TABLE cards ADD COLUMN acquired_at TEXT',
+    'ALTER TABLE cards ADD COLUMN source_product_id TEXT',
+    'ALTER TABLE cards ADD COLUMN source_product_name TEXT',
     'ALTER TABLE sealed ADD COLUMN disposed_at TEXT',
     'ALTER TABLE sealed ADD COLUMN sale_price REAL',
     'ALTER TABLE sealed ADD COLUMN sale_fees REAL DEFAULT 0',
     'ALTER TABLE sealed ADD COLUMN sale_note TEXT',
+    'ALTER TABLE sealed ADD COLUMN pricecharting_id TEXT',
+    'ALTER TABLE sealed ADD COLUMN linked_scryfall_ids TEXT',
+    'ALTER TABLE sealed ADD COLUMN opened_from_id TEXT',
     // Secret Lair Index slice of each portfolio snapshot (v0.21.0).
     'ALTER TABLE portfolio_snapshots ADD COLUMN sl_value REAL',
     'ALTER TABLE portfolio_snapshots ADD COLUMN sl_cost REAL',
   ]) {
     try { db.exec(stmt); } catch (e) { /* column already exists */ }
   }
+  try { db.exec('CREATE INDEX IF NOT EXISTS idx_cards_source_product ON cards(source_product_id)'); }
+  catch (e) { /* non-fatal on an unexpectedly old/malformed schema */ }
 
   // Seed the Precon Explorer catalog from the baked MTGJSON snapshot on first
   // run (or after a resetAll). Decklists are immutable, so this only ever
@@ -86,18 +94,25 @@ const cardCols = [
   'id','scryfall_id','manabox_id','name','set_code','set_name','collector_number',
   'foil','rarity','quantity','binder_name','binder_type','purchase_price',
   'purchase_price_currency','condition','language','misprint','altered',
+  'acquired_at','source_product_id','source_product_name',
   'status','disposed_at','sale_price','sale_fees','sale_note'
 ];
 const insertCardStmt = () => db.prepare(`
   INSERT INTO cards (${cardCols.join(',')})
   VALUES (${cardCols.map(c => '@' + c).join(',')})
   ON CONFLICT(id) DO UPDATE SET
-    scryfall_id=excluded.scryfall_id, name=excluded.name, set_code=excluded.set_code,
+    scryfall_id=excluded.scryfall_id, manabox_id=excluded.manabox_id,
+    name=excluded.name, set_code=excluded.set_code,
     set_name=excluded.set_name, collector_number=excluded.collector_number,
     foil=excluded.foil, rarity=excluded.rarity, quantity=excluded.quantity,
-    binder_name=excluded.binder_name, purchase_price=excluded.purchase_price,
+    binder_name=excluded.binder_name, binder_type=excluded.binder_type,
+    purchase_price=excluded.purchase_price,
+    purchase_price_currency=excluded.purchase_price_currency,
     condition=excluded.condition, language=excluded.language,
     misprint=excluded.misprint, altered=excluded.altered,
+    acquired_at=excluded.acquired_at,
+    source_product_id=excluded.source_product_id,
+    source_product_name=excluded.source_product_name,
     status=excluded.status, disposed_at=excluded.disposed_at,
     sale_price=excluded.sale_price, sale_fees=excluded.sale_fees,
     sale_note=excluded.sale_note, updated_at=datetime('now')
@@ -130,6 +145,9 @@ function bulkUpsertCards(cards) {
         language:                 c.language || 'en',
         misprint:                 c.misprint ? 1 : 0,
         altered:                  c.altered ? 1 : 0,
+        acquired_at:              c.acquiredAt || null,
+        source_product_id:        c.sourceProductId || null,
+        source_product_name:      c.sourceProductName || null,
         status:                   c.status === 'sold' ? 'sold' : 'owned',
         disposed_at:              c.disposedAt || null,
         sale_price:               c.salePrice ?? null,
@@ -140,6 +158,35 @@ function bulkUpsertCards(cards) {
   });
   tx(cards);
   return cards.length;
+}
+
+// Authoritative replacement for live ManaBox-managed rows. Manual cards and
+// sold history are preserved. Used only after the import wizard has shown the
+// exact add/update/remove diff and the user explicitly chooses Reconcile.
+function replaceManagedCards(cards) {
+  const stmt = insertCardStmt();
+  const tx = db.transaction((arr) => {
+    db.prepare("DELETE FROM cards WHERE COALESCE(manabox_id, '') <> '' AND status <> 'sold'").run();
+    for (const c of arr) {
+      stmt.run({
+        id: c.id, scryfall_id: c.scryfallId || null, manabox_id: c.manaboxId || null,
+        name: c.name, set_code: c.setCode || null, set_name: c.setName || null,
+        collector_number: c.collectorNumber || null, foil: c.foil || 'normal',
+        rarity: c.rarity || null, quantity: c.quantity || 1,
+        binder_name: c.binderName || null, binder_type: c.binderType || null,
+        purchase_price: c.purchasePrice ?? 0,
+        purchase_price_currency: c.purchasePriceCurrency || 'USD',
+        condition: c.condition || 'near_mint', language: c.language || 'en',
+        misprint: c.misprint ? 1 : 0, altered: c.altered ? 1 : 0,
+        acquired_at: c.acquiredAt || null,
+        source_product_id: c.sourceProductId || null,
+        source_product_name: c.sourceProductName || null,
+        status: 'owned', disposed_at: null, sale_price: null, sale_fees: 0, sale_note: null,
+      });
+    }
+  });
+  tx(cards || []);
+  return (cards || []).length;
 }
 
 function deleteCard(id) {
@@ -156,15 +203,19 @@ function listSealed() {
   return db.prepare('SELECT * FROM sealed').all().map(r => ({
     ...r,
     priceHistory: r.price_history ? JSON.parse(r.price_history) : [],
+    linkedScryfallIds: r.linked_scryfall_ids ? JSON.parse(r.linked_scryfall_ids) : [],
   }));
 }
-const sealedCols = ['id','name','product_type','set_code','set_name','quantity','purchase_price','current_value','status','notes','drop_name','disposed_at','sale_price','sale_fees','sale_note','price_history'];
+const sealedCols = ['id','name','product_type','set_code','set_name','quantity','purchase_price','current_value','status','notes','drop_name','pricecharting_id','linked_scryfall_ids','opened_from_id','disposed_at','sale_price','sale_fees','sale_note','price_history'];
 const sealedRow = (item) => ({
   id: item.id, name: item.name, product_type: item.productType || null,
   set_code: item.setCode || null, set_name: item.setName || null,
   quantity: item.quantity || 1, purchase_price: item.purchasePrice ?? 0,
   current_value: item.currentValue ?? null, status: item.status || 'sealed',
   notes: item.notes || null, drop_name: item.dropName || null,
+  pricecharting_id: item.pricechartingId || null,
+  linked_scryfall_ids: item.linkedScryfallIds?.length ? JSON.stringify(item.linkedScryfallIds) : null,
+  opened_from_id: item.openedFromId || null,
   disposed_at: item.disposedAt || null, sale_price: item.salePrice ?? null,
   sale_fees: item.saleFees ?? 0, sale_note: item.saleNote || null,
   price_history: item.priceHistory?.length ? JSON.stringify(item.priceHistory) : null,
@@ -177,6 +228,9 @@ function upsertSealed(item) {
       set_name=excluded.set_name, quantity=excluded.quantity,
       purchase_price=excluded.purchase_price, current_value=excluded.current_value,
       status=excluded.status, notes=excluded.notes, drop_name=excluded.drop_name,
+      pricecharting_id=excluded.pricecharting_id,
+      linked_scryfall_ids=excluded.linked_scryfall_ids,
+      opened_from_id=excluded.opened_from_id,
       disposed_at=excluded.disposed_at, sale_price=excluded.sale_price,
       sale_fees=excluded.sale_fees, sale_note=excluded.sale_note,
       price_history=excluded.price_history, updated_at=datetime('now')`).run(sealedRow(item));
@@ -720,7 +774,7 @@ function resetAll() {
 module.exports = {
   init,
   // cards
-  listCards, bulkUpsertCards, deleteCard, updateCardScryfallId, clearCards,
+  listCards, bulkUpsertCards, replaceManagedCards, deleteCard, updateCardScryfallId, clearCards,
   // sealed
   listSealed, upsertSealed, deleteSealed, replaceSealed, clearSealed,
   // want list

@@ -8,10 +8,10 @@ Most trackers treat a Secret Lair as just another set code and a precon as a pil
 
 ## What it does
 
-- **Card Collection** — Table + Gallery views over your binders, with filters, dual pricing (Scryfall low + TCGplayer market), Δ price, sparklines, sold/realized-gains tracking, and hover previews everywhere.
+- **Card Collection** — Table + Gallery views over your binders, with filters, dual pricing (Scryfall low + TCGplayer market), Δ price, sparklines, sold/realized-gains tracking, hover previews everywhere, and exact-printing acquisition directly from live search.
 - **Secret Lair Explorer** — every SL drop and superdrop, **finish-aware** (non-foil, Foil Edition, Rainbow Foil are distinct SKUs with their own ownership and value). Per-drop **P&L** (MSRP paid → current value → gain), a **crack-or-keep** verdict on sealed drops, the **📈 Index** (your SL holdings as an asset class), completion bars, and an **Upcoming** strip of announced-but-unreleased drops. MSRPs and grouping sync live from the community wiki.
 - **Precon Explorer** — every physical preconstructed deck ever sold (1993→today): Commander precons, Challenger/Duel/Theme/Intro/Planeswalker decks, Guild Kits, and more. Browse product line → deck → full decklist (Gallery or sortable Table view), finish-aware ownership, a **"Worth it?"** panel (assumed MSRP vs. singles vs. sealed market), and one-click "want the missing cards."
-- **Global search** — type a card name and see **everywhere it lives**: your binders, decks that play it, SL drops and precons that include it, and sealed products that contain it. Plus live catalog search across Scryfall & TCGCSV in pinned, comparable result tabs.
+- **Global search** — type a card name and see **everywhere it lives**: your binders, decks that play it, SL drops and precons that include it, and sealed products that contain it. Plus live catalog search across Scryfall & TCGCSV in pinned, comparable result tabs, with one-click entry into the owned-card flow.
 - **Decks** — played lists with format legality, Moxfield/Archidekt/ManaBox/MTGA import/export, ownership filters, and missing-card actions (buy on TCGplayer, add to want list). Deck value never counts toward collection value.
 - **Want List** — cards to acquire with per-card target prices; price-watch flags anything at/under target after a refresh.
 - **Dashboard** — drag/resize Svelte panels: value over time, realized gains, the SL Index, top movers, value-by-binder/color/type/mana/rarity/set, and more.
@@ -22,6 +22,7 @@ Most trackers treat a Secret Lair as just another set code and a precon as a pil
 - **Local-first.** Everything is a single SQLite file at `%APPDATA%\secret-lair-tracker\collection.db`. No account, no cloud, no telemetry.
 - **Automatic backups.** A verified backup is written daily (latest 10 kept). **Settings → Backups & Recovery** restores any of them in one click — it checks the backup is healthy, sets your current data aside first (so a restore is reversible), and restarts.
 - **First-run welcome** walks a new install through importing a collection (ManaBox / Moxfield / Archidekt CSV).
+- **Repeat-import safety.** ManaBox CSVs can merge normally or explicitly reconcile only ManaBox-managed rows after an add/update/remove preview; manual cards and sold history are left alone.
 - **Fast, resilient pricing.** An optional daily Scryfall bulk download prices everything locally (no rate limits). Every external source degrades gracefully — if one is down or changes shape, the app keeps its last-good/baked data instead of crashing.
 - **Security.** Sandboxed renderer, context isolation, all network through a main-process host allowlist, a Content-Security-Policy, and sanitization of imported (untrusted) text.
 

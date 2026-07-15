@@ -19,6 +19,7 @@ const check = (label, cond, detail) => {
 const mk = (id, name, over = {}) => ({
   id, name, productType: 'secret_lair', setCode: 'sld', setName: 'Secret Lair Drop',
   quantity: 1, purchasePrice: 29.99, currentValue: 40, status: 'sealed', notes: '',
+  pricechartingId: 'pc-123', linkedScryfallIds: ['sid-a', 'sid-b'], openedFromId: 'parent-1',
   priceHistory: [{ date: '2026-06-18', price: 40, source: 'manual' }], ...over,
 });
 
@@ -30,6 +31,7 @@ check('two sealed listed', list.length === 2, list.map(s => s.id));
 const s1 = list.find(s => s.id === 's1');
 check('fields round-trip', s1 && s1.name === 'Foil Praetors' && s1.purchase_price === 29.99 && s1.status === 'sealed', s1);
 check('priceHistory parsed back to array', Array.isArray(s1.priceHistory) && s1.priceHistory[0].price === 40, s1 && s1.priceHistory);
+check('catalog/content/opening links round-trip', s1.pricecharting_id === 'pc-123' && s1.opened_from_id === 'parent-1' && s1.linkedScryfallIds.join(',') === 'sid-a,sid-b', s1);
 
 // deleteSealed persists
 db.deleteSealed('s1');

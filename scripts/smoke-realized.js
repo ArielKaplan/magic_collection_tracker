@@ -63,6 +63,10 @@ const check = (label, cond, detail) => {
 
   // ── owned-only value/cost basis ────────────────────────────────────────────
   check('totalCostBasis excludes sold (cards 13 + sealed 100 = 113)', A.totalCostBasis() === 113, A.totalCostBasis());
+  collection.sealed.push({ id: 'opened-1', name: 'Opened Drop', quantity: 1, purchasePrice: 30, status: 'opened' });
+  collection.cards.push({ id: 'from-open', name: 'Generated Card', quantity: 1, purchasePrice: 30, status: 'owned', sourceProductId: 'opened-1' });
+  check('opened product is provenance, not a second owned asset', !A.ownedSealed().some(s => s.id === 'opened-1'));
+  check('opened product cost is counted once via generated cards', A.totalCostBasis() === 143, A.totalCostBasis());
 
   // ── no-sales case ──────────────────────────────────────────────────────────
   collection.cards = collection.cards.filter(c => c.status !== 'sold');

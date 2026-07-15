@@ -292,6 +292,7 @@ function registerIpc() {
   // Cards
   ipcMain.handle('cards:list',         ()              => db.listCards());
   ipcMain.handle('cards:bulkUpsert',   (_e, cards)     => db.bulkUpsertCards(cards));
+  ipcMain.handle('cards:replaceManaged', (_e, cards)   => db.replaceManagedCards(cards));
   ipcMain.handle('cards:delete',       (_e, id)        => db.deleteCard(id));
   ipcMain.handle('cards:updateScry',   (_e, id, sid)   => db.updateCardScryfallId(id, sid));
 

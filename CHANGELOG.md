@@ -12,6 +12,15 @@ user-facing: what changed, not how.
 
 ## [Unreleased]
 
+### Added
+- **Add any exact card printing from search.** Live Scryfall results, printing lists, and unowned Secret Lair card details now have an “Add owned” flow with binder, finish, quantity, condition, cost, language, and acquisition date.
+- **Open a sealed Secret Lair into its cards.** Known exact printings are added to your collection, the product cost is allocated across them, partial quantities are supported, and the opening can be undone until a generated card is sold.
+- **Safe ManaBox repeat imports.** Card CSV review now offers an explicit Reconcile mode with an add/update/remove preview and removal confirmation. It replaces only live ManaBox-managed rows; manual additions and sold history are preserved.
+
+### Fixed
+- **Sealed catalog links and linked card contents now survive a restart.** Product IDs, exact contents, and opening provenance are persisted in SQLite.
+- **Opened products are not double-counted.** Once a product has been converted into cards, portfolio value and cost basis come from the generated cards while the product remains visible as provenance.
+
 ## [1.0.9] - 2026-07-11
 ### Changed
 - **Mana Ledger has a new home.** The project now lives under its studio, Sarcastic Software Studios — new website at sarcasticsoftwarestudio.github.io/mana-ledger. Nothing changes on your end: updates keep arriving automatically, and your data is untouched.

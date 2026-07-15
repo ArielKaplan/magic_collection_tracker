@@ -309,6 +309,7 @@ export function showAddSealedModal(editId = null, prefill = {}) {
       dropName: document.getElementById('sl-drop').value.trim(),
       pricechartingId: _addSelectedPcId,
       linkedScryfallIds: ex?.linkedScryfallIds || [],
+      openedFromId: ex?.openedFromId || '',
       priceHistory: ex?.priceHistory || []
     };
 

@@ -12,7 +12,12 @@ import { esc, fmt } from './utils.js';
 // ─────────────────────────────────────────────────────────────────────────────
 export function ownedCards()  { return collection.cards.filter(c => c.status !== 'sold'); }
 export function soldCards()   { return collection.cards.filter(c => c.status === 'sold'); }
-export function ownedSealed()  { return (collection.sealed || []).filter(i => i.status !== 'sold'); }
+export function ownedSealed()  {
+  // An opened product with generated source-linked cards is provenance, not a
+  // second asset. Its allocated value/cost now lives on those card rows.
+  const converted = new Set(collection.cards.filter(c => c.sourceProductId).map(c => c.sourceProductId));
+  return (collection.sealed || []).filter(i => i.status !== 'sold' && !converted.has(i.id));
+}
 export function soldSealed()   { return (collection.sealed || []).filter(i => i.status === 'sold'); }
 
 // Net realized gain on one disposed entry: proceeds − fees − what it cost.

@@ -45,6 +45,7 @@ const SL_ACTIONS = {
   'edit-sd-note':   a => editSlSuperdropNote(a),
   'edit-card-note': a => editSlCardNote(a),
   'toggle-want':    (a, el) => { toggleSlCardWant(a); el.innerHTML = isCardWanted(a) ? '★ On want list' : '☆ Add to want list'; },
+  'add-owned':      a => { if (typeof window !== 'undefined' && window.showAddOwnedCardModal) window.showAddOwnedCardModal(a); },
   'open-printings': a => { if (typeof window !== 'undefined' && window.openPrintingsTab) window.openPrintingsTab(a); },
   'open-precon':    a => { hideModal(); ui.precons.line = ''; ui.precons.deck = a; ui.activeTab = 'precons'; render(); },
 };
@@ -406,7 +407,10 @@ export function computeDropPnL() {
   }
 
   // Linked sealed products: a real purchase price is the actual cost basis.
-  for (const s of ownedSealed()) {
+  // Include opened provenance rows here so actual product purchase cost remains
+  // attached to the drop. Portfolio valuation excludes these rows separately to
+  // avoid counting them alongside their generated cards.
+  for (const s of (collection.sealed || []).filter(item => item.status !== 'sold')) {
     if (!s.dropName) continue;
     const r = get(s.dropName);
     const qty = s.quantity || 1;
@@ -1251,6 +1255,7 @@ export async function showSlViewerModal(scryfallId) {
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
         <a href="${esc(scryfallUrl)}" target="_blank" class="btn btn-ghost" style="font-size:12px;text-decoration:none">View on Scryfall ↗</a>
         <button class="btn btn-ghost" style="font-size:12px" data-slact="open-printings" data-arg="${esc(data.name || '')}">View all printings ◇</button>
+        <button class="btn btn-primary" style="font-size:12px" data-slact="add-owned" data-arg="${esc(scryfallId)}">＋ Add owned copy</button>
         <button class="btn btn-ghost" style="font-size:12px" data-slact="toggle-want" data-arg="${esc(scryfallId)}">${isCardWanted(scryfallId) ? '★ On want list' : '☆ Add to want list'}</button>
         <button class="btn btn-ghost" style="font-size:12px" data-slact="edit-card-note" data-arg="${esc(scryfallId)}">✎ ${slCardNote(scryfallId) ? 'Edit' : 'Add'} note</button>
       </div>

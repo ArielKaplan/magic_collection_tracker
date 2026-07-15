@@ -21,7 +21,8 @@ export function renderSealed() {
     return true;
   });
 
-  const owned = collection.sealed.filter(i => i.status !== 'sold');
+  const convertedProductIds = new Set(collection.cards.filter(c => c.sourceProductId).map(c => c.sourceProductId));
+  const owned = collection.sealed.filter(i => i.status !== 'sold' && !convertedProductIds.has(i.id));
   const totalVal = owned.reduce((sum, i) => {
     const h = i.priceHistory;
     return sum + (h?.length ? h[h.length - 1].price : i.purchasePrice) * i.quantity;
@@ -111,6 +112,8 @@ export function renderSealedItem(item) {
   }
 
   const hist       = item.priceHistory || [];
+  const generatedCards = collection.cards.filter(c => c.sourceProductId === item.id);
+  const converted = generatedCards.length > 0;
   const curPrice   = hist.length ? hist[hist.length - 1].price : item.purchasePrice;
   const change     = getPriceChange(hist);
   const totalVal   = curPrice * item.quantity;
@@ -156,18 +159,24 @@ export function renderSealedItem(item) {
       </div>
 
       ${item.notes ? `<div style="margin-top:10px;font-size:12px;color:var(--text-dim);font-style:italic">${esc(item.notes)}</div>` : ''}
+      ${converted ? `<div style="margin-top:10px;padding:9px 11px;border-radius:7px;background:var(--surface2);font-size:12px;color:var(--text-muted)">Opened into ${generatedCards.length} linked card rows. Value and cost basis are represented by those cards, not counted again here.</div>` : ''}
 
       <div class="sealed-actions">
-        <button class="btn btn-sm" data-action="edit-sealed" data-id="${item.id}">Edit</button>
-        <button class="btn btn-sm" data-action="update-sealed-price" data-id="${item.id}">Update Price</button>
-        <button class="btn btn-sm" data-action="toggle-status" data-id="${item.id}">
-          ${item.status === 'sealed' ? 'Mark Opened' : 'Mark Sealed'}
-        </button>
-        ${item.linkedScryfallIds?.length
-          ? `<button class="btn btn-sm" data-action="toggle-cards" data-id="${item.id}">Cards (${item.linkedScryfallIds.length})</button>`
-          : ''}
-        <button class="btn btn-sm" data-action="sell-sealed" data-id="${item.id}">💵 Sell</button>
-        <button class="btn btn-sm btn-danger" data-action="delete-sealed" data-id="${item.id}">Delete</button>
+        ${converted ? `
+          <button class="btn btn-sm" data-action="undo-open" data-id="${item.id}">↩ Undo opening</button>
+          <button class="btn btn-sm" data-action="toggle-cards" data-id="${item.id}">Cards (${generatedCards.length})</button>
+        ` : `
+          <button class="btn btn-sm" data-action="edit-sealed" data-id="${item.id}">Edit</button>
+          <button class="btn btn-sm" data-action="update-sealed-price" data-id="${item.id}">Update Price</button>
+          ${item.status === 'sealed' && (item.dropName || item.linkedScryfallIds?.length)
+            ? `<button class="btn btn-sm btn-primary" data-action="open-into-collection" data-id="${item.id}">Open into Collection</button>`
+            : `<button class="btn btn-sm" data-action="toggle-status" data-id="${item.id}">${item.status === 'sealed' ? 'Mark Opened' : 'Mark Sealed'}</button>`}
+          ${item.linkedScryfallIds?.length
+            ? `<button class="btn btn-sm" data-action="toggle-cards" data-id="${item.id}">Cards (${item.linkedScryfallIds.length})</button>`
+            : ''}
+          <button class="btn btn-sm" data-action="sell-sealed" data-id="${item.id}">💵 Sell</button>
+          <button class="btn btn-sm btn-danger" data-action="delete-sealed" data-id="${item.id}">Delete</button>
+        `}
       </div>
 
       ${item.linkedScryfallIds?.length ? `
@@ -177,7 +186,7 @@ export function renderSealedItem(item) {
           </div>
           <div class="sealed-cards-grid">
             ${item.linkedScryfallIds.map(sid => {
-              const card = collection.cards.find(c => c.scryfallId === sid);
+              const card = generatedCards.find(c => c.scryfallId === sid) || collection.cards.find(c => c.scryfallId === sid);
               const price = card ? getCurrentPrice(card.scryfallId, card.foil) : null;
               return `<div class="sealed-card-chip">
                 <div class="chip-name">${card ? esc(card.name) : `<span style="color:var(--text-dim);font-size:11px">${sid.slice(0,8)}…</span>`}</div>

@@ -19,6 +19,9 @@ CREATE TABLE IF NOT EXISTS cards (
   language                 TEXT DEFAULT 'en',
   misprint                 INTEGER DEFAULT 0,
   altered                  INTEGER DEFAULT 0,
+  acquired_at              TEXT,
+  source_product_id        TEXT,
+  source_product_name      TEXT,
   -- Disposition / realized-gains tracking. A card stays in this table after it's
   -- sold (status='sold') so it can power realized P&L — it just stops counting
   -- toward owned value/cost-basis. status='owned' is the live collection.
@@ -48,6 +51,9 @@ CREATE TABLE IF NOT EXISTS sealed (
   status          TEXT DEFAULT 'sealed',   -- sealed | opened | sold
   notes           TEXT,
   drop_name       TEXT,
+  pricecharting_id TEXT,
+  linked_scryfall_ids TEXT,          -- JSON array of exact product contents
+  opened_from_id  TEXT,
   -- Disposition / realized-gains tracking (mirrors cards). status='sold' keeps
   -- the row for realized P&L but drops it from owned value/cost-basis.
   disposed_at     TEXT,

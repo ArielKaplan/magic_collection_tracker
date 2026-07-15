@@ -20,7 +20,8 @@ const check = (label, cond, detail) => {
 
 // ── Cards: an owned entry and a sold one ─────────────────────────────────────
 db.bulkUpsertCards([
-  { id: 'c-own', scryfallId: 'aaa', name: 'Kept Card', foil: 'normal', quantity: 2, purchasePrice: 5 },
+  { id: 'c-own', scryfallId: 'aaa', name: 'Kept Card', foil: 'normal', quantity: 2, purchasePrice: 5,
+    acquiredAt: '2026-07-15', sourceProductId: 'opened-1', sourceProductName: 'Test Drop' },
   { id: 'c-sold', scryfallId: 'bbb', name: 'Flipped Card', foil: 'foil', quantity: 1,
     purchasePrice: 10, status: 'sold', disposedAt: '2026-06-15', salePrice: 40, saleFees: 3, saleNote: 'sold on TCG' },
 ]);
@@ -28,6 +29,7 @@ let cards = db.listCards();
 const own = cards.find(c => c.id === 'c-own');
 const sold = cards.find(c => c.id === 'c-sold');
 check('owned card defaults status=owned', own && own.status === 'owned', own && own.status);
+check('acquisition provenance round-trips', own && own.acquired_at === '2026-07-15' && own.source_product_id === 'opened-1' && own.source_product_name === 'Test Drop', own);
 check('sold card persists status=sold', sold && sold.status === 'sold', sold && sold.status);
 check('sold card sale fields round-trip',
   sold && sold.disposed_at === '2026-06-15' && sold.sale_price === 40 && sold.sale_fees === 3 && sold.sale_note === 'sold on TCG',
@@ -53,6 +55,20 @@ try { db.init(p); } catch (e) { reinitThrew = true; }
 check('re-init (migration re-run) does not throw', !reinitThrew);
 cards = db.listCards();
 check('data survives restart', cards.length === 2 && cards.find(c => c.id === 'c-sold').status === 'sold', cards.map(c => c.id));
+
+// ── ManaBox reconciliation: only live managed rows are authoritative ─────────
+db.bulkUpsertCards([
+  { id: 'mb-keep', manaboxId: 'mb-1', scryfallId: 'sid-1', name: 'Managed old', foil: 'normal', quantity: 1 },
+  { id: 'mb-remove', manaboxId: 'mb-2', scryfallId: 'sid-2', name: 'Managed absent', foil: 'normal', quantity: 1 },
+]);
+db.replaceManagedCards([
+  { id: 'mb-keep', manaboxId: 'mb-1', scryfallId: 'sid-1', name: 'Managed updated', foil: 'normal', quantity: 4 },
+  { id: 'mb-new', manaboxId: 'mb-3', scryfallId: 'sid-3', name: 'Managed new', foil: 'normal', quantity: 1 },
+]);
+cards = db.listCards();
+check('reconcile preserves manual and sold rows', cards.some(c => c.id === 'c-own') && cards.some(c => c.id === 'c-sold'), cards.map(c => c.id));
+check('reconcile removes absent managed row', !cards.some(c => c.id === 'mb-remove'), cards.map(c => c.id));
+check('reconcile updates and adds managed rows', cards.find(c => c.id === 'mb-keep')?.quantity === 4 && cards.some(c => c.id === 'mb-new'), cards);
 
 // ── resetAll wipes both tables ───────────────────────────────────────────────
 db.resetAll();
