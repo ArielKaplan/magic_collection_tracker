@@ -12,6 +12,8 @@ user-facing: what changed, not how.
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-07-15
+
 ### Added
 - **Add any exact card printing from search.** Live Scryfall results, printing lists, and unowned Secret Lair card details now have an “Add owned” flow with binder, finish, quantity, condition, cost, language, and acquisition date.
 - **Open a sealed Secret Lair into its cards.** Known exact printings are added to your collection, the product cost is allocated across them, partial quantities are supported, and the opening can be undone until a generated card is sold.
