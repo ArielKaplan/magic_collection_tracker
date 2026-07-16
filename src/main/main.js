@@ -347,6 +347,7 @@ function registerIpc() {
   // Scryfall bulk-data engine — daily download in main, instant lookups after
   ipcMain.handle('bulk:ensure',         (_e, force)    => bulkData.ensureFresh(force, msg => console.log('[bulk]', msg)));
   ipcMain.handle('bulk:lookup',         (_e, ids)      => bulkData.lookup(ids));
+  ipcMain.handle('bulk:cheapestByNames', (_e, names)   => bulkData.cheapestByNames(names));
   ipcMain.handle('bulk:status',         ()             => bulkData.status());
 
   // Backups & recovery — list, restore (relaunches), back up now, open folder

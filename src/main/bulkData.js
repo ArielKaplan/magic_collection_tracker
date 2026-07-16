@@ -103,6 +103,7 @@ async function downloadAndBuild(log) {
   try { fs.unlinkSync(rawPath); } catch { /* disk hygiene only */ }
 
   indexMap = new Map(compact.map(c => [c.id, c]));
+  cheapestByNameMap = null;                // derived from indexMap — rebuild lazily
   state = 'ready';
   log(`Bulk index ready — ${compact.length.toLocaleString()} printings (${parsed} parsed, ${failed} skipped)`);
 }
@@ -141,8 +142,41 @@ function lookup(ids) {
   return { found, missing };
 }
 
+// names → { found: { [name]: { price, set, set_name } }, missing: [names] }.
+// "Cheapest print" = the lowest price across every printing of that name in
+// the index, any finish. Used to estimate printings that have no price yet
+// (an upcoming Secret Lair) from the cheapest version you could buy today.
+let cheapestByNameMap = null;              // Map(name → { price, set, set_name }), lazy
+
+function buildCheapestByName() {
+  cheapestByNameMap = new Map();
+  for (const c of indexMap.values()) {
+    const p = c.prices || {};
+    let min = Infinity;
+    for (const k of ['usd', 'usd_foil', 'usd_etched']) {
+      const v = parseFloat(p[k]);
+      if (!isNaN(v) && v < min) min = v;
+    }
+    if (min === Infinity) continue;
+    const cur = cheapestByNameMap.get(c.name);
+    if (!cur || min < cur.price) cheapestByNameMap.set(c.name, { price: min, set: c.set, set_name: c.set_name });
+  }
+}
+
+function cheapestByNames(names) {
+  try { loadIndexIfNeeded(); } catch { /* corrupt index — treat as cold */ }
+  if (!indexMap) return { found: {}, missing: [...(names || [])] };
+  if (!cheapestByNameMap) buildCheapestByName();
+  const found = {}, missing = [];
+  for (const name of (names || [])) {
+    const hit = cheapestByNameMap.get(name);
+    if (hit) found[name] = hit; else missing.push(name);
+  }
+  return { found, missing };
+}
+
 function status() {
   return { state, fetchedAt: meta.fetchedAt || null, count: meta.count || 0, loaded: !!indexMap };
 }
 
-module.exports = { init, ensureFresh, lookup, status, parseBulkFile, extractCompact };
+module.exports = { init, ensureFresh, lookup, cheapestByNames, status, parseBulkFile, extractCompact };

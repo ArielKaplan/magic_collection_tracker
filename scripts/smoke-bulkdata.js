@@ -51,6 +51,23 @@ const check = (label, cond, detail) => {
   check('cold cache → all missing', cold.found.length === 0 && cold.missing.length === 2, cold);
   check('status reports empty', bulk.status().state === 'empty', bulk.status());
 
+  // ── cheapestByNames on a synthetic warm index ─────────────────────────────
+  // An upcoming SL print has no price; the cheapest OTHER print (any finish) wins.
+  fs.writeFileSync(path.join(tmp, 'bulk', 'index.json'), JSON.stringify([
+    { id: 'p1', name: 'Squirrel Girl', set: 'sld', set_name: 'Secret Lair Drop', prices: {} },
+    { id: 'p2', name: 'Squirrel Girl', set: 'mar', set_name: 'Marvel Super Heroes', prices: { usd: '1.90', usd_foil: '4.00' } },
+    { id: 'p3', name: 'Squirrel Girl', set: 'oth', set_name: 'Other Set', prices: { usd_foil: '2.50' } },
+    { id: 'p4', name: 'No Price Anywhere', set: 'x', set_name: 'X', prices: {} },
+  ]));
+  const cheap = bulk.cheapestByNames(['Squirrel Girl', 'No Price Anywhere', 'Unknown Card']);
+  check('cheapest = lowest across prints & finishes (1.90 @ Marvel Super Heroes)',
+    cheap.found['Squirrel Girl'] && Math.abs(cheap.found['Squirrel Girl'].price - 1.90) < 1e-9
+      && cheap.found['Squirrel Girl'].set_name === 'Marvel Super Heroes',
+    cheap.found['Squirrel Girl']);
+  check('unpriced + unknown names reported missing',
+    cheap.missing.length === 2 && cheap.missing.includes('No Price Anywhere') && cheap.missing.includes('Unknown Card'),
+    cheap.missing);
+
   // ── optional: the real download (also pre-warms nothing — temp dir) ───────
   if (process.argv.includes('--live')) {
     console.log('\n  --live: real download into temp dir (this takes a few minutes)…');

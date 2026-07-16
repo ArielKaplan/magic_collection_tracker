@@ -68,9 +68,10 @@ contextBridge.exposeInMainWorld('api', {
     upsert:  (decks) => inv('precon:upsert', decks),
   },
   bulk: {
-    ensure:  (force) => inv('bulk:ensure', force),
-    lookup:  (ids)   => inv('bulk:lookup', ids),
-    status:  ()      => inv('bulk:status'),
+    ensure:          (force) => inv('bulk:ensure', force),
+    lookup:          (ids)   => inv('bulk:lookup', ids),
+    cheapestByNames: (names) => inv('bulk:cheapestByNames', names),
+    status:          ()      => inv('bulk:status'),
   },
   backups: {
     list:       ()  => inv('backups:list'),

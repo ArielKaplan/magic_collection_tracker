@@ -11,6 +11,8 @@ in-app "What's New" screen — from that version's section. Keep entries
 user-facing: what changed, not how.
 
 ## [Unreleased]
+### Fixed
+- **"Price the singles" now works for upcoming Secret Lairs.** Cards whose Secret Lair printing has no market price yet (drops that haven't released) no longer drag the singles total to $0.00 — each one is estimated from the cheapest available printing of the same card, so you can see what the cards would cost you today versus buying the drop. Estimated totals are marked with "≈" and a note showing how many cards were priced this way.
 
 ## [1.1.0] - 2026-07-15
 

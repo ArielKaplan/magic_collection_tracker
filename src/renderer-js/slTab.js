@@ -1,7 +1,7 @@
 import { cardCurrentValue, entryRealized, ownedCards, ownedSealed, soldCards, soldSealed } from './analytics.js';
 import { showGalleryModal } from './gallery.js';
 import { hideModal, showModal } from './modals.js';
-import { fetchScryfallBatch } from './prices.js';
+import { fetchScryfallBatch, fetchCheapestPrints } from './prices.js';
 import { render } from './render.js';
 import { searchTcgcsvLocal } from './sealedPricing.js';
 import { attributeDropFor, buildSlModel, finishGroup, projectLegacy, requiredFinishFor, setSlProducts, slDropModelFinish, slProductForDrop } from './slData.js';
@@ -696,7 +696,7 @@ export function sumDropSingles(cards, finish = 'normal') {
     const name = card.name || card.id;
     byName[name] = Math.max(byName[name] ?? 0, val);
   }
-  return { value: Object.values(byName).reduce((a, b) => a + b, 0), priced: Object.keys(byName).length };
+  return { value: Object.values(byName).reduce((a, b) => a + b, 0), priced: Object.keys(byName).length, byName };
 }
 
 // Fetch + cache the sum-of-singles for a drop (Scryfall batch, on demand).
@@ -713,9 +713,24 @@ export async function priceSlDropSingles(drop) {
       const data = await fetchScryfallBatch(uniq.slice(i, i + 75));
       for (const c of (data.data || [])) cards.push(c);
     }
-    const { value, priced } = sumDropSingles(cards, dropFinish(drop));
+    const { value, priced, byName } = sumDropSingles(cards, dropFinish(drop));
     const totalNames = (typeof SL_DROP_CARDS !== 'undefined' && SL_DROP_CARDS[drop]?.length) || priced;
-    slDropSinglesCache.set(drop, { value, priced, names: totalNames, at: Date.now() });
+    // Names the drop's own printings couldn't price (an upcoming drop's SLD
+    // cards have no prices yet) — estimate each from the cheapest print of the
+    // same card that exists today, so the total answers "what would these
+    // cards cost right now?" instead of showing $0.00.
+    const namesList = (typeof SL_DROP_CARDS !== 'undefined' && SL_DROP_CARDS[drop]?.length)
+      ? SL_DROP_CARDS[drop] : cards.map(c => c.name);
+    const unpriced = [...new Set(namesList)].filter(n => byName[n] == null);
+    let estValue = 0, est = 0;
+    if (unpriced.length) {
+      const cheapest = await fetchCheapestPrints(unpriced);
+      for (const n of unpriced) {
+        const hit = cheapest[n];
+        if (hit && hit.price != null) { estValue += hit.price; est++; }
+      }
+    }
+    slDropSinglesCache.set(drop, { value: value + estValue, priced: priced + est, est, names: totalNames, at: Date.now() });
   } catch (e) {
     toast(`Couldn't price singles: ${e.message}`, 'error');
   } finally {
@@ -754,10 +769,13 @@ function dropEconomicsBanner(drop) {
   const crack = slDropSinglesCache.get(drop);  // cached singles total | undefined
   const pricing = slDropPricing.has(drop);
 
+  const estNote = crack?.est
+    ? ` · <span title="${crack.est} card${crack.est === 1 ? ' has' : 's have'} no Secret Lair price yet — estimated from the cheapest available printing">${crack.est} est. from cheapest print</span>`
+    : '';
   const singlesCell = pricing
     ? `<span style="color:var(--text-muted)">⏳ Pricing…</span>`
     : crack
-      ? `<strong style="color:var(--text)">${fmt(crack.value)}</strong> <span style="font-size:11px;color:var(--text-muted)">(${crack.priced}/${crack.names} cards)</span>
+      ? `<strong style="color:var(--text)">${crack.est ? '≈ ' : ''}${fmt(crack.value)}</strong> <span style="font-size:11px;color:var(--text-muted)">(${crack.priced}/${crack.names} cards${estNote})</span>
          <button class="btn btn-ghost" style="font-size:11px;padding:2px 8px;margin-left:4px" data-slact="price-singles" data-arg="${esc(drop)}">↻</button>`
       : `<button class="btn btn-sm" data-slact="price-singles" data-arg="${esc(drop)}">💰 Price the singles</button>`;
 

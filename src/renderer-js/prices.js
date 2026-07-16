@@ -180,6 +180,41 @@ export async function fetchScryfallBatch(ids) {
   }
 }
 
+// Cheapest print per card name — for printings that have no price yet (e.g. an
+// upcoming Secret Lair), estimate from the lowest-priced version of the card
+// that exists today, any set, any finish. Bulk index first (instant); a
+// per-name Scryfall prints search only for names the index doesn't know.
+// Returns { [name]: { price, set_name } } — names with no priced print are omitted.
+export async function fetchCheapestPrints(names) {
+  let out = {}, missing = [...new Set(names || [])];
+  if (!missing.length) return out;
+  if (bulkDataEnabled() && window.api?.bulk?.cheapestByNames) {
+    try {
+      const r = await window.api.bulk.cheapestByNames(missing);
+      if (r && r.found) { out = r.found; missing = r.missing || []; }
+    } catch { /* cold or corrupt index — network path below covers everything */ }
+  }
+  for (const name of missing) {
+    try {
+      const q = encodeURIComponent(`!"${name}"`);
+      const resp = await netFetch(`https://api.scryfall.com/cards/search?q=${q}&unique=prints&order=usd&dir=asc`);
+      if (!resp.ok) continue;                  // 404 = Scryfall doesn't know the name; skip
+      const data = await resp.json();
+      let best = null;
+      for (const c of (data.data || [])) {
+        const p = c.prices || {};
+        for (const k of ['usd', 'usd_foil', 'usd_etched']) {
+          const v = parseFloat(p[k]);
+          if (!isNaN(v) && (!best || v < best.price)) best = { price: v, set_name: c.set_name };
+        }
+      }
+      if (best) out[name] = best;
+      await sleep(120);                        // Scryfall courtesy gap between searches
+    } catch { /* one name failing shouldn't sink the batch */ }
+  }
+  return out;
+}
+
 // Fetch TCGPlayer market prices from TCGCSV for a set of cards and store them
 // in collection.marketPriceHistory. Returns number of cards successfully priced.
 export async function fetchTcgcsvMarketPrices(cardPairs) {

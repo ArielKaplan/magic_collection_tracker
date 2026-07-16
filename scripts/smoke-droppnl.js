@@ -104,6 +104,9 @@ const near = (a, b) => Math.abs(a - b) < 1e-6;
   const agg = sumDropSingles(cards);
   check('sumDropSingles dedupes by name + best finish (25+4+7.5=36.5)', near(agg.value, 36.5), agg.value);
   check('sumDropSingles priced count = 3 (A,B,C)', agg.priced === 3, agg.priced);
+  // byName feeds the cheapest-print fallback: priced names present, unpriced absent
+  check('sumDropSingles byName: A=25 (max), D absent (unpriced)',
+    agg.byName && near(agg.byName['A'], 25) && !('D' in agg.byName), agg.byName);
 
   // finish-aware pricing: a foil drop values usd_foil, a non-foil drop values usd
   const ff = [{ name: 'X', prices: { usd: '10.00', usd_foil: '30.00' } }];
