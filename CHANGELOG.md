@@ -12,6 +12,10 @@ user-facing: what changed, not how.
 
 ## [Unreleased]
 
+## [1.1.2] - 2026-07-18
+### Fixed
+- **Flower Power no longer tops the P&L leaderboard with a +4868% "gain".** That drop really did sell for $1.00 (a one-per-customer Chaos Vault promo), but a promo price makes a misleading assumed cost basis. Sub-$5 MSRPs from the wiki sync are now ignored and the standard ≈$29.99 / $39.99 assumption applies; if you actually snagged one for a dollar, link a sealed product with your real purchase price and the P&L will use it.
+
 ## [1.1.1] - 2026-07-16
 ### Fixed
 - **"Price the singles" now works for upcoming Secret Lairs.** Cards whose Secret Lair printing has no market price yet (drops that haven't released) no longer drag the singles total to $0.00 — each one is estimated from the cheapest available printing of the same card, so you can see what the cards would cost you today versus buying the drop. Estimated totals are marked with "≈" and a note showing how many cards were priced this way.
