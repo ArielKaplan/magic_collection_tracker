@@ -26,6 +26,9 @@ desktop.ini
 .env
 .env.local
 
+# SteamPipe upload settings — holds your Steam account name; copy from steam/steam.example.json
+steam/steam.json
+
 # SQLite runtime files (the database lives in %APPDATA%, not the repo)
 *.db
 *.db-shm

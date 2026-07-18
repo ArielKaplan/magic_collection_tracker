@@ -10,6 +10,7 @@
     "build:renderer:watch": "vite build --watch",
     "build": "npm run build:renderer && electron-builder",
     "build:steam": "npm run build:renderer && electron-builder --win dir --config.extraMetadata.slChannel=steam --publish never",
+    "steam:ship": "node scripts/steam-upload.js",
     "release": "npm run build:renderer && electron-builder --win --publish always",
     "release:tag": "node scripts/release.js",
     "rebuild": "electron-rebuild -f -w better-sqlite3",

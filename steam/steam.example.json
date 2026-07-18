@@ -1,0 +1,11 @@
+{
+  "//": "SteamPipe upload settings — fill in the two IDs from partner.steamgames.com.",
+  "//appId": "App Admin page for Mana Ledger — the number in the URL (Apps & Packages → All Applications).",
+  "//depotId": "App Admin → SteamPipe → Depots. The auto-created default depot is usually appId + 1.",
+  "appId": "REPLACE_ME",
+  "depotId": "REPLACE_ME",
+  "//account": "Your Steamworks (Steam) login name. Password + Steam Guard are prompted interactively on first upload.",
+  "account": "REPLACE_ME",
+  "//branch": "Branch to set live automatically after upload. Leave empty to set builds live by hand in the dashboard (recommended until the first release is out).",
+  "branch": ""
+}
