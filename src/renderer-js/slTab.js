@@ -374,6 +374,14 @@ export function slMsrpDefault(foil) {
   return foil ? (s.slMsrpFoil ?? 39.99) : (s.slMsrpNonfoil ?? 29.99);
 }
 
+// Floor below which a wiki-synced MSRP is not trusted as an assumed cost
+// basis. Promo stunts are real — Flower Power (2025-09) genuinely sold for
+// $1.00, limit one per customer — but a sub-$5 figure is indistinguishable
+// from a mangled table cell, and either way it swamps the P&L leaderboard
+// with +4800% rows nobody's actual buying reflects. Owners who really paid
+// the promo price can link a sealed product to record it.
+const SL_WIKI_MSRP_MIN = 5;
+
 export function computeDropPnL() {
   if (typeof SL_SCRYFALL_TO_DROPS === 'undefined') return [];
   const rows = {};
@@ -427,12 +435,12 @@ export function computeDropPnL() {
   return Object.values(rows).map(r => {
     // Real linked-sealed cost wins; otherwise assume one drop bought at MSRP —
     // the wiki's actual per-drop MSRP (finish-aware: a Foil SKU costs the foil
-    // column) when synced, the flat settings default as the last resort.
+    // column) when synced and plausible, the flat settings default otherwise.
     const costIsDefault = !(r.sealedCost > 0);
     let cost = r.sealedCost;
     if (costIsDefault) {
       const wiki = slWikiMsrp(r.drop, dropFinish(r.drop));
-      cost = wiki != null ? wiki : slMsrpDefault(r.anyFoil);
+      cost = wiki != null && wiki >= SL_WIKI_MSRP_MIN ? wiki : slMsrpDefault(r.anyFoil);
     }
     const gain = r.value - cost;
     return { ...r, cost, costIsDefault, gain, gainPct: cost > 0 ? (gain / cost) * 100 : null };

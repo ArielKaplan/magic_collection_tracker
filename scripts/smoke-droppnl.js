@@ -89,6 +89,43 @@ const near = (a, b) => Math.abs(a - b) < 1e-6;
   check('settings override foil MSRP default (50)', overridden && near(overridden.cost, 50), overridden && overridden.cost);
   collection.settings = {};
 
+  // ── Wiki-synced per-drop MSRPs ────────────────────────────────────────────
+  // A plausible synced MSRP beats the flat default; an implausibly low one
+  // (Flower Power really sold for $1.00) falls back to the flat default.
+  const { loadSlWikiFromSettings } = await import('../src/renderer-js/slWiki.js');
+  SL_SCRYFALL_TO_DROPS.ffff = ['Flower Power'];
+  SL_SCRYFALL_TO_DROPS.gggg = ['Flower Power Foil'];
+  window.api = {
+    settings: {
+      get: async () => JSON.stringify({
+        fetchedAt: '2026-07-18T00:00:00Z',
+        rows: [
+          { seq: 100, drop: 'Phyrexian Praetors', superdrop: 'Winter 2022', date: '2022-12-02', msrpNonfoil: 24.99, msrpFoil: 34.99 },
+          { seq: 319, drop: 'Flower Power', superdrop: 'Flower Power', date: '2025-09-25', msrpNonfoil: 1.00, msrpFoil: 1.00 },
+        ],
+      }),
+    },
+  };
+  await loadSlWikiFromSettings();
+  collection.cards = [
+    { id: 'w1', scryfallId: 'aaaa', name: 'Elesh Norn', foil: 'normal', quantity: 1, purchasePrice: 0 },
+    { id: 'w2', scryfallId: 'ffff', name: 'Forest', foil: 'normal', quantity: 1, purchasePrice: 0 },
+    { id: 'w3', scryfallId: 'gggg', name: 'Forest', foil: 'foil', quantity: 1, purchasePrice: 0 },
+  ];
+  collection.priceHistory = {
+    'aaaa|normal': [{ date: '2026-06-18', price: 100 }],
+    'ffff|normal': [{ date: '2026-06-18', price: 12 }],
+    'gggg|foil': [{ date: '2026-06-18', price: 20 }],
+  };
+  const wby = Object.fromEntries(computeDropPnL().map(r => [r.drop, r]));
+  check('plausible wiki MSRP wins over flat default (24.99, still assumed)',
+    wby['Phyrexian Praetors'] && near(wby['Phyrexian Praetors'].cost, 24.99) && wby['Phyrexian Praetors'].costIsDefault === true,
+    wby['Phyrexian Praetors']);
+  check('$1.00 wiki MSRP → flat default 29.99', wby['Flower Power'] && near(wby['Flower Power'].cost, 29.99), wby['Flower Power']);
+  check('$1.00 wiki MSRP on foil drop → flat default 39.99', wby['Flower Power Foil'] && near(wby['Flower Power Foil'].cost, 39.99), wby['Flower Power Foil']);
+  check('$1.00 fallback keeps gainPct sane (12 on 29.99 basis)',
+    wby['Flower Power'] && near(wby['Flower Power'].gainPct, (12 - 29.99) / 29.99 * 100), wby['Flower Power'] && wby['Flower Power'].gainPct);
+
   // ── Phase 2: crack-or-keep ────────────────────────────────────────────────
   const { sumDropSingles, sealedKeepValue, dropFinish } = await import('../src/renderer-js/slTab.js');
 
