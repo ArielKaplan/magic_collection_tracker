@@ -5,7 +5,7 @@ import { fetchScryfallBatch, fetchCheapestPrints } from './prices.js';
 import { render } from './render.js';
 import { searchTcgcsvLocal } from './sealedPricing.js';
 import { attributeDropFor, buildSlModel, finishGroup, projectLegacy, requiredFinishFor, setSlProducts, slDropModelFinish, slProductForDrop } from './slData.js';
-import { refreshSlWikiData, slWikiGroupFor, slWikiMsrp, upcomingSlDrops } from './slWiki.js';
+import { refreshSlWikiData, slWikiGroupFor, slWikiMsrp, slWikiRowFor, upcomingSlDrops } from './slWiki.js';
 import { collection, tcgcsvCache, ui } from './state.js';
 import { esc, fmt, netFetch, toast } from './utils.js';
 import { addDropMissingToWantList, isCardWanted, toggleSlCardWant } from './wantlist.js';
@@ -819,6 +819,16 @@ function dropEconomicsBanner(drop) {
     </div>`;
 }
 
+// A drop's release date (YYYY-MM-DD): the wiki row is authoritative and covers
+// foil variants via slBaseDropName; the MTGJSON product's releaseDate fills the
+// SKUs the wiki doesn't list. '' when neither source knows the drop.
+function slDropReleaseDate(drop) {
+  const w = slWikiRowFor(drop);
+  if (w && w.date) return w.date;
+  const p = slProductForDrop(drop);
+  return (p && p.releaseDate) || '';
+}
+
 export function renderSlViewer() {
   const sv = ui.slViewer;
   const hasSl = typeof SL_SUPERDROPS !== 'undefined' && typeof SL_DROP_TO_SCRYFALL_IDS !== 'undefined';
@@ -937,15 +947,93 @@ export function renderSlViewer() {
         <select data-act="ui-set" data-path="slViewer.sort" style="font-size:12px">
           ${opts.map(([v, label]) => `<option value="${v}"${sv.sort===v?' selected':''}>${label}</option>`).join('')}
         </select>
+        ${layoutBtn('tiles', '🖼 Tiles')}${layoutBtn('table', '📊 Table')}
+      </div>`;
+  }
+  function layoutBtn(id, label) {
+    const cur = sv.layout || 'tiles';
+    return `<button class="btn ${cur === id ? 'btn-primary' : 'btn-ghost'}" style="font-size:12px;padding:4px 10px;white-space:nowrap" data-act="ui-set" data-path="slViewer.layout" data-val="${id}">${label}</button>`;
+  }
+
+  // Table layout — the same rows as the tile grids, but flat, with the data the
+  // tiles have no room for (release date, MSRP). Rows navigate like tiles do;
+  // Name/Released headers drive the shared slViewer.sort state.
+  function thSort(label, key, style = '') {
+    const [f, d] = (sv.sort || 'date_desc').split('_');
+    const active = f === key;
+    const arrow = active ? (d === 'desc' ? ' ↓' : ' ↑') : '';
+    return `<th style="cursor:pointer;${style}${active ? ';color:var(--accent2)' : ''}"
+      data-act="ui-set" data-path="slViewer.sort" data-val="${key}_${active && d === 'asc' ? 'desc' : 'asc'}">${label}${arrow}</th>`;
+  }
+  function progressCell(owned, total) {
+    const pct = total ? Math.round(owned / total * 100) : 0;
+    return `
+      <td style="white-space:nowrap;font-weight:600;color:${owned === total && total > 0 ? 'var(--green)' : 'var(--text-muted)'}">${owned} / ${total}</td>
+      <td style="min-width:110px"><div class="sl-progress-bar" style="margin:0"><div class="sl-progress-fill" style="width:${pct}%"></div></div></td>`;
+  }
+  function superdropsTable(sds) {
+    const rows = sds.map(sd => {
+      let owned = 0, total = 0;
+      for (const d of sd.drops) { const s = dropOwnedNameStats(d); owned += s.owned; total += s.total; }
+      const note = slSuperdropNote(sd.superdrop);
+      return `
+        <tr data-slact="open-superdrop" data-arg="${esc(sd.superdrop)}" style="cursor:pointer">
+          <td style="font-weight:600;color:var(--text)">${esc(sd.superdrop)}${note ? ` <span title="${esc(note)}">📝</span>` : ''}</td>
+          <td style="white-space:nowrap">${esc(sd.date || '—')}</td>
+          <td style="text-align:center">${sd.drops.length}</td>
+          ${progressCell(owned, total)}
+        </tr>`;
+    }).join('');
+    return `
+      <div class="table-wrap">
+        <table>
+          <thead><tr>${thSort('Superdrop', 'name')}${thSort('Released', 'date')}<th style="text-align:center">Drops</th><th>Owned</th><th>Progress</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>`;
+  }
+  function dropsTable(drops) {
+    const rows = drops.map(drop => {
+      const stats = dropOwnedNameStats(drop);
+      const date = slDropReleaseDate(drop);
+      const msrp = slWikiMsrp(drop, dropFinish(drop));
+      const note = slDropNote(drop);
+      return `
+        <tr data-slact="open-drop" data-arg="${esc(drop)}" style="cursor:pointer">
+          <td style="font-weight:600;color:var(--text)">${esc(drop)}${note ? ` <span title="${esc(note)}">📝</span>` : ''}</td>
+          <td style="white-space:nowrap">${esc(date || '—')}</td>
+          <td style="text-align:center">${stats.total}</td>
+          ${progressCell(stats.owned, stats.total)}
+          <td style="text-align:right">${msrp != null ? fmt(msrp) : '<span style="color:var(--text-muted)">—</span>'}</td>
+        </tr>`;
+    }).join('');
+    return `
+      <div class="table-wrap">
+        <table>
+          <thead><tr>${thSort('Drop', 'name')}${thSort('Released', 'date')}<th style="text-align:center">Cards</th><th>Owned</th><th>Progress</th><th style="text-align:right">MSRP</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
       </div>`;
   }
 
-  // Helpers for sorting + searching
+  // Helpers for sorting + searching. Date sorts put undated entries last in
+  // either direction and break ties by name A→Z.
+  function byDate(dateOf, nameOf, dir) {
+    return (a, b) => {
+      const da = dateOf(a), db = dateOf(b);
+      if (da !== db) {
+        if (!da) return 1;
+        if (!db) return -1;
+        return da.localeCompare(db) * dir;
+      }
+      return nameOf(a).localeCompare(nameOf(b));
+    };
+  }
   function sortSuperdrops(list) {
     const arr = [...list];
     const dir = sv.sort.endsWith('_desc') ? -1 : 1;
     if (sv.sort.startsWith('date')) {
-      arr.sort((a, b) => (a.date || '').localeCompare(b.date || '') * dir);
+      arr.sort(byDate(sd => sd.date || '', sd => sd.superdrop, dir));
     } else {
       arr.sort((a, b) => a.superdrop.localeCompare(b.superdrop) * dir);
     }
@@ -954,8 +1042,11 @@ export function renderSlViewer() {
   function sortDrops(list) {
     const arr = [...list];
     const dir = sv.sort.endsWith('_desc') ? -1 : 1;
-    // Drops don't have their own dates — sort alphabetically when "by date" is chosen too
-    arr.sort((a, b) => a.localeCompare(b) * dir);
+    if (sv.sort.startsWith('date')) {
+      arr.sort(byDate(slDropReleaseDate, d => d, dir));
+    } else {
+      arr.sort((a, b) => a.localeCompare(b) * dir);
+    }
     return arr;
   }
   // Returns true if a drop matches the current search query (by drop name or
@@ -1172,6 +1263,8 @@ export function renderSlViewer() {
       ${slSuperdropNote(sv.superdrop) ? `<div style="margin:0 0 14px;padding:9px 13px;background:var(--surface);border-left:3px solid var(--accent2);border-radius:6px;font-size:13px;color:var(--text);white-space:pre-wrap">📝 ${esc(slSuperdropNote(sv.superdrop))}</div>` : ''}
       ${drops.length === 0
         ? `<div style="padding:30px;text-align:center;color:var(--text-muted);font-size:13px">No drops match "${esc(sv.search)}".</div>`
+        : (sv.layout === 'table')
+        ? dropsTable(drops)
         : `<div class="sl-superdrop-grid">
         ${drops.map(drop => {
           const stats = dropOwnedNameStats(drop);
@@ -1206,6 +1299,8 @@ export function renderSlViewer() {
   return viewToggle() + refreshBtn + sortSearchBar() + upcomingStrip + `
     ${visibleSuperdrops.length === 0
       ? `<div style="padding:30px;text-align:center;color:var(--text-muted);font-size:13px">No superdrops match "${esc(sv.search)}".</div>`
+      : (sv.layout === 'table')
+      ? superdropsTable(visibleSuperdrops)
       : `<div class="sl-superdrop-grid">
       ${visibleSuperdrops.map(sd => {
         // Sum per-drop name stats so superdrop totals match drop totals.

@@ -12,6 +12,12 @@ user-facing: what changed, not how.
 
 ## [Unreleased]
 
+### Added
+- **Table view for the Secret Lair Explorer.** New 🖼 Tiles / 📊 Table toggle next to the sort picker, on both the Explorer landing and inside any superdrop. The table surfaces data the tiles have no room for — each drop's release date and real MSRP — with click-to-sort Name and Released columns, and rows open drops just like tiles do.
+
+### Fixed
+- **"Date ↓ (newest first)" inside a superdrop actually sorts by date now.** Drop lists were quietly falling back to reverse-alphabetical order because drops had no dates of their own. Each drop's real release date now comes from the wiki sync, with MTGJSON's product dates filling any gaps; drops with no known date sort last.
+
 ## [1.1.2] - 2026-07-18
 ### Fixed
 - **Flower Power no longer tops the P&L leaderboard with a +4868% "gain".** That drop really did sell for $1.00 (a one-per-customer Chaos Vault promo), but a promo price makes a misleading assumed cost basis. Sub-$5 MSRPs from the wiki sync are now ignored and the standard ≈$29.99 / $39.99 assumption applies; if you actually snagged one for a dollar, link a sealed product with your real purchase price and the P&L will use it.
