@@ -12,6 +12,8 @@ user-facing: what changed, not how.
 
 ## [Unreleased]
 
+## [1.1.3] - 2026-07-19
+
 ### Added
 - **Table view for the Secret Lair Explorer.** New 🖼 Tiles / 📊 Table toggle next to the sort picker, on both the Explorer landing and inside any superdrop. The table surfaces data the tiles have no room for — each drop's release date and real MSRP — with click-to-sort Name and Released columns, and rows open drops just like tiles do.
 
