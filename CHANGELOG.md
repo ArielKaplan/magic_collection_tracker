@@ -12,6 +12,8 @@ user-facing: what changed, not how.
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-07-20
+
 ### Added
 - **Secret Lair Intelligence workspace.** Track bundle purchase lots with allocated landed cost, observed bonus pulls, watched drops and targets, release radar, source quality, and source/currency-labeled market observations.
 - **Product Truth and Exact Completion reports.** Inspect the exact sealed SKU, guaranteed printing/finish quantities, preserved marketplace identifiers, confidence, MSRP, history, missing cards, and wrong-finish copies.
