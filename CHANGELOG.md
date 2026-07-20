@@ -12,6 +12,12 @@ user-facing: what changed, not how.
 
 ## [Unreleased]
 
+### Added
+- **Optional Local Intelligence engine.** A second Advanced Features switch unlocks an embedded, offline model inside Insights: Local Data Guardian anomaly checks, confidence-scored Secret Lair entity-match suggestions, explainable opportunity attention ranking, and natural-language report interpretation. It uses no API or cloud model, exposes its evidence and inferred filters, and never edits collection or source records.
+
+### Changed
+- **Advanced feature gating is now hierarchical.** Local Intelligence requires Insights, both remain off by default, and turning Insights off safely closes the intelligence view without deleting saved reports or data.
+
 ## [1.4.2] - 2026-07-20
 
 ### Fixed

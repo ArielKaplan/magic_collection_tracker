@@ -1,4 +1,4 @@
-import { insightsEnabled, setInsightsEnabled, syncFeatureVisibility } from './features.js';
+import { insightsEnabled, localIntelligenceConfigured, setInsightsEnabled, setLocalIntelligenceEnabled, syncFeatureVisibility } from './features.js';
 import { hideModal, showModal } from './modals.js';
 import { clearPendingPriceSnaps } from './prices.js';
 import { render } from './render.js';
@@ -134,14 +134,22 @@ export function showSettings(initialSection = 'general') {
 
           <section class="${panelClass('features')}" data-settings-panel="features">
             <div class="settings-panel-title"><span>Features</span><h2>Choose what appears in your workspace</h2><p>Optional areas stay out of sight until you explicitly turn them on.</p></div>
-            ${settingCard('Optional workspaces', 'These switches only control navigation visibility. They are not accounts, subscriptions, or access locks.', `
-              <label class="settings-feature-row" for="cfg-insights-enabled">
-                <span class="settings-feature-icon">✦</span>
-                <span class="settings-feature-copy"><strong>Insights workspace</strong><small>Build readiness, explainable opportunity signals, and reusable custom reports.</small><span>${(collection.savedReports || []).length.toLocaleString()} saved report${(collection.savedReports || []).length === 1 ? '' : 's'} on this computer</span></span>
-                <input type="checkbox" id="cfg-insights-enabled" ${insightsEnabled() ? 'checked' : ''}>
-                <span class="settings-switch" aria-hidden="true"></span>
-              </label>
-              <div class="settings-feature-note">Off by default. When enabled, <strong>Insights</strong> appears in the left workspace navigation. Turning it off hides the workspace but preserves saved reports.</div>`)}
+            ${settingCard('Advanced features', 'These switches are local preferences—not accounts, subscriptions, or access locks. Both features are off by default.', `
+              <div class="settings-feature-stack">
+                <label class="settings-feature-row" for="cfg-insights-enabled">
+                  <span class="settings-feature-icon">✦</span>
+                  <span class="settings-feature-copy"><strong>Insights workspace</strong><small>Build readiness, explainable opportunity signals, and reusable custom reports.</small><span>${(collection.savedReports || []).length.toLocaleString()} saved report${(collection.savedReports || []).length === 1 ? '' : 's'} on this computer</span></span>
+                  <input type="checkbox" id="cfg-insights-enabled" ${insightsEnabled() ? 'checked' : ''}>
+                  <span class="settings-switch" aria-hidden="true"></span>
+                </label>
+                <label class="settings-feature-row settings-feature-row-nested" for="cfg-local-intelligence-enabled">
+                  <span class="settings-feature-icon settings-feature-icon-ai">AI</span>
+                  <span class="settings-feature-copy"><strong>Local Intelligence <em>experimental</em></strong><small>Offline data guardian, entity matching, attention ranking, and natural-language report interpretation.</small><span>Embedded model v1.0 · no API key · no collection data leaves this computer</span></span>
+                  <input type="checkbox" id="cfg-local-intelligence-enabled" ${localIntelligenceConfigured() ? 'checked' : ''}>
+                  <span class="settings-switch" aria-hidden="true"></span>
+                </label>
+              </div>
+              <div class="settings-feature-note">Local Intelligence lives inside <strong>Insights</strong> and requires it. Turning either feature off hides its workspace without deleting reports or changing collection records.</div>`)}
           </section>
 
           <section class="${panelClass('pricing')}" data-settings-panel="pricing">
@@ -205,6 +213,15 @@ export function showSettings(initialSection = 'general') {
   document.getElementById('cfg-cancel')?.addEventListener('click', hideModal);
   wireBackupsSection();
 
+  const insightsToggle = document.getElementById('cfg-insights-enabled');
+  const intelligenceToggle = document.getElementById('cfg-local-intelligence-enabled');
+  intelligenceToggle?.addEventListener('change', () => {
+    if (intelligenceToggle.checked && insightsToggle) insightsToggle.checked = true;
+  });
+  insightsToggle?.addEventListener('change', () => {
+    if (!insightsToggle.checked && intelligenceToggle) intelligenceToggle.checked = false;
+  });
+
   for (const id of ['cfg-ticker-binders', 'cfg-ticker-sets']) {
     document.getElementById(id)?.addEventListener('click', e => {
       const chip = e.target.closest('.col-chip');
@@ -226,6 +243,7 @@ export function showSettings(initialSection = 'general') {
     collection.settings.slMsrpFoil = (!isNaN(ff) && ff >= 0) ? ff : 39.99;
     collection.settings.useBulkData = !!document.getElementById('cfg-bulk-data')?.checked;
     setInsightsEnabled(!!document.getElementById('cfg-insights-enabled')?.checked);
+    setLocalIntelligenceEnabled(!!document.getElementById('cfg-local-intelligence-enabled')?.checked);
     syncFeatureVisibility();
     hideModal(); renderTickerTape(); autoSave(); render();
     toast('Settings saved', 'success');
@@ -253,7 +271,7 @@ export function showSettings(initialSection = 'general') {
     collection.cards = []; collection.sealed = []; collection.priceHistory = {}; collection.marketPriceHistory = {};
     collection.cardMetadata = {}; collection.failedLookups = []; collection.slPurchaseLots = []; collection.slBonusPulls = [];
     collection.slWatchList = []; collection.slMarketQuotes = []; collection.savedReports = [];
-    collection.settings = { pricechartingKey: '', cardTraderToken: '', insightsEnabled: false };
+    collection.settings = { pricechartingKey: '', cardTraderToken: '', insightsEnabled: false, localIntelligenceEnabled: false };
     collection.lastPriceRefresh = null;
     clearPendingPriceSnaps(); syncFeatureVisibility(); hideModal(); render();
     toast('Database reset — starting fresh', 'success');

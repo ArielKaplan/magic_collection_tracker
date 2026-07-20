@@ -1,4 +1,4 @@
-// Render smoke test for all three Insights workspace views.
+// Render smoke test for all four Insights workspace views.
 'use strict';
 const noop = () => {};
 globalThis.window = { addEventListener: noop, api: {} };
@@ -19,6 +19,8 @@ globalThis.SL_DROP_TO_SUPERDROP = {};
     { id: 'c1', name: 'Sol Ring', scryfallId: 'sid-ring', foil: 'normal', quantity: 2, status: 'owned', binderName: 'Main', purchasePrice: 1 },
     { id: 'c2', name: 'Big Mover', scryfallId: 'sid-move', foil: 'normal', quantity: 1, status: 'owned', binderName: 'Trade', purchasePrice: 4 },
   ];
+  collection.settings = { insightsEnabled: true, localIntelligenceEnabled: true };
+  collection.sealed = [{ id: 's1', name: 'Secret Lair: Test Drop', dropName: 'Test Drop', productType: 'Secret Lair', status: 'sealed', quantity: 1, purchasePrice: 20, currentValue: 25 }];
   collection.decks = [{ id: 'd1', name: 'Ready-ish Commander', format: 'commander', cards: [
     { name: 'Sol Ring', scryfallId: 'sid-ring', foil: 'normal', quantity: 1 },
     { name: 'Missing Card', scryfallId: 'sid-missing', foil: 'normal', quantity: 1 },
@@ -45,11 +47,19 @@ globalThis.SL_DROP_TO_SUPERDROP = {};
   ui.insights.reportId = 'r1';
   ui.insights.view = 'reports';
   const reports = renderInsights();
+  ui.insights.aiQuery = 'cards over $5';
+  ui.insights.view = 'intelligence';
+  const intelligence = renderInsights();
+  collection.settings.localIntelligenceEnabled = false;
+  ui.insights.view = 'intelligence';
+  const gated = renderInsights();
 
   const checks = {
     build: build.includes('Ready-ish Commander') && build.includes('Test Precon') && build.includes('50%'),
     opportunities: opportunities.includes('Wanted Card') && opportunities.includes('Big Mover') && opportunities.includes('Test Drop'),
     reports: reports.includes('Valuable cards') && reports.includes('Sol Ring') && reports.includes('$10.00'),
+    intelligence: intelligence.includes('Mana Local Intelligence') && intelligence.includes('Local Data Guardian') && intelligence.includes('Opportunity attention model') && intelligence.includes('Cross-source entity matcher') && intelligence.includes('Card Collection'),
+    intelligenceGate: !gated.includes('Mana Local Intelligence') && ui.insights.view === 'build',
   };
   console.log(checks);
   if (!Object.values(checks).every(Boolean)) process.exit(1);

@@ -2,7 +2,9 @@
 
 import { addDeckMissingToWantList, deckFormat } from './decks.js';
 import { registerActions } from './dispatch.js';
+import { localIntelligenceEnabled } from './features.js';
 import { collectionExactInventory, collectionNameInventory, latestPrice, filterReportRows, preconBuildCandidate, savedDeckBuildCandidate, scanOpportunities } from './insightsModel.js';
+import { findCrossSourceMatches, interpretLocalQuery, LOCAL_INTELLIGENCE_MODEL, rankLocalOpportunities, runLocalQuery, scanDataGuardian } from './localIntelligence.js';
 import { hideModal, showModal } from './modals.js';
 import { addPreconMissingToWantList, ensurePreconCards, preconState } from './preconData.js';
 import { render } from './render.js';
@@ -146,6 +148,17 @@ export function initInsightsActions() {
     'insights-delete-report': (el) => deleteReport(el.dataset.id),
     'insights-template-report': (el) => addReportTemplate(el.dataset.template),
     'insights-export-report': (el) => exportReport(el.dataset.id),
+    'insights-ai-run': () => {
+      if (!localIntelligenceEnabled()) return;
+      ui.insights.aiQuery = document.getElementById('localAiQuery')?.value.trim() || '';
+      render();
+    },
+    'insights-ai-example': (el) => {
+      if (!localIntelligenceEnabled()) return;
+      ui.insights.aiQuery = el.dataset.query || '';
+      render();
+    },
+    'insights-ai-clear': () => { ui.insights.aiQuery = ''; render(); },
   });
 }
 
@@ -155,6 +168,7 @@ function workspaceNav() {
     ['opportunities', '✦', 'Opportunity scanner'],
     ['reports', '▤', 'User-defined reports'],
   ];
+  if (localIntelligenceEnabled()) tabs.push(['intelligence', 'AI', 'Local Intelligence']);
   return `
     <div class="insights-head">
       <div>
@@ -290,6 +304,144 @@ function opportunityView() {
           <button class="btn btn-sm" data-act="insights-open-opportunity" data-id="${esc(item.id)}">${esc(item.action)} →</button>
         </article>`;
       }).join('')}</div>` : `<div class="insights-empty"><strong>No signals match this filter right now.</strong><span>Targets, price history, saved decks, and a synced sealed catalog create more scanner coverage.</span></div>`}
+    </section>`;
+}
+
+const LOCAL_DATASET_LABELS = {
+  cards: 'Card Collection', sealed: 'Sealed Collection', decks: 'Saved Deck Readiness',
+  precons: 'Precon Readiness', wantlist: 'Want List', opportunities: 'Current Opportunities',
+};
+
+function localFilterSummary(interpretation) {
+  const filters = interpretation?.filters || {};
+  const labels = [];
+  if (filters.finish) labels.push(`finish = ${filters.finish}`);
+  if (filters.status) labels.push(`status = ${filters.status}`);
+  if (filters.minValue != null) labels.push(`value ≥ ${fmt(filters.minValue)}`);
+  if (filters.maxValue != null) labels.push(`value ≤ ${fmt(filters.maxValue)}`);
+  if (filters.minGain != null) labels.push(`gain ≥ ${fmt(filters.minGain)}`);
+  if (filters.maxGain != null) labels.push(`gain ≤ ${fmt(filters.maxGain)}`);
+  if (filters.minCompletion != null) labels.push(`completion ≥ ${filters.minCompletion}%`);
+  if (filters.maxMissing != null) labels.push(`missing ≤ ${filters.maxMissing}`);
+  if (filters.text) labels.push(`text contains “${filters.text}”`);
+  labels.push(`sort ${String(interpretation.sort || 'name_asc').replace('_', ' ')}`);
+  return labels;
+}
+
+function localAssistantResults(query) {
+  if (!query) return null;
+  const interpretation = interpretLocalQuery(query);
+  if (interpretation.dataset === 'precons' && !preconState.cards && !preconState.cardsLoading) ensurePreconCards();
+  const rows = runLocalQuery(reportDatasetRows(interpretation.dataset), interpretation);
+  return { interpretation, rows };
+}
+
+function localResultMetric(row) {
+  if (row.value != null) return `<strong>${fmt(row.value)}</strong><small>value / estimate</small>`;
+  if (row.completion != null) return `<strong>${Number(row.completion).toFixed(0)}%</strong><small>completion</small>`;
+  return '<strong>—</strong><small>no comparable value</small>';
+}
+
+function localIntelligenceView() {
+  const slProducts = getSlProducts();
+  const guardian = scanDataGuardian({
+    cards: collection.cards, sealed: collection.sealed,
+    priceHistory: collection.priceHistory, marketPriceHistory: collection.marketPriceHistory,
+    slProducts,
+  });
+  const ranked = rankLocalOpportunities(currentOpportunities());
+  const ownedSl = (collection.sealed || []).filter(item => item.status !== 'sold' && (
+    item.dropName || /secret\s+lair|drop\s+series/i.test(`${item.name || ''} ${item.productType || ''}`)
+  )).map(item => ({
+    id: item.id || item.name, name: item.dropName || item.name,
+    finish: item.foil || item.finish, group: item.setName || item.productType || '',
+  }));
+  const targetMap = new Map();
+  for (const product of slProducts) {
+    const name = product.legacyDrop || product.dropName || product.name;
+    if (!name) continue;
+    const id = String(product.tcgplayerProductId || product.identifiers?.tcgplayerProductId || product.id || name);
+    const finish = product.finish || product.requiredFinish || '';
+    const key = `${id}|${finish}|${name}`;
+    if (!targetMap.has(key)) targetMap.set(key, { id, name, finish, group: product.superdrop || product.setName || '' });
+  }
+  const matches = findCrossSourceMatches(ownedSl, [...targetMap.values()], { limit: 10, minimum: 0.78 });
+  const query = ui.insights.aiQuery || '';
+  const assistant = localAssistantResults(query);
+  const highIssues = guardian.filter(issue => issue.severity === 'high').length;
+  const anomalies = guardian.filter(issue => issue.type === 'price-anomaly').length;
+  const exactMatches = matches.filter(match => match.score >= 90).length;
+  const examples = [
+    'show foil cards under $40 with gains',
+    'decks with 10 or fewer missing',
+    'most valuable sealed products',
+    'want list under $15',
+  ];
+
+  return `
+    <section class="insights-panel local-ai-workspace">
+      <div class="local-ai-hero">
+        <div class="local-ai-mark">AI</div>
+        <div><span>Embedded model ${esc(LOCAL_INTELLIGENCE_MODEL.version)}</span><h3>Mana Local Intelligence</h3><p>Purpose-built inference over the collection and source data already on this computer. No model API, account, upload, or background training.</p></div>
+        <div class="local-ai-state"><i></i> Running locally</div>
+      </div>
+
+      <div class="local-ai-kpis">
+        <div><strong>${guardian.length.toLocaleString()}</strong><span>guardian findings</span><small>${highIssues} high priority</small></div>
+        <div><strong>${anomalies.toLocaleString()}</strong><span>price anomalies</span><small>owned records only</small></div>
+        <div><strong>${ranked.length.toLocaleString()}</strong><span>ranked signals</span><small>attention, not forecasts</small></div>
+        <div><strong>${exactMatches.toLocaleString()}</strong><span>90%+ identity matches</span><small>suggestions only</small></div>
+      </div>
+
+      <article class="local-ai-card local-ai-assistant">
+        <div class="local-ai-card-head"><div><span>Natural-language report interpreter</span><h3>Ask your collection</h3><p>A constrained local classifier converts a request into an inspectable dataset, filter, and sort recipe.</p></div><b>Offline</b></div>
+        <div class="local-ai-query-row">
+          <input id="localAiQuery" value="${esc(query)}" placeholder="Try: show foil cards under $40 with gains">
+          <button class="btn btn-primary" data-act="insights-ai-run">Analyze</button>
+          ${query ? '<button class="btn" data-act="insights-ai-clear">Clear</button>' : ''}
+        </div>
+        <div class="local-ai-examples">${examples.map(example => `<button data-act="insights-ai-example" data-query="${esc(example)}">${esc(example)}</button>`).join('')}</div>
+        ${assistant ? `
+          <div class="local-ai-interpretation">
+            <div><strong>${esc(LOCAL_DATASET_LABELS[assistant.interpretation.dataset])}</strong><span>${assistant.interpretation.score}% intent confidence · ${assistant.rows.length} result${assistant.rows.length === 1 ? '' : 's'} shown</span></div>
+            <div>${localFilterSummary(assistant.interpretation).map(label => `<span>${esc(label)}</span>`).join('')}</div>
+          </div>
+          ${assistant.rows.length ? `<div class="insights-table-wrap"><table class="insights-table local-ai-results"><thead><tr><th>Name</th><th>Group / status</th><th>Primary metric</th><th>Gain / missing</th></tr></thead><tbody>${assistant.rows.map(row => `<tr>
+            <td><strong>${esc(row.name || 'Unnamed')}</strong><small>${esc(row.details || '')}</small></td>
+            <td>${esc(row.group || '—')}<small>${esc(row.status || '')}</small></td>
+            <td>${localResultMetric(row)}</td>
+            <td>${row.gain != null ? `${row.gain >= 0 ? '+' : ''}${fmt(row.gain)}` : row.missing != null ? `${Number(row.missing).toLocaleString()} missing` : '—'}</td>
+          </tr>`).join('')}</tbody></table></div>` : '<div class="local-ai-empty">The interpreted recipe returned no rows. Try a wider value, completion, or missing-card threshold.</div>'}
+        ` : ''}
+      </article>
+
+      <div class="local-ai-grid">
+        <article class="local-ai-card">
+          <div class="local-ai-card-head"><div><span>Local Data Guardian</span><h3>Records worth checking</h3><p>Schema checks and robust price-history outlier detection. Findings never edit data.</p></div><b>${guardian.length}</b></div>
+          ${guardian.length ? `<div class="local-ai-list">${guardian.slice(0, 12).map(issue => `<div class="local-ai-finding severity-${issue.severity}">
+            <span>${issue.score}%</span><div><strong>${esc(issue.title)}</strong><small>${esc(issue.name)}</small><p>${esc(issue.details)}</p><em>${esc(issue.evidence)}</em></div>
+          </div>`).join('')}</div>` : '<div class="local-ai-empty">No material anomalies or coverage gaps were found in the currently stored records.</div>'}
+        </article>
+
+        <article class="local-ai-card">
+          <div class="local-ai-card-head"><div><span>Opportunity attention model</span><h3>What deserves a human look first</h3><p>Re-ranks deterministic scanner signals using magnitude, user intent, evidence quality, and identity exactness.</p></div><b>${ranked.length}</b></div>
+          ${ranked.length ? `<div class="local-ai-list">${ranked.slice(0, 12).map(item => `<button class="local-ai-ranked" data-act="insights-open-opportunity" data-id="${esc(item.id)}">
+            <span class="local-ai-score">${item.attentionScore}</span><span><strong>${esc(item.name)}</strong><small>${esc(item.attention)} · ${item.confidence}% evidence confidence</small><em>${esc(item.modelReasons.join(' · '))}</em></span><i>Review →</i>
+          </button>`).join('')}</div>` : '<div class="local-ai-empty">No deterministic scanner signals exist yet. Price history, targets, saved decks, and exact sealed matches increase coverage.</div>'}
+        </article>
+      </div>
+
+      <article class="local-ai-card">
+        <div class="local-ai-card-head"><div><span>Cross-source entity matcher</span><h3>Possible Secret Lair identity joins</h3><p>Compares owned sealed names with exact Secret Lair products. These are review suggestions and are never applied automatically.</p></div><b>${matches.length}</b></div>
+        ${matches.length ? `<div class="local-ai-match-grid">${matches.map(match => `<div class="local-ai-match">
+          <span>${match.score}%</span><div><strong>${esc(match.left.name)}</strong><i>may match</i><strong>${esc(match.right.name)}</strong><small>${esc(match.reasons.join(' · ') || 'combined name features')}</small></div>
+        </div>`).join('')}</div>` : `<div class="local-ai-empty">${ownedSl.length ? 'No owned sealed names cleared the 78% suggestion threshold.' : 'Add or import an owned Secret Lair sealed product to generate cross-source match suggestions.'}</div>`}
+      </article>
+
+      <details class="local-ai-model-card">
+        <summary>Model card, boundaries, and privacy</summary>
+        <div><strong>${esc(LOCAL_INTELLIGENCE_MODEL.id)} v${esc(LOCAL_INTELLIGENCE_MODEL.version)}</strong><p>This embedded hybrid ensemble uses calibrated name-similarity features, robust historical outlier statistics, bounded attention scoring, and a weighted intent classifier. It cannot browse, generate prose, predict a guaranteed future price, or alter source records. Collection data stays in process and is not retained as training data.</p></div>
+      </details>
     </section>`;
 }
 
@@ -492,9 +644,11 @@ async function exportReport(id) {
 }
 
 export function renderInsights() {
-  if (!ui.insights) ui.insights = { view: 'build', search: '', buildSource: 'all', buildSort: 'completion_desc', buildMaxMissing: 'all', preconMatch: 'playable', buildPage: 1, opportunityType: 'all', reportId: '' };
+  if (!ui.insights) ui.insights = { view: 'build', search: '', buildSource: 'all', buildSort: 'completion_desc', buildMaxMissing: 'all', preconMatch: 'playable', buildPage: 1, opportunityType: 'all', reportId: '', aiQuery: '' };
+  if (ui.insights.view === 'intelligence' && !localIntelligenceEnabled()) ui.insights.view = 'build';
   const view = ui.insights.view === 'opportunities' ? opportunityView()
     : ui.insights.view === 'reports' ? reportView()
+    : ui.insights.view === 'intelligence' ? localIntelligenceView()
     : buildReadinessView();
   return `<div class="insights-page">${workspaceNav()}${view}</div>`;
 }

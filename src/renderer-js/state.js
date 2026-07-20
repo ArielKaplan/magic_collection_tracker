@@ -48,6 +48,7 @@ export let ui = {
     buildPage: 1,
     opportunityType: 'all',
     reportId: '',
+    aiQuery: '',
   },
   slViewer: { superdrop: '', drop: '', page: 0, sort: 'date_desc', search: '', view: 'drops', layout: 'tiles', pnlSort: 'gainpct_desc', indexExpanded: false, indexYear: 'all', indexFinish: 'all', indexSuperdrop: 'all', indexSubtype: 'all', indexConfidence: 'all', indexHolding: 'all', indexReportSort: 'return_desc' },
   slRefreshing: false,
@@ -62,7 +63,7 @@ export function makeCollection() {
   return {
     version: 3,
     lastPriceRefresh: null,
-    settings: { pricechartingKey: '', cardTraderToken: '', insightsEnabled: false },
+    settings: { pricechartingKey: '', cardTraderToken: '', insightsEnabled: false, localIntelligenceEnabled: false },
     cards: [],
     sealed: [],
     wantList: [],   // cards the user wants to acquire (see wantlist.js)

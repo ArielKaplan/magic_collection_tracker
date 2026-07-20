@@ -11,11 +11,25 @@ export function setInsightsEnabled(enabled) {
   collection.settings.insightsEnabled = enabled === true;
 }
 
+export function localIntelligenceConfigured() {
+  return collection.settings?.localIntelligenceEnabled === true;
+}
+
+export function localIntelligenceEnabled() {
+  return insightsEnabled() && localIntelligenceConfigured();
+}
+
+export function setLocalIntelligenceEnabled(enabled) {
+  collection.settings = collection.settings || {};
+  collection.settings.localIntelligenceEnabled = enabled === true;
+}
+
 // Keep optional features absent from normal navigation until enabled. This is
 // presentation gating only — no account, entitlement, or security claim.
 export function syncFeatureVisibility() {
   const enabled = insightsEnabled();
   const leavingInsights = !enabled && ui.activeTab === 'insights';
+  if (!localIntelligenceEnabled() && ui.insights?.view === 'intelligence') ui.insights.view = 'build';
   if (leavingInsights) ui.activeTab = 'dashboard';
   if (typeof document !== 'undefined') {
     const tab = document.getElementById('insightsTab');
