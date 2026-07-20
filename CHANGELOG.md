@@ -12,6 +12,8 @@ user-facing: what changed, not how.
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-07-20
+
 ### Added
 - **Optional Local Intelligence engine.** A second Advanced Features switch unlocks an embedded, offline model inside Insights: Local Data Guardian anomaly checks, confidence-scored Secret Lair entity-match suggestions, explainable opportunity attention ranking, and natural-language report interpretation. It uses no API or cloud model, exposes its evidence and inferred filters, and never edits collection or source records.
 
