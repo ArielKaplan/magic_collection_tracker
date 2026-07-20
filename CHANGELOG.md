@@ -12,6 +12,8 @@ user-facing: what changed, not how.
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-07-20
+
 ### Added
 - **A much deeper Secret Lair data layer.** The Explorer now supplements exact released contents with the live mtg.wiki bonus-card catalog and recent official Wizards announcements, including launch timing, announced prices, bundles, and promotion context.
 - **Help → Secret Lair Data Guide.** See exactly where every piece of Secret Lair data comes from, how finish-aware ownership works, what each price means, the limits of each source, and the live source/cache health on your computer.
