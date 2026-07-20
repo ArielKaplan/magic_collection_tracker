@@ -12,6 +12,8 @@ user-facing: what changed, not how.
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-07-20
+
 ### Added
 - **Insights workspace (Ctrl+4).** “What can I build?” ranks saved decks and the full precon catalog by quantity-aware readiness, with a playable/any-printing or exact-product mode. The explainable Opportunity Scanner flags want-list target hits, surplus copies, significant recorded price moves, and fully priced exact Secret Lair sealed-vs-singles spreads. User-defined reports save live dataset/filter/sort/column recipes locally and export their current results to CSV.
 
