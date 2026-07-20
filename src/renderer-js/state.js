@@ -38,6 +38,17 @@ export let ui = {
   sealed: { search: '', type: 'all', status: 'all' },
   wantList: { search: '', groupByDrop: false, view: 'table' },
   decks: { deckId: null, search: '', view: 'list', ownFilter: 'all' },
+  insights: {
+    view: 'build',             // 'build' | 'opportunities' | 'reports'
+    search: '',
+    buildSource: 'all',        // 'all' | 'saved' | 'precon'
+    buildSort: 'completion_desc',
+    buildMaxMissing: 'all',
+    preconMatch: 'playable',   // 'playable' (any printing) | 'exact' (printing + finish)
+    buildPage: 1,
+    opportunityType: 'all',
+    reportId: '',
+  },
   slViewer: { superdrop: '', drop: '', page: 0, sort: 'date_desc', search: '', view: 'drops', layout: 'tiles', pnlSort: 'gainpct_desc', indexExpanded: false, indexYear: 'all', indexFinish: 'all', indexSuperdrop: 'all', indexSubtype: 'all', indexConfidence: 'all', indexHolding: 'all', indexReportSort: 'return_desc' },
   slRefreshing: false,
   precons: { line: '', deck: '', search: '', sort: 'date_desc', deckView: 'gallery', tableSort: 'name_asc', showJumpstart: false },
@@ -63,6 +74,7 @@ export function makeCollection() {
     slWatchList: [],    // watched drops/upcoming sales and optional target prices
     slMarketQuotes: [], // labeled manual/secondary market observations
     decks: [],
+    savedReports: [],   // local, reusable Insights report definitions
     priceHistory: {},
     marketPriceHistory: {},  // scryfallId|foil → [{date,price}] from TCGCSV (market price)
     cardMetadata: {},  // scryfallId → { colors, type_line, cmc, color_identity }

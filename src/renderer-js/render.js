@@ -1,6 +1,7 @@
 import { renderCards } from './cardsTab.js';
 import { renderDecks } from './decks.js';
 import { renderFailedLookupsTab } from './failures.js';
+import { renderInsights } from './insights.js';
 import { attachContentListeners } from './hover.js';
 import { updateRefreshUI } from './prices.js';
 import { renderPreconTab } from './preconTab.js';
@@ -38,6 +39,7 @@ export function render() {
         break;
       case 'cards':     content.innerHTML = renderCards();             break;
       case 'sealed':    content.innerHTML = renderSealed();            break;
+      case 'insights':  content.innerHTML = renderInsights();          break;
       case 'decks':     content.innerHTML = renderDecks();             break;
       case 'slviewer':  content.innerHTML = renderSlViewer();          break;
       case 'precons':   content.innerHTML = renderPreconTab();         break;

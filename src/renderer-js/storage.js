@@ -35,6 +35,7 @@ export async function autoSave() {
       window.api.settings.set('sl_bonus_pulls', JSON.stringify(collection.slBonusPulls || [])),
       window.api.settings.set('sl_watch_list', JSON.stringify(collection.slWatchList || [])),
       window.api.settings.set('sl_market_quotes', JSON.stringify(collection.slMarketQuotes || [])),
+      window.api.settings.set('insight_reports', JSON.stringify(collection.savedReports || [])),
       // Authoritative full replace — keeps the sealed table exactly in sync with
       // memory so a deleted product can never linger (sealed is small & bounded).
       window.api.sealed.replace(collection.sealed || []),
@@ -72,7 +73,7 @@ export async function autoLoad() {
       window.api.wantlist?.list?.() ?? Promise.resolve([]),
     ]);
 
-    const hasSlIntelligence = ['sl_purchase_lots','sl_bonus_pulls','sl_watch_list','sl_market_quotes']
+    const hasSlIntelligence = ['sl_purchase_lots','sl_bonus_pulls','sl_watch_list','sl_market_quotes','insight_reports']
       .some(key => settings[key] && settings[key] !== '[]');
     if (!cardRows.length && !sealedRows.length && !deckRows.length && !Object.keys(prices).length && !hasSlIntelligence) return false;
 
@@ -140,6 +141,7 @@ export async function autoLoad() {
     collection.slBonusPulls = settingArray('sl_bonus_pulls');
     collection.slWatchList = settingArray('sl_watch_list');
     collection.slMarketQuotes = settingArray('sl_market_quotes');
+    collection.savedReports = settingArray('insight_reports');
     collection.settings = settings.settings_blob
       ? JSON.parse(settings.settings_blob)
       : { pricechartingKey: '' };
@@ -204,6 +206,7 @@ export async function loadCollectionFile() {
     collection.slBonusPulls = mergeById(collection.slBonusPulls, data.slBonusPulls);
     collection.slWatchList = mergeById(collection.slWatchList, data.slWatchList);
     collection.slMarketQuotes = mergeById(collection.slMarketQuotes, data.slMarketQuotes);
+    collection.savedReports = mergeById(collection.savedReports, data.savedReports);
 
     // Merge price history — incoming entries OVERWRITE same (key, date) pair,
     // but existing dates not present in incoming are preserved. Incoming

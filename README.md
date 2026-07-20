@@ -13,6 +13,7 @@ Most trackers treat a Secret Lair as just another set code and a precon as a pil
 - **Precon Explorer** — every physical preconstructed deck ever sold (1993→today): Commander precons, Challenger/Duel/Theme/Intro/Planeswalker decks, Guild Kits, and more. Browse product line → deck → full decklist (Gallery or sortable Table view), finish-aware ownership, a **"Worth it?"** panel (assumed MSRP vs. singles vs. sealed market), and one-click "want the missing cards."
 - **Global search** — type a card name and see **everywhere it lives**: your binders, decks that play it, SL drops and precons that include it, and sealed products that contain it. Plus live catalog search across Scryfall & TCGCSV in pinned, comparable result tabs, with one-click entry into the owned-card flow.
 - **Decks** — played lists with format legality, Moxfield/Archidekt/ManaBox/MTGA import/export, ownership filters, and missing-card actions (buy on TCGplayer, add to want list). Deck value never counts toward collection value.
+- **Insights** — a decision workspace that ranks what you can build across saved decks and the complete precon catalog (playable or exact-product matching), explains collection opportunities with visible rules, and saves reusable custom reports with live filters, sorting, columns, and CSV export.
 - **Want List** — cards to acquire with per-card target prices; price-watch flags anything at/under target after a refresh.
 - **Dashboard** — drag/resize Svelte panels: value over time, realized gains, the SL Index, top movers, value-by-binder/color/type/mana/rarity/set, and more.
 - **Failed Lookups** — pricing failures grouped by reason with one-click retry.
@@ -34,7 +35,7 @@ Runtime sources are fetched through the main process (host-allowlisted `net:fetc
 - **[Scryfall](https://scryfall.com/docs/api)** — exact printing metadata, finishes, USD/EUR card prices, art/artist/promo fields, images, oracle data, and daily bulk data
 - **[TCGCSV](https://tcgcsv.com/)** — exact TCGplayer product-ID joins plus sealed market/low/mid/high/direct-low, subtype, product, presale, and group metadata
 - **[mtg.wiki](https://mtg.wiki/)** — superdrop grouping, dates, nonfoil/foil MSRP, upcoming drops, and the separate bonus-card/variant/exclusivity catalog
-- **[Wizards announcements](https://magic.wizards.com/en/news/announcements?search=Secret+Lair)** — official recent sale windows, stated USD prices, bundles, promotions, and WPN/store notes
+- **[Wizards announcements](https://magic.wizards.com/en/news/announcements?search=Secret+Lair)** — official article/publication dates, recent sale windows, bundle headings, promotions, and WPN/store notes; article prices are intentionally not parsed because they may describe individual SKUs rather than the titled superdrop
 - **[PriceCharting](https://www.pricecharting.com/api-documentation)** *(optional)* — a second current sealed estimate using the user's paid API token
 - **[MTGJSON AllPrices](https://mtgjson.com/downloads/all-files/)** — a versioned build-time history seed for exact Secret Lair printings; live/local Scryfall observations replace seed points on the same date
 - **[CardTrader](https://www.cardtrader.com/docs/api/full/reference)** *(optional)* — authenticated exact-blueprint marketplace listings, kept in their native currencies and compared without blending USD and EUR

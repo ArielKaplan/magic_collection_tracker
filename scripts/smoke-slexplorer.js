@@ -10,9 +10,19 @@ const WIKI_ROWS = [
   { seq: 2, drop: 'Middle Drop', superdrop: 'Test SD', date: '2022-05-10', msrpNonfoil: 24.99, msrpFoil: 34.99 },
   { seq: 3, drop: 'Zeta Drop',   superdrop: 'Test SD', date: '2024-08-01', msrpNonfoil: 29.99, msrpFoil: null },
 ];
+const ANNOUNCEMENTS = Array.from({ length: 6 }, (_, i) => ({
+  url: `https://magic.wizards.com/en/news/announcements/secret-lair-${i + 1}`,
+  title: `Secret Lair Announcement ${i + 1}`,
+  publishedAt: `2026-07-${String(20 - i).padStart(2, '0')}T12:00:00Z`,
+  saleDate: `2026-08-${String(10 + i).padStart(2, '0')}`,
+  summary: `Official summary ${i + 1}`,
+  prices: [{ amount: 29.99, currency: 'USD' }], // legacy cache field must be discarded
+}));
 globalThis.window = {
   addEventListener: noop,
-  api: { settings: { get: async k => k === 'sl_wiki_data' ? JSON.stringify({ fetchedAt: '2026-07-19', rows: WIKI_ROWS }) : null, set: async () => {} } },
+  api: { settings: { get: async k => k === 'sl_wiki_data'
+    ? JSON.stringify({ fetchedAt: '2026-07-19', rows: WIKI_ROWS })
+    : k === 'sl_announcement_data' ? JSON.stringify({ fetchedAt: '2026-07-20', rows: ANNOUNCEMENTS }) : null, set: async () => {} } },
 };
 globalThis.document = {
   addEventListener: noop, getElementById: () => null, querySelectorAll: () => [],
@@ -42,10 +52,12 @@ const check = (label, cond, detail) => {
 (async () => {
   const { renderSlViewer } = await import('../src/renderer-js/slTab.js');
   const { loadSlWikiFromSettings } = await import('../src/renderer-js/slWiki.js');
+  const { loadSlAnnouncementsFromSettings, slAnnouncements } = await import('../src/renderer-js/slAnnouncements.js');
   const { setSlProducts } = await import('../src/renderer-js/slData.js');
   const { ui } = await import('../src/renderer-js/state.js');
 
   await loadSlWikiFromSettings();
+  await loadSlAnnouncementsFromSettings();
   setSlProducts([{ uuid: 'p1', dropName: 'Product Only Drop', legacyDrop: 'Product Only Drop', finishLabel: '', finish: 'nonfoil', tcgplayerProductId: null, releaseDate: '2023-03-03', lowConfidence: false, cards: [] }]);
 
   const sv = ui.slViewer;
@@ -89,8 +101,20 @@ const check = (label, cond, detail) => {
     JSON.stringify(sdOrder) === JSON.stringify(['Newer SD', 'Test SD', 'No-date SD']), sdOrder);
   check('landing table has Drops column header', lt.includes('>Drops<'));
 
+  check('landing announcement strip previews exactly four articles',
+    (lt.match(/Secret Lair Announcement \d/g) || []).length === 4 && lt.includes('View all · 6'));
+  check('legacy announcement prices are removed on cache load',
+    slAnnouncements().every(row => !Object.hasOwn(row, 'prices')));
+
+  Object.assign(sv, { view: 'announcements', superdrop: '', drop: '' });
+  const av = renderSlViewer();
+  check('all-announcements view renders every cached article',
+    ANNOUNCEMENTS.every(row => av.includes(row.title)) && av.includes('6 cached articles'));
+  check('all-announcements view documents the 20-result cap and contains no parsed price',
+    av.includes('up to 20') && !av.includes('$29.99') && !av.includes('announced price'));
+
   // ── landing tiles date sort: undated superdrop last both directions ─────────
-  sv.layout = 'tiles'; sv.sort = 'date_asc';
+  sv.view = 'drops'; sv.layout = 'tiles'; sv.sort = 'date_asc';
   const la = renderSlViewer();
   const sdTiles = [...la.matchAll(/data-sl-superdrop="([^"]+)"/g)].map(m => m[1]);
   check('landing tiles date_asc: undated superdrop last',

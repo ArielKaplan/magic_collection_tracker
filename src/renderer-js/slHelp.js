@@ -51,7 +51,7 @@ export function showSlDataGuide() {
             ${row('TCGCSV / TCGplayer', 'Sealed market pricing', 'Exact tcgplayerProductId join; market, low, mid, high, direct-low and subtype; product/group names, URL/image, presale and modification metadata.', 'Daily cache')}
             ${row('mtg.wiki Drop Series', 'Curated release structure', 'Superdrop grouping, release date, nonfoil MSRP, foil MSRP, and announced-but-unreleased rows.', 'With SL sync')}
             ${row('mtg.wiki Bonus Cards', 'Supplemental insert catalog', 'SLD collector number, type, card, variant, explicit drop exclusivity, notes and chase/random signals. Bonus rows never count as guaranteed contents.', 'With SL sync')}
-            ${row('Wizards announcements', 'Official launch context', 'Recent official article, publication date, sale date/time, stated USD prices, bundle headings, promotion and WPN/store notes.', 'With SL sync')}
+            ${row('Wizards announcements', 'Official launch context', 'Up to 20 recent official articles with publication date, sale date/time, bundle headings, promotion and WPN/store notes. Article prices are intentionally not parsed because they can belong to one SKU rather than the titled superdrop.', 'With SL sync')}
             ${row('MTGJSON AllPrices seed', 'New-install card history', 'A reviewed build-time Secret Lair-only slice of TCGplayer/Card Kingdom USD retail history. The app never downloads the global payload; local/live points win on overlapping dates.', 'Weekly app-data build')}
             ${row('CardTrader (optional)', 'Cross-market sealed listings', 'Lowest in-stock listings by exact CardTrader blueprint ID, kept in the returned currency. Requires the user’s CardTrader profile API token.', 'On demand')}
             ${row('PriceCharting (optional)', 'Second sealed estimate', 'Current new/sealed or loose value returned for a user-selected product. Requires the user’s paid API token; it is not historical data.', 'On demand')}
@@ -76,6 +76,7 @@ export function showSlDataGuide() {
         <li>Product Truth exposes guaranteed contents, identifiers, confidence, release/MSRP, source-labeled market observations and available history.</li>
         <li>Exact Completion audits printing, finish and required quantity; wrong-finish copies are reported rather than counted.</li>
         <li>The Index full report filters by year, superdrop, finish, subtype, holding state and confidence; it can rank by several economic fields and export CSV.</li>
+        <li>Insights only flags a Secret Lair sealed-vs-singles spread when the sealed side is an exact TCGplayer product-ID match and every guaranteed card copy has a stored exact-printing/finish price. Low-confidence products and bonus cards are excluded.</li>
         <li>Crack-or-keep estimates net proceeds with editable fee/shipping assumptions and always excludes unknown bonus-card odds.</li>
         <li>Release radar, watch targets, the observed bonus journal and data-quality counts remain local to this computer.</li>
       </ul>

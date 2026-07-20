@@ -10,7 +10,7 @@ Mana Ledger does not rely on one “Secret Lair database,” because no single s
 - **Scryfall describes and prices the exact card printing.** It supplies printing metadata, supported finishes, daily USD/EUR prices, art, artist, images and rules text.
 - **TCGCSV supplies TCGplayer sealed-product prices.** MTGJSON's TCGplayer product ID makes this an exact ID join rather than a name guess. Mana Ledger retains market, low, mid, high and direct-low values plus subtype and product metadata.
 - **mtg.wiki supplies the Secret Lair-specific release structure that the catalog APIs do not model.** The Drop Series table supplies superdrops, release dates, nonfoil/foil MSRP and upcoming drops. Its separate Bonus Cards table supplies documented inserts, variants, exclusivity and notes.
-- **Official Wizards announcements supply launch context.** Recent articles add official sale timing, announced USD prices, bundle names, promotion details and WPN/store notes.
+- **Official Wizards announcements supply launch context.** Recent articles add official publication/sale timing, bundle names, promotion details and WPN/store notes. Dollar amounts are intentionally ignored because an article titled for a superdrop can quote individual-SKU prices.
 - **PriceCharting is an optional secondary sealed estimate.** It is queried only when the user supplies a paid API token.
 - **CardTrader is an optional live-listing comparison.** When the user supplies a profile API token, Mana Ledger queries the exact preserved CardTrader blueprint ID and keeps each returned currency separate.
 - **A reviewed MTGJSON AllPrices slice seeds history.** The build workflow extracts only exact Secret Lair printing/finish USD retail series; the desktop never downloads the global file.
@@ -114,16 +114,17 @@ Important semantic rule: a bonus row is **not guaranteed product contents**. It 
 
 Role: authoritative launch and promotion context for recently announced Secret Lairs.
 
-Mana Ledger reads recent Secret Lair announcement cards and enriches the first eight articles with:
+Mana Ledger reads recent Secret Lair announcement cards and enriches up to the first 20 articles with:
 
 - official article URL and title;
 - publication time;
 - inferred sale date and stated time zone;
-- stated USD price lines;
 - bundle headings;
 - promotion, while-supplies-last and WPN/game-store notes.
 
-This source is HTML rather than a stable public API. The parser therefore validates that it found Secret Lair announcement links before replacing the prior cache. On 2026-07-20 it found five current archive results and successfully extracted the newest article's official publication time, 9 a.m. PT launch time and stated price lines.
+It deliberately does not parse dollar amounts. The article title often names a whole superdrop while the body prices one constituent drop, bundle or shipping threshold, so assigning any of those amounts to the article row would create a false product-level fact. Older cached `prices` fields are removed when loaded.
+
+This source is HTML rather than a stable public API. The parser therefore validates that it found Secret Lair announcement links before replacing the prior cache. On 2026-07-20 it found five current archive results and successfully extracted the newest article's official publication time and 9 a.m. PT launch time.
 
 Official announcements enrich the model; they do not override exact released contents from MTGJSON.
 
@@ -316,8 +317,10 @@ The live bonus and official announcement sources are not baked because they are 
 - **Settings → Secret Lair Data:** summary plus a direct link to the full guide.
 - **Secret Lair Explorer:** Data Guide button beside refresh; upcoming wiki rows; official Wizards article strip; per-drop explicit bonus-card panel.
 - **Drop actions:** Product Truth, Exact Completion, Log Bonus and Watch expose the relational model without conflating sourced and observed data.
+- **Official announcements:** the Explorer landing shows the four newest cached articles as a compact preview; “View all” opens the dedicated Announcements view containing every cached result (up to 20), with dates, summaries, bundle headings, official notes and links to the source articles.
 - **Secret Lair Intelligence:** bundle purchase lots/landed-cost allocations, release radar and watch alerts, source-quality metrics, observed bonus journal and market-observation counts.
 - **Index full report:** filters for year, finish, superdrop, subtype, holding state and confidence; selectable ranking; cohort metrics; CSV export; every row opens its drop.
+- **Insights Opportunity Scanner:** a sealed-vs-singles signal is eligible only when the sealed price joins by exact TCGplayer product ID, the product is not low-confidence, and every guaranteed printing/finish quantity has a stored price. The displayed spread excludes bonus cards and exposes the triggering thresholds.
 - **Crack or Keep:** gross guaranteed-singles/sealed values plus estimated net proceeds under editable fee/shipping assumptions; unknown bonus odds are excluded.
 - **About:** complete source attribution.
 

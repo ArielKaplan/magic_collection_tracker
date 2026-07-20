@@ -7,7 +7,7 @@ import { searchTcgcsvLocal } from './sealedPricing.js';
 import { attributeDropFor, buildSlModel, finishGroup, projectLegacy, requiredFinishFor, setSlProducts, slDropModelFinish, slProductForDrop } from './slData.js';
 import { refreshSlWikiData, slWikiGroupFor, slWikiMsrp, slWikiRowFor, upcomingSlDrops } from './slWiki.js';
 import { refreshSlBonusData, slBonusCardsForDrop } from './slBonus.js';
-import { announcementHeadlinePrice, refreshSlAnnouncements, slAnnouncements } from './slAnnouncements.js';
+import { refreshSlAnnouncements, slAnnouncements } from './slAnnouncements.js';
 import { evaluateSlWatchAlerts, renderSlIntelligenceView, slLotPnlRows } from './slIntelligence.js';
 import { collection, tcgcsvCache, ui } from './state.js';
 import { esc, fmt, netFetch, toast, today } from './utils.js';
@@ -1235,10 +1235,31 @@ export function renderSlViewer() {
   function viewToggle() {
     const v = sv.view || 'drops';
     const b = (id, label) => `<button class="btn ${v === id ? 'btn-primary' : 'btn-ghost'}" style="font-size:12px" data-act="ui-set" data-path="slViewer.view" data-val="${id}" data-also="slViewer.page=0">${label}</button>`;
-    return `<div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">${b('drops', '📦 By Superdrop')}${b('collector', '🔢 By Collector №')}${b('pnl', '💰 P&L')}${b('index', '📈 Index')}${b('intel', '🧠 Intelligence')}</div>`;
+    return `<div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">${b('drops', '📦 By Superdrop')}${b('collector', '🔢 By Collector №')}${b('pnl', '💰 P&L')}${b('index', '📈 Index')}${b('intel', '🧠 Intelligence')}${b('announcements', '📣 Announcements')}</div>`;
   }
 
   if (sv.view === 'intel') return viewToggle() + renderSlIntelligenceView();
+  if (sv.view === 'announcements') {
+    const rows = slAnnouncements().slice().sort((a, b) => String(b.publishedAt || '').localeCompare(String(a.publishedAt || '')));
+    const cards = rows.length ? rows.map(a => `
+      <article style="padding:14px 16px;background:var(--surface);border:1px solid var(--border);border-radius:8px">
+        <div style="display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap">
+          <div style="min-width:0;flex:1">
+            <a href="#" data-act="open-url" data-arg="${esc(a.url)}" style="font-size:14px;font-weight:750">${esc(a.title || 'Secret Lair announcement')}</a>
+            <div style="font-size:11px;color:var(--text-muted);margin-top:3px">Published ${esc((a.publishedAt || '').slice(0, 10) || 'date unavailable')}${a.saleDate ? ` · sale ${esc(a.saleDate)}${a.saleTime ? ` at ${esc(a.saleTime)}` : ''}` : ''}</div>
+          </div>
+          <a href="#" class="btn btn-ghost" style="font-size:11px" data-act="open-url" data-arg="${esc(a.url)}">Open official article ↗</a>
+        </div>
+        ${a.summary ? `<p style="font-size:12px;line-height:1.55;color:var(--text-dim);margin:10px 0 0">${esc(a.summary)}</p>` : ''}
+        ${(a.bundles || []).length ? `<div style="font-size:11px;color:var(--text-muted);margin-top:9px"><strong style="color:var(--text)">Bundle headings:</strong> ${esc(a.bundles.join(' · '))}</div>` : ''}
+        ${(a.officialNotes || []).length ? `<div style="font-size:11px;color:var(--text-muted);margin-top:6px"><strong style="color:var(--text)">Official notes:</strong> ${esc(a.officialNotes.join(' · '))}</div>` : ''}
+      </article>`).join('') : `<div style="padding:34px;text-align:center;color:var(--text-muted);background:var(--surface);border:1px solid var(--border);border-radius:8px">No official announcements are cached yet.<br>Use “Check for New Cards” to sync the Wizards archive.</div>`;
+    return viewToggle() + refreshBtn + `
+      <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:12px">
+        <div><h2 style="font-size:16px;margin:0">Official Wizards announcements</h2><div style="font-size:11px;color:var(--text-muted)">${rows.length} cached article${rows.length === 1 ? '' : 's'} · sync retains up to 20 recent Secret Lair archive results · announcement prices are intentionally not parsed</div></div>
+      </div>
+      <div style="display:grid;gap:10px">${cards}</div>`;
+  }
 
   // Collector-number view — flat gallery of every SLD printing, ordered by number
   if ((sv.view || 'drops') === 'collector') {
@@ -1264,7 +1285,7 @@ export function renderSlViewer() {
     // One merged control bar: view toggle + search + owned count, all on a single row.
     const headerBar = `
       <div style="display:flex;gap:10px;align-items:center;padding:8px 12px;background:var(--surface);border:1px solid var(--border);border-radius:8px">
-        <div style="display:flex;gap:6px;flex-shrink:0">${tb('drops', '📦 By Superdrop')}${tb('collector', '🔢 By Collector №')}${tb('pnl', '💰 P&L')}${tb('index', '📈 Index')}${tb('intel', '🧠 Intelligence')}</div>
+        <div style="display:flex;gap:6px;flex-shrink:0">${tb('drops', '📦 By Superdrop')}${tb('collector', '🔢 By Collector №')}${tb('pnl', '💰 P&L')}${tb('index', '📈 Index')}${tb('intel', '🧠 Intelligence')}${tb('announcements', '📣 Announcements')}</div>
         <input type="text" id="slSearchInput" placeholder="Search by collector number, card name, or note…"
           value="${esc(sv.search || '')}"
           data-act="ui-set" data-path="slViewer.search" data-refocus="slSearchInput"
@@ -1293,7 +1314,7 @@ export function renderSlViewer() {
     const tbi = (id, label) => `<button class="btn ${sv.view === id ? 'btn-primary' : 'btn-ghost'}" style="font-size:12px;white-space:nowrap" data-act="ui-set" data-path="slViewer.view" data-val="${id}" data-also="slViewer.page=0">${label}</button>`;
     const idxHeader = `
       <div style="display:flex;gap:6px;align-items:center;padding:8px 12px;margin-bottom:14px;background:var(--surface);border:1px solid var(--border);border-radius:8px">
-        ${tbi('drops', '📦 By Superdrop')}${tbi('collector', '🔢 By Collector №')}${tbi('pnl', '💰 P&L')}${tbi('index', '📈 Index')}${tbi('intel', '🧠 Intelligence')}
+        ${tbi('drops', '📦 By Superdrop')}${tbi('collector', '🔢 By Collector №')}${tbi('pnl', '💰 P&L')}${tbi('index', '📈 Index')}${tbi('intel', '🧠 Intelligence')}${tbi('announcements', '📣 Announcements')}
       </div>`;
     return idxHeader + renderSlIndexBody(computeSlIndex());
   }
@@ -1315,7 +1336,7 @@ export function renderSlViewer() {
 
     const headerBar = `
       <div style="display:flex;gap:10px;align-items:center;padding:8px 12px;background:var(--surface);border:1px solid var(--border);border-radius:8px">
-        <div style="display:flex;gap:6px;flex-shrink:0">${tb('drops', '📦 By Superdrop')}${tb('collector', '🔢 By Collector №')}${tb('pnl', '💰 P&L')}${tb('index', '📈 Index')}${tb('intel', '🧠 Intelligence')}</div>
+        <div style="display:flex;gap:6px;flex-shrink:0">${tb('drops', '📦 By Superdrop')}${tb('collector', '🔢 By Collector №')}${tb('pnl', '💰 P&L')}${tb('index', '📈 Index')}${tb('intel', '🧠 Intelligence')}${tb('announcements', '📣 Announcements')}</div>
         <span style="margin-left:auto;font-size:12px;color:var(--text-muted)">
           ${rows.length} drop${rows.length !== 1 ? 's' : ''} · paid <strong style="color:var(--text)">${money(tot.cost)}</strong> · now <strong style="color:var(--text)">${money(tot.value)}</strong> ·
           <strong style="color:${gcol(totGain)}">${totGain >= 0 ? '+' : ''}${fmt(totGain)}${totPct != null ? ` (${pct(totPct)})` : ''}</strong>
@@ -1477,13 +1498,12 @@ export function renderSlViewer() {
   const announcements = slAnnouncements();
   const officialStrip = announcements.length ? `
     <div style="margin:0 0 14px;padding:10px 14px;background:var(--surface);border:1px solid var(--border);border-radius:8px;font-size:12px">
-      <div style="font-weight:700;color:var(--text);margin-bottom:6px">Official Wizards announcements</div>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><div style="font-weight:700;color:var(--text)">Official Wizards announcements</div><button class="btn btn-ghost" style="font-size:10px;padding:2px 7px;margin-left:auto" data-act="ui-set" data-path="slViewer.view" data-val="announcements">View all · ${announcements.length}</button></div>
       <div style="display:grid;gap:6px">
         ${announcements.slice(0, 4).map(a => {
-          const headlinePrice = announcementHeadlinePrice(a);
           return `<div style="display:flex;gap:8px;align-items:baseline;flex-wrap:wrap">
             <a href="#" data-act="open-url" data-arg="${esc(a.url)}" style="font-weight:650">${esc(a.title)}</a>
-            <span style="color:var(--text-muted)">${esc((a.publishedAt || '').slice(0, 10) || 'date unavailable')}${a.saleDate ? ` · sale ${esc(a.saleDate)}` : ''}${headlinePrice ? ` · ${fmt(headlinePrice.amount)} announced` : ''}</span>
+            <span style="color:var(--text-muted)">${esc((a.publishedAt || '').slice(0, 10) || 'date unavailable')}${a.saleDate ? ` · sale ${esc(a.saleDate)}${a.saleTime ? ` at ${esc(a.saleTime)}` : ''}` : ''}</span>
           </div>`;
         }).join('')}
       </div>

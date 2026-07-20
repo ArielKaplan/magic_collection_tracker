@@ -1,33 +1,20 @@
 // Official Secret Lair announcement enrichment from magic.wizards.com.
-// The official source is authoritative for sale windows, announced USD prices,
-// bundles and promotional/WPN notes. MTGJSON/Scryfall remain authoritative for
-// exact released printings and identifiers.
+// The official source is authoritative for article dates, sale windows, bundle
+// headings and promotional/WPN notes. Dollar amounts are deliberately ignored:
+// an article can describe a superdrop while quoting individual SKU prices.
 
 import { netFetch } from './utils.js';
 
 const ARCHIVE_URL = 'https://magic.wizards.com/en/news/announcements?search=Secret+Lair';
 const SETTINGS_KEY = 'sl_announcement_data';
-const SHIPPING_PRICE_RE = /\b(?:free\s+shipping|shipping|ships?\s+free|orders?\s+(?:over|above|of\s+at\s+least)|checkout|shipping\s+threshold)\b/i;
-const PRODUCT_PRICE_RE = /\b(?:non-?foil|foil|bundle|drop|edition)\b/i;
+const MAX_RECENT_ANNOUNCEMENTS = 20;
 
-function announcementPriceKind(label) {
-  if (SHIPPING_PRICE_RE.test(String(label || ''))) return 'shipping';
-  if (PRODUCT_PRICE_RE.test(String(label || ''))) return 'product';
-  return 'other';
-}
-
-// A Wizards article can mention other dollar amounts (most notably its free-
-// shipping threshold). Keep those facts in the source record, but never present
-// one as the announced product price. The label check also fixes old cached rows
-// created before prices carried an explicit kind.
-export function announcementHeadlinePrice(row) {
-  return (Array.isArray(row?.prices) ? row.prices : []).find(price => {
-    const amount = Number(price?.amount);
-    return Number.isFinite(amount)
-      && price?.kind !== 'shipping'
-      && !SHIPPING_PRICE_RE.test(String(price?.label || ''));
-  }) || null;
-}
+// Remove legacy price fields when loading a cache created by an older build.
+// This keeps the stored contract aligned with the intentionally price-free UI.
+const cleanAnnouncementRow = row => {
+  const { prices: _legacyPrices, ...clean } = row || {};
+  return clean;
+};
 
 const decode = s => String(s || '')
   .replace(/&nbsp;/gi, ' ').replace(/&amp;/gi, '&').replace(/&quot;/gi, '"')
@@ -76,20 +63,6 @@ export function parseAnnouncementDetailHtml(html, seed = {}) {
     || seed.publishedAt || null;
   const salePhrase = body.match(/(?:available|arrives|launch(?:es)?|on sale|sale begins|goes live|MagicSecretLair\.com)[^\n.]{0,180}?((?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}(?:,\s+\d{4})?)/i);
   const timeM = body.match(/(\d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?))\s*(P[DT])/i);
-  const prices = [];
-  for (const m of body.matchAll(/([^\n]{0,100}?)\$\s*([\d,]+(?:\.\d{2})?)\s*(?:USD)?/gi)) {
-    const label = m[1].replace(/^[\s:–—-]+|[\s:–—-]+$/g, '').slice(-90) || 'Announced price';
-    const amount = parseFloat(m[2].replace(/,/g, ''));
-    const lineStart = body.lastIndexOf('\n', m.index) + 1;
-    const nextBreak = body.indexOf('\n', m.index + m[0].length);
-    const lineEnd = nextBreak < 0 ? body.length : nextBreak;
-    const kind = announcementPriceKind(body.slice(lineStart, lineEnd));
-    if (!prices.some(p => p.label === label && p.amount === amount)) prices.push({ label, amount, currency: 'USD', kind });
-  }
-  prices.sort((a, b) => {
-    const score = p => p.kind === 'product' ? 2 : (p.kind === 'shipping' ? 0 : 1);
-    return score(b) - score(a);
-  });
   const bundles = [...String(html || '').matchAll(/<h([1-4])\b[^>]*>([\s\S]*?bundle[\s\S]*?)<\/h\1>/gi)]
     .map(m => text(m[2])).filter(Boolean);
   const noteLines = body.split('\n').filter(line => /while supplies last|promotion|promo card|WPN|game store/i.test(line));
@@ -99,7 +72,6 @@ export function parseAnnouncementDetailHtml(html, seed = {}) {
     publishedAt,
     saleDate: isoDate(salePhrase?.[1], String(publishedAt || '').slice(0, 4)),
     saleTime: timeM ? `${timeM[1]} ${timeM[2].toUpperCase()}` : null,
-    prices: prices.slice(0, 30),
     bundles: [...new Set(bundles)].slice(0, 20),
     officialNotes: [...new Set(noteLines)].slice(0, 12),
     summary: seed.summary || body.slice(0, 600),
@@ -113,7 +85,11 @@ export async function loadSlAnnouncementsFromSettings() {
     const raw = await window.api?.settings?.get(SETTINGS_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed?.rows)) announcementData = parsed;
+      if (Array.isArray(parsed?.rows)) {
+        const hadLegacyPrices = parsed.rows.some(row => Object.hasOwn(row || {}, 'prices'));
+        announcementData = { ...parsed, rows: parsed.rows.map(cleanAnnouncementRow) };
+        if (hadLegacyPrices) await window.api?.settings?.set(SETTINGS_KEY, JSON.stringify(announcementData));
+      }
     }
   } catch (e) { window.logger?.warn?.('SL', `official-announcement cache load failed: ${e.message}`); }
 }
@@ -124,8 +100,8 @@ export async function refreshSlAnnouncements(opts = {}) {
     if (!resp.ok) throw new Error(`HTTP ${resp.status} from magic.wizards.com`);
     const seeds = parseAnnouncementArchiveHtml(await resp.text());
     if (!seeds.length) throw new Error('no Secret Lair announcement links parsed — archive layout changed?');
-    const previousByUrl = new Map((announcementData?.rows || []).map(r => [r.url, r]));
-    const rows = await Promise.all(seeds.slice(0, 8).map(async seed => {
+    const previousByUrl = new Map((announcementData?.rows || []).map(r => [r.url, cleanAnnouncementRow(r)]));
+    const rows = await Promise.all(seeds.slice(0, MAX_RECENT_ANNOUNCEMENTS).map(async seed => {
       try {
         const detail = await netFetch(seed.url, { headers: { Accept: 'text/html' } });
         if (!detail.ok) return previousByUrl.get(seed.url) || seed;
@@ -133,13 +109,12 @@ export async function refreshSlAnnouncements(opts = {}) {
         const old = previousByUrl.get(seed.url);
         return old ? {
           ...old, ...parsed,
-          prices: parsed.prices?.length ? parsed.prices : (old.prices || []),
           bundles: parsed.bundles?.length ? parsed.bundles : (old.bundles || []),
           officialNotes: parsed.officialNotes?.length ? parsed.officialNotes : (old.officialNotes || []),
         } : parsed;
       } catch { return previousByUrl.get(seed.url) || seed; }
     }));
-    announcementData = { fetchedAt: new Date().toISOString(), rows };
+    announcementData = { fetchedAt: new Date().toISOString(), rows: rows.map(cleanAnnouncementRow) };
     await window.api?.settings?.set(SETTINGS_KEY, JSON.stringify(announcementData));
     window.logger?.success?.('SL', `Official announcements sync: ${rows.length} recent Wizards articles`);
     return true;

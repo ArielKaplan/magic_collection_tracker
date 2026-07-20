@@ -296,6 +296,7 @@ export function showSettings() {
     collection.slBonusPulls        = [];
     collection.slWatchList         = [];
     collection.slMarketQuotes      = [];
+    collection.savedReports       = [];
     collection.settings            = { pricechartingKey: '', cardTraderToken: '' };
     collection.lastPriceRefresh    = null;
     clearPendingPriceSnaps();

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { parseBonusCardsHtml } from '../src/renderer-js/slBonus.js';
-import { announcementHeadlinePrice, parseAnnouncementArchiveHtml, parseAnnouncementDetailHtml } from '../src/renderer-js/slAnnouncements.js';
+import { parseAnnouncementArchiveHtml, parseAnnouncementDetailHtml } from '../src/renderer-js/slAnnouncements.js';
 
 describe('Secret Lair supplemental source parsers', () => {
   it('parses the bonus table without shifting rowspan columns', () => {
@@ -27,7 +27,7 @@ describe('Secret Lair supplemental source parsers', () => {
     expect(rows[0].publishedAt).toContain('2026-07-17');
   });
 
-  it('extracts official sale time, prices, bundles and promotion notes', () => {
+  it('extracts official sale time, bundles and promotion notes without prices', () => {
     const row = parseAnnouncementDetailHtml(`
       <h1>Secret Lair Example Superdrop</h1>
       <time datetime="2026-07-17T05:30-07:00"></time>
@@ -37,24 +37,17 @@ describe('Secret Lair supplemental source parsers', () => {
     `, { url: 'https://example.test' });
     expect(row.saleDate).toBe('2026-08-17');
     expect(row.saleTime).toBe('9 a.m. PT');
-    expect(row.prices.map(p => p.amount)).toEqual(expect.arrayContaining([29.99, 39.99]));
+    expect(row).not.toHaveProperty('prices');
     expect(row.bundles).toContain('Everything Bundle');
     expect(row.officialNotes[0]).toMatch(/supplies last/i);
-    expect(announcementHeadlinePrice(row)?.amount).toBe(29.99);
   });
 
-  it('never presents a free-shipping threshold as an announced drop price', () => {
-    const shippingOnly = parseAnnouncementDetailHtml(`
+  it('ignores both SKU prices and shipping thresholds in announcement details', () => {
+    const row = parseAnnouncementDetailHtml(`
       <h1>Secret Lair: Cats Are the Best Superdrop</h1>
+      <p>Individual non-foil drops are $29.99 USD.</p>
       <p>All single orders over $99 USD ship free.</p>
     `);
-    expect(shippingOnly.prices[0]).toMatchObject({ amount: 99, kind: 'shipping' });
-    expect(announcementHeadlinePrice(shippingOnly)).toBeNull();
-
-    const cachedRow = { prices: [
-      { label: 'All single orders over', amount: 99, currency: 'USD' },
-      { label: 'Non-foil edition', amount: 29.99, currency: 'USD' },
-    ] };
-    expect(announcementHeadlinePrice(cachedRow)?.amount).toBe(29.99);
+    expect(row).not.toHaveProperty('prices');
   });
 });

@@ -12,6 +12,12 @@ user-facing: what changed, not how.
 
 ## [Unreleased]
 
+### Added
+- **Insights workspace (Ctrl+4).** “What can I build?” ranks saved decks and the full precon catalog by quantity-aware readiness, with a playable/any-printing or exact-product mode. The explainable Opportunity Scanner flags want-list target hits, surplus copies, significant recorded price moves, and fully priced exact Secret Lair sealed-vs-singles spreads. User-defined reports save live dataset/filter/sort/column recipes locally and export their current results to CSV.
+
+### Changed
+- **Official Wizards announcements are now date/context only.** Mana Ledger no longer parses or displays article dollar amounts, because a superdrop article may quote an individual drop, bundle, or shipping threshold. The landing page keeps a four-item preview, while a new Announcements view shows every cached article—up to 20—with dates and official links.
+
 ## [1.3.0] - 2026-07-20
 
 ### Added
