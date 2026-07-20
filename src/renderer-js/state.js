@@ -62,7 +62,7 @@ export function makeCollection() {
   return {
     version: 3,
     lastPriceRefresh: null,
-    settings: { pricechartingKey: '', cardTraderToken: '' },
+    settings: { pricechartingKey: '', cardTraderToken: '', insightsEnabled: false },
     cards: [],
     sealed: [],
     wantList: [],   // cards the user wants to acquire (see wantlist.js)

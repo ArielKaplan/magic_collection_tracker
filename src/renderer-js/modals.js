@@ -27,12 +27,13 @@ export function showModal(html, size = null) {
   if (modal) {
     modal.classList.toggle('modal-wide', size === true || size === 'wide');
     modal.classList.toggle('modal-xl',   size === 'xl');
+    modal.classList.toggle('modal-settings', size === 'settings');
   }
 }
 export function hideModal() {
   document.getElementById('modal-overlay').classList.add('hidden');
   const modal = document.querySelector('#modal-overlay .modal');
-  if (modal) modal.classList.remove('modal-wide', 'modal-xl');
+  if (modal) modal.classList.remove('modal-wide', 'modal-xl', 'modal-settings');
 }
 
 // Universal exact-printing acquisition flow. It is reachable from live search

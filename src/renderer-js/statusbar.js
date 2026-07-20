@@ -202,13 +202,12 @@ export function showShortcuts() {
       ${row('Ctrl+1', 'Dashboard')}          ${row('Ctrl+K', 'Global search')}
       ${row('Ctrl+2', 'Card Collection')}    ${row('F5', 'Refresh prices')}
       ${row('Ctrl+3', 'Sealed Collection')}  ${row('Ctrl+I', 'Import…')}
-      ${row('Ctrl+4', 'Insights')}           ${row('F11', 'Fullscreen')}
       ${row('Ctrl+5', 'Secret Lair Explorer')} ${row('Ctrl+D', 'Import deck…')}
       ${row('Ctrl+6', 'Failed Lookups')}     ${row('Ctrl+S', 'Save collection (JSON)')}
       ${row('Ctrl+7', 'Decks')}              ${row('Ctrl+O', 'Load collection (JSON)')}
       ${row('Ctrl+8', 'Want List')}          ${row('Ctrl+L', 'Activity log')}
       ${row('Ctrl+9', 'Precon Explorer')}    ${row('Ctrl+,', 'Settings')}
-      ${row('Esc', 'Close panel / modal')}   ${row('Ctrl+R', 'Reload window')}
+      ${row('Esc', 'Close panel / modal')}   ${row('F11', 'Fullscreen')}
     </div>
     <div style="display:flex;justify-content:flex-end">
       <button class="btn btn-primary" data-act="hideModal">Close</button>

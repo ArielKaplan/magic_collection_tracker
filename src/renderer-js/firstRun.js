@@ -49,6 +49,6 @@ export function showFirstRun() {
     </p>`);
 
   document.getElementById('fr-import')?.addEventListener('click', () => { markDone(); showImportHub('cards'); });
-  document.getElementById('fr-restore')?.addEventListener('click', () => { markDone(); showSettings(); });
+  document.getElementById('fr-restore')?.addEventListener('click', () => { markDone(); showSettings('data'); });
   document.getElementById('fr-skip')?.addEventListener('click', () => { markDone(); hideModal(); });
 }

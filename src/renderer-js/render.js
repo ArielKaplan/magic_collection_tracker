@@ -1,6 +1,7 @@
 import { renderCards } from './cardsTab.js';
 import { renderDecks } from './decks.js';
 import { renderFailedLookupsTab } from './failures.js';
+import { insightsEnabled, syncFeatureVisibility } from './features.js';
 import { renderInsights } from './insights.js';
 import { attachContentListeners } from './hover.js';
 import { updateRefreshUI } from './prices.js';
@@ -20,6 +21,7 @@ import { renderWantList, updateWantBadge } from './wantlist.js';
 // ─────────────────────────────────────────────────────────────────────────────
 export function render() {
   const content = document.getElementById('content');
+  syncFeatureVisibility();
 
   // Tear down any active Svelte component when leaving the dashboard tab
   if (ui.activeTab !== 'dashboard' && window.svelteApp) window.svelteApp.unmountDashboard();
@@ -39,7 +41,7 @@ export function render() {
         break;
       case 'cards':     content.innerHTML = renderCards();             break;
       case 'sealed':    content.innerHTML = renderSealed();            break;
-      case 'insights':  content.innerHTML = renderInsights();          break;
+      case 'insights':  content.innerHTML = insightsEnabled() ? renderInsights() : ''; break;
       case 'decks':     content.innerHTML = renderDecks();             break;
       case 'slviewer':  content.innerHTML = renderSlViewer();          break;
       case 'precons':   content.innerHTML = renderPreconTab();         break;
