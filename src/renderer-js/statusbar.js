@@ -104,7 +104,9 @@ export function showAbout() {
       Low prices via <a href="#" data-act="open-url" data-arg="https://scryfall.com">Scryfall</a> ·
       Market prices via <a href="#" data-act="open-url" data-arg="https://tcgcsv.com">TCGCSV</a> ·
       SL drop data via <a href="#" data-act="open-url" data-arg="https://mtgjson.com">MTGJSON</a> ·
-      Sealed prices via TCGCSV and PriceCharting (optional key in Settings).
+      SL grouping, MSRP, and bonus catalog via <a href="#" data-act="open-url" data-arg="https://mtg.wiki">mtg.wiki</a> ·
+      launch context via <a href="#" data-act="open-url" data-arg="https://magic.wizards.com/en/news/announcements?search=Secret+Lair">Wizards</a> ·
+      sealed prices via TCGCSV and PriceCharting (optional paid token in Settings).
     </p>
     <p style="font-size:10.5px;color:var(--text-muted);line-height:1.5;margin-bottom:14px">
       Mana Ledger is unofficial Fan Content permitted under the Wizards of the Coast Fan Content

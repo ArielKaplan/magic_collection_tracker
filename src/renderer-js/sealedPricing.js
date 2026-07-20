@@ -57,6 +57,7 @@ export async function loadTcgcsvCache() {
       tcgcsvCache.groups         = data.groups || null;
       tcgcsvCache.sealedProducts = data.sealedProducts;
       tcgcsvCache.lastRefresh    = data.lastRefresh || null;
+      tcgcsvCache.sourceUpdatedAt= data.sourceUpdatedAt || null;
       updateSyncBtn();
       tcgcsvCache.onProgress?.();
     }
@@ -71,6 +72,7 @@ export async function persistTcgcsvCache() {
       groups:         tcgcsvCache.groups,
       sealedProducts: tcgcsvCache.sealedProducts,
       lastRefresh:    tcgcsvCache.lastRefresh,
+      sourceUpdatedAt:tcgcsvCache.sourceUpdatedAt,
     }));
   } catch (e) {
     window.logger?.debug('Sealed', `Could not persist product index: ${e.message}`);
@@ -87,6 +89,8 @@ export async function ensureTcgcsvCache() {
 
 export async function refreshTcgcsvCache() {
   if (tcgcsvCache.syncing) return;
+  const previousProducts = tcgcsvCache.sealedProducts;
+  const previousSourceUpdatedAt = tcgcsvCache.sourceUpdatedAt;
   tcgcsvCache.syncing        = true;
   tcgcsvCache.sealedProducts = [];
   tcgcsvCache.syncDone       = 0;
@@ -95,6 +99,12 @@ export async function refreshTcgcsvCache() {
   window.logger?.info('Sealed', 'TCGCSV sync started — fetching MTG group list…');
 
   try {
+    // Upstream timestamp is informative only; a failure here must not block
+    // product and price ingestion.
+    try {
+      const stamp = await netFetch('https://tcgcsv.com/last-updated.txt');
+      if (stamp.ok) tcgcsvCache.sourceUpdatedAt = (await stamp.text()).trim() || null;
+    } catch { /* optional metadata */ }
     // Step 1: fetch all groups
     const grpResp = await netFetch(TCGCSV_GROUPS);
     if (!grpResp.ok) throw new Error(`Groups fetch failed (${grpResp.status})`);
@@ -117,6 +127,7 @@ export async function refreshTcgcsvCache() {
     const allSealed = [];
     tcgcsvCache.sealedProducts = allSealed;   // live view — grows as batches land
     let errors = 0;
+    const failedGroupIds = new Set();
 
     for (let i = 0; i < fetchOrder.length; i += BATCH) {
       const batch = fetchOrder.slice(i, i + BATCH);
@@ -126,7 +137,7 @@ export async function refreshTcgcsvCache() {
             netFetch(`https://tcgcsv.com/tcgplayer/1/${g.groupId}/products`),
             netFetch(`https://tcgcsv.com/tcgplayer/1/${g.groupId}/prices`),
           ]);
-          if (!prodResp.ok || !priceResp.ok) { errors++; return; }
+          if (!prodResp.ok || !priceResp.ok) { errors++; failedGroupIds.add(String(g.groupId)); return; }
 
           const prodRaw  = await prodResp.json();
           const priceRaw = await priceResp.json();
@@ -138,9 +149,15 @@ export async function refreshTcgcsvCache() {
           for (const p of prices) {
             const id = p.productId ?? p.skuId;
             if (id != null) {
-              const price = p.marketPrice ?? p.midPrice ?? p.lowPrice;
-              // Keep the best (highest) price if there are multiple rows per productId (Normal/Foil)
-              if (price != null && (priceMap[id] == null || price > priceMap[id])) priceMap[id] = price;
+              if (!priceMap[id]) priceMap[id] = [];
+              priceMap[id].push({
+                subTypeName: p.subTypeName || p.subtypeName || p.printing || 'Normal',
+                lowPrice: p.lowPrice != null ? +p.lowPrice : null,
+                midPrice: p.midPrice != null ? +p.midPrice : null,
+                highPrice: p.highPrice != null ? +p.highPrice : null,
+                marketPrice: p.marketPrice != null ? +p.marketPrice : null,
+                directLowPrice: p.directLowPrice != null ? +p.directLowPrice : null,
+              });
             }
           }
 
@@ -149,18 +166,33 @@ export async function refreshTcgcsvCache() {
             if (!name) continue;
             const isSealed = SEALED_KEYWORDS.some(kw => name.toLowerCase().includes(kw));
             if (!isSealed) continue;
-            const price = priceMap[p.productId] ?? null;
+            const priceRows = priceMap[p.productId] || [];
+            const primary = [...priceRows].sort((a, b) =>
+              (Number(/^normal$/i.test(b.subTypeName)) - Number(/^normal$/i.test(a.subTypeName)))
+              || ((b.marketPrice ?? -1) - (a.marketPrice ?? -1)))[0] || {};
             allSealed.push({
               id:          `tcgcsv-${g.groupId}-${p.productId}`,
               productId:   p.productId,   // exact-join key (MTGJSON sealedProduct.identifiers.tcgplayerProductId)
               name,
               consoleName: g.name,
-              marketPrice: price != null ? parseFloat(price) : null,
+              groupId:      g.groupId,
+              marketPrice:  primary.marketPrice ?? primary.midPrice ?? primary.lowPrice ?? null,
+              lowPrice:     primary.lowPrice ?? null,
+              midPrice:     primary.midPrice ?? null,
+              highPrice:    primary.highPrice ?? null,
+              directLowPrice: primary.directLowPrice ?? null,
+              priceSubtype: primary.subTypeName || null,
+              priceRows,
+              imageUrl:     p.imageUrl || null,
+              productUrl:   p.url || null,
+              modifiedOn:   p.modifiedOn || null,
+              presaleInfo:  p.presaleInfo || null,
               source:      'tcgcsv',
             });
           }
         } catch (e) {
           errors++;
+          failedGroupIds.add(String(g.groupId));
           window.logger?.debug('Sealed', `Group ${g.groupId} (${g.name}) failed: ${e.message}`);
         }
         tcgcsvCache.syncDone++;
@@ -171,8 +203,23 @@ export async function refreshTcgcsvCache() {
       if (i + BATCH < fetchOrder.length) await new Promise(r => setTimeout(r, BATCH_DELAY_MS));
     }
 
+    // Preserve last-good rows for just the groups that failed this run. A
+    // partial upstream outage must not make previously known products vanish.
+    if (failedGroupIds.size && previousProducts.length) {
+      const seen = new Set(allSealed.map(p => String(p.productId ?? p.id)));
+      for (const p of previousProducts) {
+        const gid = String(p.groupId ?? String(p.id || '').match(/^tcgcsv-(\d+)-/)?.[1] ?? '');
+        const key = String(p.productId ?? p.id);
+        if (failedGroupIds.has(gid) && !seen.has(key)) { allSealed.push(p); seen.add(key); }
+      }
+    }
+    if (!allSealed.length && previousProducts.length) {
+      tcgcsvCache.sealedProducts = previousProducts;
+      tcgcsvCache.sourceUpdatedAt = previousSourceUpdatedAt;
+      throw new Error('No product rows were returned; kept the last good cache');
+    }
     tcgcsvCache.lastRefresh = new Date().toISOString();
-    persistTcgcsvCache();
+    await persistTcgcsvCache();
 
     const withPrice    = allSealed.filter(p => p.marketPrice != null).length;
     const summaryMsg   = `Loaded ${allSealed.length} sealed products (${withPrice} with prices) from ${tcgcsvCache.groups.length} groups${errors ? ` · ${errors} group errors` : ''}`;
@@ -180,6 +227,10 @@ export async function refreshTcgcsvCache() {
     if (allSealed.length > 0) window.logger?.success('Sealed', summaryMsg);
     else window.logger?.warn('Sealed', summaryMsg + ' — check network or try again');
   } catch (err) {
+    if (!tcgcsvCache.sealedProducts.length && previousProducts.length) {
+      tcgcsvCache.sealedProducts = previousProducts;
+      tcgcsvCache.sourceUpdatedAt = previousSourceUpdatedAt;
+    }
     toast('TCGCSV sync failed: ' + err.message, 'error');
     window.logger?.error('Sealed', `TCGCSV sync failed: ${err.message}`);
   } finally {
@@ -243,15 +294,28 @@ export async function searchTcgcsv(query) {
       const products = await prodResp.json().then(r => Array.isArray(r) ? r : (r.results || []));
       const prices   = await priceResp.json().then(r => Array.isArray(r) ? r : (r.results || []));
       const priceMap = {};
-      prices.forEach(p => { if (p.productId != null) priceMap[p.productId] = p.marketPrice ?? p.midPrice ?? p.lowPrice; });
+      prices.forEach(p => {
+        if (p.productId == null) return;
+        if (!priceMap[p.productId]) priceMap[p.productId] = [];
+        priceMap[p.productId].push(p);
+      });
       products.forEach(p => {
         const name  = p.name || p.cleanName || p.productName || '';
-        const price = priceMap[p.productId];
+        const row = (priceMap[p.productId] || []).find(x => /^normal$/i.test(x.subTypeName || '')) || (priceMap[p.productId] || [])[0];
+        const price = row?.marketPrice ?? row?.midPrice ?? row?.lowPrice;
         if (name && price != null) results.push({
           id:          `tcgcsv-${g.groupId}-${p.productId}`,
+          productId:   p.productId,
           name,
           consoleName: g.name,
           marketPrice: parseFloat(price),
+          lowPrice: row?.lowPrice != null ? +row.lowPrice : null,
+          midPrice: row?.midPrice != null ? +row.midPrice : null,
+          highPrice: row?.highPrice != null ? +row.highPrice : null,
+          directLowPrice: row?.directLowPrice != null ? +row.directLowPrice : null,
+          priceSubtype: row?.subTypeName || null,
+          imageUrl: p.imageUrl || null,
+          productUrl: p.url || null,
           source:      'tcgcsv',
         });
       });
@@ -262,8 +326,8 @@ export async function searchTcgcsv(query) {
 
 export async function searchPriceCharting(query) {
   const key = collection.settings.pricechartingKey;
-  if (!key) throw new Error('PriceCharting API key not set — add it in Settings');
-  const target = `${PC_API}/products?q=${encodeURIComponent(query)}&status=price&format=json&key=${encodeURIComponent(key)}`;
+  if (!key) throw new Error('PriceCharting API token not set — add it in Settings');
+  const target = `${PC_API}/products?t=${encodeURIComponent(key)}&q=${encodeURIComponent(query)}`;
   const resp = await netFetch(target);
   if (!resp.ok) throw new Error(`PriceCharting search failed (${resp.status})`);
   const data = await resp.json();
@@ -283,8 +347,8 @@ export async function searchPriceCharting(query) {
 
 export async function fetchPriceChartingById(id) {
   const key = collection.settings.pricechartingKey;
-  if (!key) throw new Error('PriceCharting API key not set — add it in Settings');
-  const target = `${PC_API}/product?id=${encodeURIComponent(id)}&status=price&format=json&key=${encodeURIComponent(key)}`;
+  if (!key) throw new Error('PriceCharting API token not set — add it in Settings');
+  const target = `${PC_API}/product?t=${encodeURIComponent(key)}&id=${encodeURIComponent(id)}`;
   const resp = await netFetch(target);
   if (!resp.ok) throw new Error(`Price fetch failed (${resp.status})`);
   const data = await resp.json();

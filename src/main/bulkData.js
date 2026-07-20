@@ -59,6 +59,18 @@ function extractCompact(c) {
     colors: (c.colors && c.colors.length ? c.colors : (face.colors || [])),
     color_identity: c.color_identity || [],
     oracle_text: c.oracle_text || face.oracle_text || '',
+    flavor_text: c.flavor_text || face.flavor_text || '',
+    artist: c.artist || face.artist || '',
+    artist_ids: c.artist_ids || face.artist_ids || [],
+    illustration_id: c.illustration_id || face.illustration_id || null,
+    image_uris: c.image_uris || face.image_uris || null,
+    lang: c.lang || 'en',
+    promo_types: c.promo_types || [],
+    frame_effects: c.frame_effects || [],
+    full_art: !!c.full_art,
+    border_color: c.border_color || null,
+    tcgplayer_id: c.tcgplayer_id || null,
+    cardmarket_id: c.cardmarket_id || null,
   };
 }
 

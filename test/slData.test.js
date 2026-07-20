@@ -18,7 +18,7 @@ function fixture() {
     data: {
       cards: [
         { name: 'Goblin Lackey', number: '1311', finishes: ['nonfoil'], subsets: ["Goblin & Squabblin'"],
-          uuid: 'u-base', identifiers: { scryfallId: 'sid-base' } },
+          uuid: 'u-base', identifiers: { scryfallId: 'sid-base', cardKingdomId: 'ck-card-1' } },
         { name: 'Goblin Lackey', number: '1311★', finishes: ['foil'], uuid: 'u-star',
           identifiers: { scryfallId: 'sid-star' } },   // no subset — the ★ foil
       ],
@@ -29,7 +29,7 @@ function fixture() {
       ],
       sealedProduct: [
         { subtype: 'secret_lair', name: 'Secret Lair Drop Goblin and Squabblin', uuid: 'p-base',
-          identifiers: { tcgplayerProductId: '501841' }, contents: { deck: [{ name: "Goblin & Squabblin'" }] } },
+          identifiers: { tcgplayerProductId: '501841', cardKingdomId: 'ck-product-1', mcmId: 'mcm-1' }, contents: { deck: [{ name: "Goblin & Squabblin'" }] } },
         { subtype: 'secret_lair', name: 'Secret Lair Drop Goblin and Squabblin Foil', uuid: 'p-foil',
           identifiers: { tcgplayerProductId: '501840' }, contents: { deck: [{ name: "Goblin & Squabblin' Foil Edition" }] } },
       ],
@@ -62,6 +62,13 @@ describe('buildSlModel — finish-aware products', () => {
   it('carries the TCGplayer product id per SKU', () => {
     expect(byLegacy.get("Goblin & Squabblin'").tcgplayerProductId).toBe('501841');
     expect([...byLegacy.values()].find(p => p.finishLabel).tcgplayerProductId).toBe('501840');
+  });
+
+  it('preserves every marketplace id and the MTGJSON card uuid', () => {
+    const base = byLegacy.get("Goblin & Squabblin'");
+    expect(base.identifiers).toMatchObject({ tcgplayerProductId: '501841', cardKingdomId: 'ck-product-1', mcmId: 'mcm-1' });
+    expect(base.cards[0]).toMatchObject({ mtgjsonUuid: 'u-base' });
+    expect(base.cards[0].identifiers.cardKingdomId).toBe('ck-card-1');
   });
 });
 

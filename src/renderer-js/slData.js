@@ -81,9 +81,10 @@ const mode = arr => {
 // ── the model builder (pure) ─────────────────────────────────────────────────
 //
 // buildSlModel(json, { knownDrops }) → {
-//   products: [{ uuid, dropName, legacyDrop, finishLabel, finish,
-//                tcgplayerProductId, releaseDate, lowConfidence,
-//                cards: [{ scryfallId, name, number, finish, count }] }],
+//   products: [{ uuid, name, subtype, identifiers, dropName, legacyDrop,
+//                finishLabel, finish, tcgplayerProductId, releaseDate,
+//                lowConfidence, cards: [{ mtgjsonUuid, identifiers,
+//                scryfallId, name, number, finish, count }] }],
 //   scryfallToName: { sid → name },
 // }
 // `knownDrops` (optional array of names, e.g. the baked drop list) only helps
@@ -103,7 +104,10 @@ export function buildSlModel(json, opts = {}) {
     const sid = (c.identifiers && c.identifiers.scryfallId || '').toLowerCase();
     if (!sid) continue;
     if (c.name) scryfallToName[sid] = c.name;
-    if (c.uuid) uuidToCard.set(c.uuid, { sid, name: c.name, number: c.number || '', finishes: c.finishes || [], subsets: c.subsets || [] });
+    if (c.uuid) uuidToCard.set(c.uuid, {
+      uuid: c.uuid, sid, name: c.name, number: c.number || '', finishes: c.finishes || [],
+      subsets: c.subsets || [], identifiers: { ...(c.identifiers || {}) },
+    });
   }
 
   // Canonical drop spellings: MTGJSON subsets first, then any caller-known names.
@@ -117,10 +121,10 @@ export function buildSlModel(json, opts = {}) {
   const byLegacy = new Map();            // legacyDrop lower → product (dedup)
   const membership = new Map();          // sid → Set(product)
 
-  const addCard = (product, sid, name, number, finish, count) => {
+  const addCard = (product, sid, name, number, finish, count, mtgjsonUuid = null, identifiers = {}) => {
     let row = product.cards.find(x => x.scryfallId === sid && x.finish === finish);
     if (row) { row.count += count || 1; return; }
-    product.cards.push({ scryfallId: sid, name, number, finish, count: count || 1 });
+    product.cards.push({ mtgjsonUuid, identifiers: { ...identifiers }, scryfallId: sid, name, number, finish, count: count || 1 });
     if (!membership.has(sid)) membership.set(sid, new Set());
     membership.get(sid).add(product);
   };
@@ -178,6 +182,12 @@ export function buildSlModel(json, opts = {}) {
 
     const product = {
       uuid: p.uuid || `product:${lk}`,
+      name: p.name || legacyDrop,
+      subtype: p.subtype || 'secret_lair',
+      // Preserve every marketplace identifier MTGJSON knows. TCGplayer is the
+      // primary exact join today, while Card Kingdom/Cardmarket/CardTrader/etc.
+      // remain available to future price adapters without another data rebuild.
+      identifiers: { ...(p.identifiers || {}) },
       dropName, legacyDrop, finishLabel,
       finish: /etched/i.test(finishLabel) ? 'etched' : (finishLabel ? 'foil' : 'nonfoil'),
       tcgplayerProductId: (p.identifiers && p.identifiers.tcgplayerProductId) || null,
@@ -195,14 +205,14 @@ export function buildSlModel(json, opts = {}) {
       for (const e of entries) {
         const info = uuidToCard.get(e.uuid);
         if (!info) continue;
-        addCard(product, info.sid, info.name, info.number, entryFinish(!!e.isFoil, info.finishes), e.count);
+        addCard(product, info.sid, info.name, info.number, entryFinish(!!e.isFoil, info.finishes), e.count, info.uuid, info.identifiers);
       }
     }
     // Explicit card contents (bonus cards on a handful of products)
     for (const ce of (p.contents && p.contents.card || [])) {
       const info = ce.uuid ? uuidToCard.get(ce.uuid) : null;
       if (!info) continue;
-      addCard(product, info.sid, info.name, info.number, entryFinish(!!ce.foil, info.finishes), 1);
+      addCard(product, info.sid, info.name, info.number, entryFinish(!!ce.foil, info.finishes), 1, info.uuid, info.identifiers);
     }
     // Let real contents refine the label-derived finish (foil-only base SKUs
     // like Eldraine Wonderland come out 'foil' here even with no label).
@@ -219,6 +229,7 @@ export function buildSlModel(json, opts = {}) {
     if (!product) {
       product = {
         uuid: `synthetic:${norm(dropName)}`,
+        name: dropName, subtype: 'synthetic', identifiers: {},
         dropName, legacyDrop: dropName, finishLabel: '',
         finish: 'nonfoil', tcgplayerProductId: null, releaseDate: null,
         lowConfidence: true, cards: [],
@@ -235,7 +246,7 @@ export function buildSlModel(json, opts = {}) {
       const dropName = canonical.get(norm(s)) || s;
       const product = baseProductFor(dropName);
       if (!product.cards.some(x => x.scryfallId === sid)) {
-        addCard(product, sid, c.name, c.number || '', nativeFinish(c.finishes), 1);
+        addCard(product, sid, c.name, c.number || '', nativeFinish(c.finishes), 1, c.uuid || null, c.identifiers || {});
       }
     }
   }
@@ -271,7 +282,7 @@ export function buildSlModel(json, opts = {}) {
       const candidates = [...sibs].filter(p => p.dropName === dropName);
       const target = candidates.find(p => p.finish === fin) || candidates.find(p => !p.finishLabel) || candidates[0];
       if (target && !target.cards.some(x => x.scryfallId === sid)) {
-        addCard(target, sid, c.name, c.number || '', fin, 1);
+        addCard(target, sid, c.name, c.number || '', fin, 1, c.uuid || null, c.identifiers || {});
       }
     }
   }

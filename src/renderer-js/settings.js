@@ -99,18 +99,19 @@ export function showSettings() {
     <h3 style="margin-top:22px">Sealed Product Pricing</h3>
     <p style="font-size:13px;color:var(--text-dim);margin-bottom:10px;line-height:1.55">
       <strong style="color:var(--text)">TCGCSV</strong> is built-in and free — no key needed. It searches TCGPlayer group data and works automatically.<br>
-      <strong style="color:var(--text)">PriceCharting</strong> adds a second source with broader coverage. Get a free key at
-      <a href="https://www.pricecharting.com/api" target="_blank">pricecharting.com/api</a> (email signup only, no approval).
+      <strong style="color:var(--text)">PriceCharting</strong> adds a second current-value source with broader collectible coverage.
+      It requires a paid API subscription and token; see
+      <a href="https://www.pricecharting.com/api-documentation" target="_blank">PriceCharting API documentation</a>.
     </p>
     <div class="form-group">
-      <label>PriceCharting API Key <span style="color:var(--text-dim);font-weight:400">(optional)</span></label>
-      <input type="text" id="cfg-pckey" placeholder="Paste your PriceCharting API key here" value="${esc(collection.settings.pricechartingKey || '')}">
+      <label>PriceCharting API Token <span style="color:var(--text-dim);font-weight:400">(optional)</span></label>
+      <input type="password" id="cfg-pckey" placeholder="Paste your PriceCharting API token here" value="${esc(collection.settings.pricechartingKey || '')}">
     </div>
 
     <h3 style="margin-top:22px">Secret Lair Data</h3>
     <p style="font-size:13px;color:var(--text-dim);margin-bottom:6px;line-height:1.55">
-      Superdrop groupings, drops, and card lists are <strong style="color:var(--text)">built in</strong> — reconciled from MTGJSON, Scryfall, and mtg.wiki.
-      The <strong style="color:var(--text)">↻ Check for New Cards</strong> button in the Secret Lair Explorer only refreshes card lists from MTGJSON; it does not change superdrop groupings (that data isn't published anywhere machine-readable).
+      The built-in baseline is reconciled from MTGJSON, Scryfall, TCGCSV, and mtg.wiki. <strong style="color:var(--text)">Check for New Cards</strong>
+      refreshes exact products/contents, live wiki grouping and MSRP, the bonus-card catalog, and recent official Wizards announcements. Each feed keeps its last known good cache if a source fails validation.
     </p>
     <p style="font-size:13px;color:var(--text-dim);margin-bottom:6px;line-height:1.55">
       To fix or re-group a drop just for yourself, use the <strong style="color:var(--text)">✎ Edit</strong> buttons in the Secret Lair Explorer — your groupings and notes save only on this computer and never affect the shared dataset.
@@ -118,6 +119,7 @@ export function showSettings() {
     <p style="font-size:12px;color:var(--text-muted);margin-bottom:10px;line-height:1.5">
       To update the built-in dataset for everyone (e.g. when a new superdrop drops), re-run the build pipeline in <code>scripts/sl-build/</code> (see its README) and ship a new version.
     </p>
+    <p style="margin:8px 0 14px"><button class="btn btn-ghost" data-act="showSlDataGuide">Open the full Secret Lair data guide</button></p>
 
     <h3 style="margin-top:22px">Secret Lair P&amp;L</h3>
     <p style="font-size:13px;color:var(--text-dim);margin-bottom:10px;line-height:1.55">

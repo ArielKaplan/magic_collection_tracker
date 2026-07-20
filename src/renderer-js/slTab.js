@@ -6,6 +6,8 @@ import { render } from './render.js';
 import { searchTcgcsvLocal } from './sealedPricing.js';
 import { attributeDropFor, buildSlModel, finishGroup, projectLegacy, requiredFinishFor, setSlProducts, slDropModelFinish, slProductForDrop } from './slData.js';
 import { refreshSlWikiData, slWikiGroupFor, slWikiMsrp, slWikiRowFor, upcomingSlDrops } from './slWiki.js';
+import { refreshSlBonusData, slBonusCardsForDrop } from './slBonus.js';
+import { refreshSlAnnouncements, slAnnouncements } from './slAnnouncements.js';
 import { collection, tcgcsvCache, ui } from './state.js';
 import { esc, fmt, netFetch, toast } from './utils.js';
 import { addDropMissingToWantList, isCardWanted, toggleSlCardWant } from './wantlist.js';
@@ -252,6 +254,15 @@ export async function refreshSlData() {
   ui.slRefreshing = true;
   render();
 
+  // Supplemental feeds are independent of the released-product backbone.
+  // Start them in parallel so an MTGJSON outage cannot prevent wiki, bonus or
+  // official-announcement caches from advancing (and vice versa).
+  const enrichmentRefresh = Promise.all([
+    refreshSlWikiData({ silent: true }),
+    refreshSlBonusData({ silent: true }),
+    refreshSlAnnouncements({ silent: true }),
+  ]);
+
   try {
     toast('Fetching Secret Lair data from MTGJSON… (may take a moment)', 'info', 10000);
     window.logger?.info('SL', 'Fetching MTGJSON SLD.json…');
@@ -290,7 +301,7 @@ export async function refreshSlData() {
     }
     applySlDataUpdate(legacy.dropCards, legacy.scryfallToDrops, legacy.scryfallToName);
     setSlProducts(model.products);   // finish-aware registry (ownership, P&L, pricing)
-    await refreshSlWikiData({ silent: true });   // grouping + MSRPs + upcoming, before regrouping
+    await enrichmentRefresh; // grouping + MSRP + context, before regrouping
     rebuildSlGrouping(); // re-apply this user's local grouping edits on top of the refreshed data
     await saveSlDataToCache(legacy.dropCards, legacy.scryfallToDrops, legacy.scryfallToName, model.products);
 
@@ -298,6 +309,8 @@ export async function refreshSlData() {
     toast(`SL data updated — ${drops} drops, ${cards.length} cards`, 'success');
     window.logger?.success('SL', `Updated: ${model.products.length} products across ${drops} drops · ${cards.length.toLocaleString()} cards · ${Object.keys(legacy.scryfallToDrops).length.toLocaleString()} mapped printings`);
   } catch (e) {
+    await enrichmentRefresh;
+    rebuildSlGrouping();
     toast(`Failed to refresh SL data: ${e.message}`, 'error');
     window.logger?.error('SL', `Refresh failed: ${e.message}`);
   }
@@ -891,10 +904,11 @@ export function renderSlViewer() {
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;padding:8px 12px;background:var(--surface);border:1px solid var(--border);border-radius:8px">
       <span style="font-size:12px;color:var(--text-muted);flex:1">${esc(lastUpdated)}</span>
       <button class="btn btn-ghost" style="font-size:12px;white-space:nowrap"
-        title="Re-fetches the latest Secret Lair card lists from MTGJSON. Superdrop groupings come from the built-in dataset — edit those with the ✎ buttons below; brand-new drops land under 'Recent Additions' until the dataset is rebuilt."
+        title="Refresh exact products and contents, wiki grouping/MSRP and bonus cards, plus recent official Wizards announcements. Invalid feeds keep their last known good cache."
         data-act="refreshSlData" ${ui.slRefreshing ? 'disabled' : ''}>
         ${ui.slRefreshing ? '⏳ Checking…' : '↻ Check for New Cards'}
       </button>
+      <button class="btn btn-ghost" style="font-size:12px;white-space:nowrap" data-act="showSlDataGuide">Data guide</button>
     </div>`;
 
   function sdSelect() {
@@ -1210,6 +1224,15 @@ export function renderSlViewer() {
     const hasMore = cardIds.length > shown.length;
     const drops = getDropsForSuperdrop(sv.superdrop);
     const pct = stats.total ? Math.round(stats.owned / stats.total * 100) : 0;
+    const bonusCards = slBonusCardsForDrop(sv.drop);
+    const bonusPanel = bonusCards.length ? `
+      <details style="margin:0 0 12px;padding:9px 13px;background:var(--surface);border:1px solid var(--border);border-radius:8px;font-size:12px">
+        <summary style="cursor:pointer;font-weight:700;color:var(--text)">🎁 ${bonusCards.length} documented exclusive bonus card${bonusCards.length === 1 ? '' : 's'}</summary>
+        <div style="display:grid;gap:6px;margin-top:9px;color:var(--text-dim)">
+          ${bonusCards.map(b => `<div><strong style="color:var(--text)">${esc(b.cardName)}</strong> <span style="color:var(--text-muted)">#${esc(b.collectorNumber)}${b.variant ? ` · ${esc(b.variant)}` : ''}${b.chase ? ' · chase/random' : ''}</span>${b.notes ? `<br><span style="font-size:11px">${esc(b.notes)}</span>` : ''}</div>`).join('')}
+        </div>
+        <div style="font-size:10.5px;color:var(--text-muted);margin-top:8px">Supplemental catalog only. Bonus cards are not treated as guaranteed contents and do not affect completion.</div>
+      </details>` : '';
 
     // Compact P&L summary for this drop.
     const pnl = computeDropPnL().find(r => r.drop === sv.drop);
@@ -1237,6 +1260,7 @@ export function renderSlViewer() {
         </div>
       </div>
       ${slDropNote(sv.drop) ? `<div style="margin:0 0 12px;padding:9px 13px;background:var(--surface);border-left:3px solid var(--accent2);border-radius:6px;font-size:13px;color:var(--text);white-space:pre-wrap">📝 ${esc(slDropNote(sv.drop))}</div>` : ''}
+      ${bonusPanel}
       ${pnlBanner}
       ${dropEconomicsBanner(sv.drop)}
       <div class="gallery-grid">
@@ -1295,8 +1319,19 @@ export function renderSlViewer() {
         ${upcoming.length > 8 ? `<span style="color:var(--text-muted);font-size:12px">+${upcoming.length - 8} more</span>` : ''}
       </div>
     </div>` : '';
+  const announcements = slAnnouncements();
+  const officialStrip = announcements.length ? `
+    <div style="margin:0 0 14px;padding:10px 14px;background:var(--surface);border:1px solid var(--border);border-radius:8px;font-size:12px">
+      <div style="font-weight:700;color:var(--text);margin-bottom:6px">Official Wizards announcements</div>
+      <div style="display:grid;gap:6px">
+        ${announcements.slice(0, 4).map(a => `<div style="display:flex;gap:8px;align-items:baseline;flex-wrap:wrap">
+          <a href="#" data-act="open-url" data-arg="${esc(a.url)}" style="font-weight:650">${esc(a.title)}</a>
+          <span style="color:var(--text-muted)">${esc((a.publishedAt || '').slice(0, 10) || 'date unavailable')}${a.saleDate ? ` · sale ${esc(a.saleDate)}` : ''}${a.prices?.length ? ` · ${fmt(a.prices[0].amount)} announced` : ''}</span>
+        </div>`).join('')}
+      </div>
+    </div>` : '';
   const visibleSuperdrops = sortSuperdrops(SL_SUPERDROPS.filter(sd => superdropMatchesSearch(sd, sv.search)));
-  return viewToggle() + refreshBtn + sortSearchBar() + upcomingStrip + `
+  return viewToggle() + refreshBtn + sortSearchBar() + upcomingStrip + officialStrip + `
     ${visibleSuperdrops.length === 0
       ? `<div style="padding:30px;text-align:center;color:var(--text-muted);font-size:13px">No superdrops match "${esc(sv.search)}".</div>`
       : (sv.layout === 'table')

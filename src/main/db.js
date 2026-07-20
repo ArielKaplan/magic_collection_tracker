@@ -54,6 +54,13 @@ function init(dbPath) {
     // Secret Lair Index slice of each portfolio snapshot (v0.21.0).
     'ALTER TABLE portfolio_snapshots ADD COLUMN sl_value REAL',
     'ALTER TABLE portfolio_snapshots ADD COLUMN sl_cost REAL',
+    // Rich Secret Lair joins (v1.2.0). JSON preserves every current and future
+    // MTGJSON marketplace identifier without a migration per vendor.
+    'ALTER TABLE sl_products ADD COLUMN product_name TEXT',
+    'ALTER TABLE sl_products ADD COLUMN subtype TEXT',
+    "ALTER TABLE sl_products ADD COLUMN identifiers_json TEXT DEFAULT '{}'",
+    'ALTER TABLE sl_product_cards ADD COLUMN mtgjson_uuid TEXT',
+    "ALTER TABLE sl_product_cards ADD COLUMN identifiers_json TEXT DEFAULT '{}'",
   ]) {
     try { db.exec(stmt); } catch (e) { /* column already exists */ }
   }
@@ -551,17 +558,19 @@ function replaceSlData(dropCards, scryfallToDrops, scryfallToName, products) {
       db.prepare('DELETE FROM sl_products').run();
       db.prepare('DELETE FROM sl_product_cards').run();
       const ip = db.prepare(`INSERT OR IGNORE INTO sl_products
-        (uuid, legacy_drop, drop_name, finish_label, finish, tcgplayer_product_id, release_date, low_confidence)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`);
+        (uuid, product_name, subtype, identifiers_json, legacy_drop, drop_name, finish_label, finish, tcgplayer_product_id, release_date, low_confidence)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
       const ic = db.prepare(`INSERT OR IGNORE INTO sl_product_cards
-        (product_uuid, scryfall_id, card_name, collector_number, finish, count)
-        VALUES (?, ?, ?, ?, ?, ?)`);
+        (product_uuid, mtgjson_uuid, identifiers_json, scryfall_id, card_name, collector_number, finish, count)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`);
       for (const p of products) {
-        ip.run(p.uuid, p.legacyDrop, p.dropName, p.finishLabel || '', p.finish || 'nonfoil',
+        ip.run(p.uuid, p.name || p.legacyDrop, p.subtype || null, JSON.stringify(p.identifiers || {}),
+          p.legacyDrop, p.dropName, p.finishLabel || '', p.finish || 'nonfoil',
           p.tcgplayerProductId != null ? String(p.tcgplayerProductId) : null,
           p.releaseDate || null, p.lowConfidence ? 1 : 0);
         for (const c of (p.cards || []))
-          ic.run(p.uuid, c.scryfallId, c.name || null, c.number || null, c.finish || 'nonfoil', c.count || 1);
+          ic.run(p.uuid, c.mtgjsonUuid || null, JSON.stringify(c.identifiers || {}),
+            c.scryfallId, c.name || null, c.number || null, c.finish || 'nonfoil', c.count || 1);
       }
     }
     setSetting('sl_data_updated_at', new Date().toISOString());
@@ -589,8 +598,11 @@ function getSlData() {
   const products = [];
   const byUuid = {};
   for (const r of db.prepare('SELECT * FROM sl_products').all()) {
+    let identifiers = {};
+    try { identifiers = JSON.parse(r.identifiers_json || '{}'); } catch {}
     const p = {
-      uuid: r.uuid, legacyDrop: r.legacy_drop, dropName: r.drop_name,
+      uuid: r.uuid, name: r.product_name || r.legacy_drop, subtype: r.subtype || null,
+      identifiers, legacyDrop: r.legacy_drop, dropName: r.drop_name,
       finishLabel: r.finish_label || '', finish: r.finish || 'nonfoil',
       tcgplayerProductId: r.tcgplayer_product_id || null,
       releaseDate: r.release_date || null,
@@ -601,7 +613,9 @@ function getSlData() {
   }
   for (const r of db.prepare('SELECT * FROM sl_product_cards').all()) {
     const p = byUuid[r.product_uuid];
-    if (p) p.cards.push({ scryfallId: r.scryfall_id, name: r.card_name, number: r.collector_number || '', finish: r.finish || 'nonfoil', count: r.count || 1 });
+    let identifiers = {};
+    try { identifiers = JSON.parse(r.identifiers_json || '{}'); } catch {}
+    if (p) p.cards.push({ mtgjsonUuid: r.mtgjson_uuid || null, identifiers, scryfallId: r.scryfall_id, name: r.card_name, number: r.collector_number || '', finish: r.finish || 'nonfoil', count: r.count || 1 });
   }
   return { dropCards, scryfallToDrops, scryfallToName, products, updatedAt: getSetting('sl_data_updated_at') };
 }

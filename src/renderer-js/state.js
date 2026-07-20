@@ -11,6 +11,7 @@ export let tcgcsvCache = {
   groups:         null,   // all MTG groups from TCGCSV
   sealedProducts: [],     // flat array of all sealed products with prices
   lastRefresh:    null,
+  sourceUpdatedAt:null,   // upstream TCGCSV timestamp (when available)
   syncing:        false,
   syncDone:       0,
   syncTotal:      0,

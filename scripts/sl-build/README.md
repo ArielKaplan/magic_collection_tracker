@@ -15,6 +15,9 @@ node scripts/sl-build/smoke-secretlair.js # validate the baked file (vm sandbox)
 ```
 
 Re-run all four whenever a new superdrop lands (or to pick up wiki/MTGJSON fixes).
+`.github/workflows/secret-lair-data.yml` runs this every day and opens a PR only
+when the baked baseline changes. Its reconciliation report is uploaded as a
+workflow artifact so generated changes still receive human review.
 
 ## Sources & roles
 
@@ -40,3 +43,8 @@ and left untouched.
 
 `cache/` (downloaded sources) and `out/` (generated grouping + report) are both
 git-ignored — re-run the scripts to regenerate them.
+
+The app's live sync also fetches the mtg.wiki bonus-card table and recent official
+Wizards announcements. Those are validated last-known-good enrichment caches,
+not baked into `secretlair.js`, because they change independently and bonus cards
+must remain separate from guaranteed product contents.

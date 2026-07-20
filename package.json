@@ -15,7 +15,7 @@
     "release:tag": "node scripts/release.js",
     "rebuild": "electron-rebuild -f -w better-sqlite3",
     "test": "vitest run",
-    "test:smoke": "node scripts/smoke-decks.js && node scripts/smoke-decks-render.js && node scripts/smoke-droppnl.js && node scripts/smoke-import.js && node scripts/smoke-portfolio.js && node scripts/smoke-realized.js && node scripts/smoke-search-containment.js && node scripts/smoke-sldrop-search.js && node scripts/smoke-slexplorer.js && node scripts/smoke-slindex.js && node scripts/smoke-wantlist.js"
+    "test:smoke": "node scripts/smoke-bulkdata.js && node scripts/smoke-decks.js && node scripts/smoke-decks-render.js && node scripts/smoke-droppnl.js && node scripts/smoke-import.js && node scripts/smoke-portfolio.js && node scripts/smoke-realized.js && node scripts/smoke-search-containment.js && node scripts/smoke-sldrop-search.js && node scripts/smoke-slexplorer.js && node scripts/smoke-slindex.js && node scripts/smoke-wantlist.js"
   },
   "author": "Sarcastic Software Studios",
   "license": "ISC",

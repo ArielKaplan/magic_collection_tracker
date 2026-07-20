@@ -158,6 +158,7 @@ function buildMenu() {
       submenu: [
         { label: 'Open Database Folder', click: () => shell.openPath(app.getPath('userData')) },
         ...(SELF_UPDATES ? [{ label: 'Check for Updates…', click: () => sendMenu('updates:check') }] : []),
+        { label: 'Secret Lair Data Guide', click: () => sendMenu('slhelp:show') },
         { label: 'Keyboard Shortcuts', click: () => sendMenu('shortcuts:show') },
         { type: 'separator' },
         { label: '♥ Support Mana Ledger', click: () => shell.openExternal(KOFI_URL) },
@@ -258,6 +259,7 @@ const ALLOWED_FETCH_HOSTS = new Set([
   'tcgcsv.com',
   'www.pricecharting.com',
   'mtg.wiki',           // Drop Series table: superdrop grouping + per-drop MSRPs + upcoming drops
+  'magic.wizards.com',  // official Secret Lair announcements, sale windows, bundles and promotions
 ]);
 
 // ── IPC handlers ─────────────────────────────────────────────────────────────

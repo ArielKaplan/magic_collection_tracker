@@ -12,7 +12,7 @@ A **Windows desktop app** for tracking a Magic: The Gathering collection, with a
 
 Lives at: `C:\Users\Akapl\Documents\Secret Lair Tracker Desktop\`
 Git: https://github.com/sarcasticsoftwarestudio/mana-ledger (branch: `main`)
-Current version: see `package.json` (0.15.x as of June 2026)
+Current version: see `package.json` (release tags are the source of truth)
 
 Recent (v0.12–0.16, June 2026): **portfolio snapshots shipped** (v0.16 — "Value Over Time"
 dashboard line chart: total/cards/sealed vs. cost basis, one snapshot per day recorded at the
@@ -40,9 +40,9 @@ There's an **older web app** at `C:\Users\Akapl\Documents\Secret Lair Tracker\` 
 
 | Layer | What |
 |---|---|
-| Shell | Electron 33 (`sandbox: true`, contextIsolation) |
+| Shell | Electron 42 (`sandbox: true`, contextIsolation) |
 | Main process | Node.js, `better-sqlite3`, `net:fetch` IPC proxy for ALL external HTTP |
-| Renderer (most tabs) | Vanilla JS as **28 ES modules** in `src/renderer-js/`, Vite-bundled to `src/renderer/dist/app-main.js` |
+| Renderer (most tabs) | Vanilla JS as **40 ES modules** in `src/renderer-js/`, Vite-bundled to `src/renderer/dist/app-main.js` |
 | Renderer (Dashboard) | Svelte 4 components in `src/renderer-svelte/`, bundled to `dist/svelte-app.{js,css}` |
 | Drag/resize | Interact.js |
 | Build/packaging | electron-builder → NSIS installer; GitHub Actions release on `v*` tags |
@@ -51,9 +51,11 @@ There's an **older web app** at `C:\Users\Akapl\Documents\Secret Lair Tracker\` 
 
 External data sources (all fetched **via the main process** — `net:fetch` IPC with a host allowlist; no CORS, no proxies):
 - **Scryfall API** — card prices (`/cards/collection` POST, batched 75 IDs), card metadata, deck-import resolution
-- **MTGJSON SLD.json** — Secret Lair drop → card mapping (~15 MB, direct fetch)
-- **TCGCSV** — TCGPlayer market prices for cards + sealed product index
-- **PriceCharting** — optional sealed pricing, user supplies API key in Settings
+- **MTGJSON SLD.json** — finish-aware Secret Lair sealed product → deck → exact printing model plus marketplace identifiers
+- **TCGCSV** — TCGplayer market/low/mid/high/direct-low for cards and the sealed product index
+- **mtg.wiki** — live superdrop grouping, MSRP/upcoming rows, and the separate bonus-card catalog
+- **Wizards announcements** — official recent sale windows, stated prices, bundles and promotion/WPN context
+- **PriceCharting** — optional secondary sealed pricing; the user supplies a paid API token in Settings
 
 ---
 
@@ -80,13 +82,14 @@ src/
     ├── state.js         # collection / ui / tcgcsvCache (mutated, never reassigned)
     ├── constants, logger, utils, csv, storage, importWizard, prices,
     ├── statusbar, sealedPricing, analytics, render, ticker, cardsTab,
-    ├── gallery, slTab, slData, failures, sealedTab, decks, deckIO, modals,
-    ├── productPicker, sealedModals, exportModal, settings, updaterUI, hover
+    ├── gallery, slTab, slData, slWiki, slBonus, slAnnouncements, slHelp,
+    ├── failures, sealedTab, decks, deckIO, modals, productPicker,
+    ├── sealedModals, exportModal, settings, updaterUI, hover, dispatch
     │   # slData.js = finish-aware SL product model (v0.28): buildSlModel walks
     │   # MTGJSON sealedProduct→deck(isFoil)→printings; legacy SL_* maps are
     │   # projections; registry answers requiredFinishFor/attributeDropFor.
-    │   # Persisted in sl_products/sl_product_cards. See "Secret Lair Data — Deep
-    │   # Dive & Redesign Blueprint.md" (repo root) for the full design + evidence.
+    │   # Persisted in sl_products/sl_product_cards. See "Secret Lair Data —
+    │   # Final Model.md" (repo root) for source contracts, schema and safeguards.
     └── package.json     # {"type":"module"} — scopes ESM so Node can import these
 
 src/renderer-svelte/     # Svelte dashboard (18 panels + custom chart builder)

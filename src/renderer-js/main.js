@@ -31,6 +31,9 @@ import * as NS_slData from './slData.js';
 import * as NS_preconData from './preconData.js';
 import * as NS_preconTab from './preconTab.js';
 import * as NS_slWiki from './slWiki.js';
+import * as NS_slBonus from './slBonus.js';
+import * as NS_slAnnouncements from './slAnnouncements.js';
+import * as NS_slHelp from './slHelp.js';
 import * as NS_firstRun from './firstRun.js';
 import * as NS_dispatch from './dispatch.js';
 import { analyzeByColor, analyzeByManaValue, analyzeByType, binderValueMap, cardCurrentValue, realizedGains, renderCardCountBySet, renderCardCountByYear, renderCardOfTheDay, renderColorPanel, renderManaValuePanel, renderRarityPanel, renderStatsPanel, renderTop10ValueCards, renderTypePanel, renderValueBySet, topMovers, totalCardsValue, totalSealedValue } from './analytics.js';
@@ -54,7 +57,7 @@ import { esc, fmt, fmtPct, toast, today } from './utils.js';
 // this preserves the classic-script contract. Remove as tabs migrate to
 // components with real event wiring.
 const WINDOW_DENYLIST = new Set(['window', 'document', 'location', 'top', 'parent', 'self', 'frames', 'length', 'name', 'status', 'history', 'origin', 'closed', 'opener', 'navigator', 'screen']);
-for (const ns of [NS_constants, NS_state, NS_logger, NS_utils, NS_csv, NS_storage, NS_importWizard, NS_prices, NS_statusbar, NS_sealedPricing, NS_analytics, NS_render, NS_ticker, NS_cardsTab, NS_gallery, NS_slTab, NS_failures, NS_sealedTab, NS_decks, NS_deckIO, NS_modals, NS_productPicker, NS_sealedModals, NS_exportModal, NS_settings, NS_updaterUI, NS_hover, NS_wantlist, NS_search, NS_slData, NS_preconData, NS_preconTab, NS_slWiki, NS_firstRun, NS_dispatch]) {
+for (const ns of [NS_constants, NS_state, NS_logger, NS_utils, NS_csv, NS_storage, NS_importWizard, NS_prices, NS_statusbar, NS_sealedPricing, NS_analytics, NS_render, NS_ticker, NS_cardsTab, NS_gallery, NS_slTab, NS_failures, NS_sealedTab, NS_decks, NS_deckIO, NS_modals, NS_productPicker, NS_sealedModals, NS_exportModal, NS_settings, NS_updaterUI, NS_hover, NS_wantlist, NS_search, NS_slData, NS_preconData, NS_preconTab, NS_slWiki, NS_slBonus, NS_slAnnouncements, NS_slHelp, NS_firstRun, NS_dispatch]) {
   for (const [key, value] of Object.entries(ns)) {
     if (WINDOW_DENYLIST.has(key)) continue;
     try { window[key] = value; } catch { /* read-only window prop — skip */ }
@@ -140,6 +143,7 @@ async function init() {
         case 'about:show':       showAbout(); break;
         case 'feedback:show':    showFeedback(); break;
         case 'shortcuts:show':   showShortcuts(); break;
+        case 'slhelp:show':      NS_slHelp.showSlDataGuide(); break;
         case 'logs:toggle':      toggleLogPanel(); break;
       }
     });
@@ -163,6 +167,11 @@ async function init() {
   // Last-good wiki data (superdrop grouping for fresh drops, per-drop MSRPs,
   // upcoming drops) — loaded before overrides so rebuildSlGrouping sees it.
   await NS_slWiki.loadSlWikiFromSettings();
+  await NS_slBonus.loadSlBonusFromSettings();
+  await NS_slAnnouncements.loadSlAnnouncementsFromSettings();
+  // The persisted sealed index makes exact MTGJSON -> TCGCSV product-ID joins
+  // available in the SL Explorer immediately, without waiting for Sealed tab.
+  await NS_sealedPricing.loadTcgcsvCache();
   // Apply this user's local Secret Lair grouping/note overrides on top of the baked data
   await loadSlOverrides();
 

@@ -12,6 +12,18 @@ user-facing: what changed, not how.
 
 ## [Unreleased]
 
+### Added
+- **A much deeper Secret Lair data layer.** The Explorer now supplements exact released contents with the live mtg.wiki bonus-card catalog and recent official Wizards announcements, including launch timing, announced prices, bundles, and promotion context.
+- **Help → Secret Lair Data Guide.** See exactly where every piece of Secret Lair data comes from, how finish-aware ownership works, what each price means, the limits of each source, and the live source/cache health on your computer.
+- **Documented exclusive bonus cards on drop pages.** Bonus inserts stay clearly separated from guaranteed contents, so randomized cards never inflate completion or crack-value calculations.
+
+### Changed
+- **More exact product identity and pricing context.** Mana Ledger now retains all marketplace IDs published by MTGJSON, exact MTGJSON card UUIDs, richer Scryfall art/promo metadata, and TCGplayer market/low/mid/high/direct-low product prices.
+- **Secret Lair sources fail independently.** Wiki, bonus-card, Wizards, Scryfall, MTGJSON, and TCGCSV refreshes keep their last known good data; even partial TCGCSV group failures no longer make previously known products disappear.
+
+### Fixed
+- **PriceCharting works with the current API contract again.** Requests now use the documented token parameter, and Settings correctly explains that PriceCharting requires a paid API token.
+
 ## [1.1.3] - 2026-07-19
 
 ### Added

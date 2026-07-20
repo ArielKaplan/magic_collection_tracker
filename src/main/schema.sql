@@ -144,6 +144,9 @@ CREATE INDEX IF NOT EXISTS idx_sl_drop_lookup ON sl_scryfall_drops(drop_name);
 -- the rest of the app uses; tcgplayer_product_id joins TCGCSV exactly.
 CREATE TABLE IF NOT EXISTS sl_products (
   uuid                  TEXT PRIMARY KEY,
+  product_name          TEXT,
+  subtype               TEXT,
+  identifiers_json      TEXT DEFAULT '{}',
   legacy_drop           TEXT NOT NULL,
   drop_name             TEXT NOT NULL,
   finish_label          TEXT DEFAULT '',
@@ -159,6 +162,8 @@ CREATE INDEX IF NOT EXISTS idx_sl_products_drop ON sl_products(legacy_drop);
 -- copy of a shared printing matches the base product's row, never the foil's.
 CREATE TABLE IF NOT EXISTS sl_product_cards (
   product_uuid      TEXT NOT NULL,
+  mtgjson_uuid      TEXT,
+  identifiers_json  TEXT DEFAULT '{}',
   scryfall_id       TEXT NOT NULL,
   card_name         TEXT,
   collector_number  TEXT,

@@ -22,9 +22,10 @@ const dropCards = { "Goblin & Squabblin'": ['Goblin Lackey'], "Goblin & Squabbli
 const std = { 'sid-base': ["Goblin & Squabblin'"], 'sid-star': ["Goblin & Squabblin' Foil"] };
 const stn = { 'sid-base': 'Goblin Lackey', 'sid-star': 'Goblin Lackey' };
 const products = [
-  { uuid: 'p-base', legacyDrop: "Goblin & Squabblin'", dropName: "Goblin & Squabblin'",
+  { uuid: 'p-base', name: 'Secret Lair Drop Goblin and Squabblin', subtype: 'secret_lair',
+    identifiers: { tcgplayerProductId: '501841', cardKingdomId: 'ck-1' }, legacyDrop: "Goblin & Squabblin'", dropName: "Goblin & Squabblin'",
     finishLabel: '', finish: 'nonfoil', tcgplayerProductId: '501841', releaseDate: '2023-06-26',
-    lowConfidence: false, cards: [{ scryfallId: 'sid-base', name: 'Goblin Lackey', number: '1311', finish: 'nonfoil', count: 1 }] },
+    lowConfidence: false, cards: [{ mtgjsonUuid: 'u-base', identifiers: { cardKingdomId: 'card-ck-1' }, scryfallId: 'sid-base', name: 'Goblin Lackey', number: '1311', finish: 'nonfoil', count: 1 }] },
   { uuid: 'p-foil', legacyDrop: "Goblin & Squabblin' Foil", dropName: "Goblin & Squabblin'",
     finishLabel: 'Foil', finish: 'foil', tcgplayerProductId: '501840', releaseDate: '2023-06-26',
     lowConfidence: false, cards: [{ scryfallId: 'sid-star', name: 'Goblin Lackey', number: '1311★', finish: 'foil', count: 1 }] },
@@ -40,6 +41,10 @@ check('product fields round-trip (camelCased)',
   foil && foil.legacyDrop === "Goblin & Squabblin' Foil" && foil.finish === 'foil'
     && foil.finishLabel === 'Foil' && foil.tcgplayerProductId === '501840' && foil.lowConfidence === false,
   foil);
+const base = (got.products || []).find(x => x.uuid === 'p-base');
+check('all marketplace ids + MTGJSON uuid round-trip',
+  base?.identifiers?.cardKingdomId === 'ck-1' && base?.cards?.[0]?.mtgjsonUuid === 'u-base'
+    && base?.cards?.[0]?.identifiers?.cardKingdomId === 'card-ck-1', base);
 check('product cards round-trip with finish + ★ number',
   foil && foil.cards.length === 1 && foil.cards[0].scryfallId === 'sid-star'
     && foil.cards[0].finish === 'foil' && foil.cards[0].number === '1311★',

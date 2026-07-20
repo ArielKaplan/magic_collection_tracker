@@ -9,7 +9,7 @@ Most trackers treat a Secret Lair as just another set code and a precon as a pil
 ## What it does
 
 - **Card Collection** — Table + Gallery views over your binders, with filters, dual pricing (Scryfall low + TCGplayer market), Δ price, sparklines, sold/realized-gains tracking, hover previews everywhere, and exact-printing acquisition directly from live search.
-- **Secret Lair Explorer** — every SL drop and superdrop, **finish-aware** (non-foil, Foil Edition, Rainbow Foil are distinct SKUs with their own ownership and value). Per-drop **P&L** (MSRP paid → current value → gain), a **crack-or-keep** verdict on sealed drops, the **📈 Index** (your SL holdings as an asset class), completion bars, and an **Upcoming** strip of announced-but-unreleased drops. MSRPs and grouping sync live from the community wiki.
+- **Secret Lair Explorer** — every SL drop and superdrop, **finish-aware** (non-foil, Foil Edition, Rainbow Foil are distinct SKUs with their own ownership and value). Per-drop **P&L** (MSRP paid → current value → gain), a **crack-or-keep** verdict on sealed drops, the **📈 Index** (your SL holdings as an asset class), completion bars, exclusive bonus-card context, and upcoming/official-announcement strips. Each source has an independently validated last-known-good cache.
 - **Precon Explorer** — every physical preconstructed deck ever sold (1993→today): Commander precons, Challenger/Duel/Theme/Intro/Planeswalker decks, Guild Kits, and more. Browse product line → deck → full decklist (Gallery or sortable Table view), finish-aware ownership, a **"Worth it?"** panel (assumed MSRP vs. singles vs. sealed market), and one-click "want the missing cards."
 - **Global search** — type a card name and see **everywhere it lives**: your binders, decks that play it, SL drops and precons that include it, and sealed products that contain it. Plus live catalog search across Scryfall & TCGCSV in pinned, comparable result tabs, with one-click entry into the owned-card flow.
 - **Decks** — played lists with format legality, Moxfield/Archidekt/ManaBox/MTGA import/export, ownership filters, and missing-card actions (buy on TCGplayer, add to want list). Deck value never counts toward collection value.
@@ -30,11 +30,14 @@ Most trackers treat a Secret Lair as just another set code and a precon as a pil
 
 All fetched through the main process (host-allowlisted `net:fetch` IPC — no CORS proxies, keys stay first-party):
 
-- **[Scryfall](https://scryfall.com/docs/api)** — prices, metadata, images, bulk data
-- **[MTGJSON](https://mtgjson.com/)** — `SLD.json` (Secret Lair drop→card model) and `DeckList.json` + per-deck files (the precon catalog)
-- **[TCGCSV](https://tcgcsv.com/)** — TCGplayer market prices for singles and sealed products
-- **[mtg.wiki](https://mtg.wiki/)** — Secret Lair superdrop grouping, per-drop MSRPs, and upcoming drops
-- **PriceCharting** *(optional)* — sealed pricing, with your own API key in Settings
+- **[MTGJSON](https://mtgjson.com/)** — the relational Secret Lair product/content spine: sealed SKU and every marketplace identifier → deck → exact card UUID/Scryfall ID/count/finish; also the precon catalog
+- **[Scryfall](https://scryfall.com/docs/api)** — exact printing metadata, finishes, USD/EUR card prices, art/artist/promo fields, images, oracle data, and daily bulk data
+- **[TCGCSV](https://tcgcsv.com/)** — exact TCGplayer product-ID joins plus sealed market/low/mid/high/direct-low, subtype, product, presale, and group metadata
+- **[mtg.wiki](https://mtg.wiki/)** — superdrop grouping, dates, nonfoil/foil MSRP, upcoming drops, and the separate bonus-card/variant/exclusivity catalog
+- **[Wizards announcements](https://magic.wizards.com/en/news/announcements?search=Secret+Lair)** — official recent sale windows, stated USD prices, bundles, promotions, and WPN/store notes
+- **[PriceCharting](https://www.pricecharting.com/api-documentation)** *(optional)* — a second current sealed estimate using the user's paid API token
+
+See [Secret Lair Data — Final Model](./Secret%20Lair%20Data%20%E2%80%94%20Final%20Model.md) for the complete source contract, schema, reconciliation rules, failure behavior, and limitations. The same user-facing overview is built into **Help → Secret Lair Data Guide**.
 
 ## Project structure
 
@@ -92,7 +95,7 @@ node node_modules/electron/install.js
 Mana Ledger collects **nothing**. There is no account, no telemetry, no analytics, and no
 crash reporting service. Your collection lives in a single SQLite file on your own machine
 and never leaves it. The only network traffic the app produces is fetching public card data
-and prices (Scryfall, MTGJSON, TCGCSV, mtg.wiki, and — only if you add your own key —
+and prices (Scryfall, MTGJSON, TCGCSV, mtg.wiki, public Wizards announcements, and — only if you add your own paid token —
 PriceCharting); these requests carry no personal information. Checking for updates contacts
 GitHub (or is handled by Steam on the Steam build). Feedback is only ever sent when you
 explicitly write and submit it yourself, and contains only what you typed.
