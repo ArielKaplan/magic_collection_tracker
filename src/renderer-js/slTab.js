@@ -7,9 +7,10 @@ import { searchTcgcsvLocal } from './sealedPricing.js';
 import { attributeDropFor, buildSlModel, finishGroup, projectLegacy, requiredFinishFor, setSlProducts, slDropModelFinish, slProductForDrop } from './slData.js';
 import { refreshSlWikiData, slWikiGroupFor, slWikiMsrp, slWikiRowFor, upcomingSlDrops } from './slWiki.js';
 import { refreshSlBonusData, slBonusCardsForDrop } from './slBonus.js';
-import { refreshSlAnnouncements, slAnnouncements } from './slAnnouncements.js';
+import { announcementHeadlinePrice, refreshSlAnnouncements, slAnnouncements } from './slAnnouncements.js';
+import { evaluateSlWatchAlerts, renderSlIntelligenceView, slLotPnlRows } from './slIntelligence.js';
 import { collection, tcgcsvCache, ui } from './state.js';
-import { esc, fmt, netFetch, toast } from './utils.js';
+import { esc, fmt, netFetch, toast, today } from './utils.js';
 import { addDropMissingToWantList, isCardWanted, toggleSlCardWant } from './wantlist.js';
 
 
@@ -316,6 +317,7 @@ export async function refreshSlData() {
   }
 
   ui.slRefreshing = false;
+  evaluateSlWatchAlerts(true);
   render();
 }
 export function getDropsForSuperdrop(superdrop) {
@@ -445,6 +447,20 @@ export function computeDropPnL() {
     }
   }
 
+  // Bundle purchase lots are user-authored economic records, separate from
+  // sourced product contents. Their allocated landed cost becomes the exact
+  // basis for each SKU; sealed items also contribute the exact-ID TCGCSV quote.
+  for (const item of slLotPnlRows()) {
+    const r = get(item.dropName);
+    r.sealedCost += item.allocatedCost;
+    if (item.status === 'sealed') {
+      if (item.marketValue != null) r.value += item.marketValue * item.quantity;
+      r.sealedQty += item.quantity;
+    } else {
+      r.openedQty += item.quantity;
+    }
+  }
+
   return Object.values(rows).map(r => {
     // Real linked-sealed cost wins; otherwise assume one drop bought at MSRP —
     // the wiki's actual per-drop MSRP (finish-aware: a Foil SKU costs the foil
@@ -503,6 +519,7 @@ function sealedHeldDrops() {
   for (const s of ownedSealed()) {
     if (s.dropName && s.status === 'sealed') set.add(s.dropName);
   }
+  for (const item of slLotPnlRows()) if (item.status === 'sealed') set.add(item.dropName);
   return [...set];
 }
 
@@ -560,7 +577,7 @@ export function computeSlIndex() {
   return {
     dropCount: rows.length, cost, value, unrealized, unrealizedPct,
     realized, realizedCount, totalReturn, totalReturnPct,
-    best, worst, buckets, withPct, winners,
+    best, worst, ranked, buckets, withPct, winners,
     crackVsKeep: { heldCount: heldDrops.length, pricedCount, keepTotal, crackTotal, drops: heldDrops },
   };
 }
@@ -574,8 +591,54 @@ export async function priceAllSealedDropsSingles() {
   }
 }
 
+function slIndexMeta(row) {
+  const product = slProductForDrop(row.drop);
+  const releaseDate = slDropReleaseDate(row.drop);
+  return {
+    product,
+    year: (releaseDate || row.date || '').slice(0, 4) || 'Unknown',
+    finish: product?.finish || dropFinish(row.drop),
+    superdrop: row.superdrop || infoForIndexDrop(row.drop),
+    subtype: product?.subtype || 'unknown',
+    confidence: product?.lowConfidence ? 'fallback' : 'exact',
+    holdings: [row.sealedQty ? 'sealed' : '', row.openedQty ? 'opened' : '', row.singlesQty ? 'singles' : ''].filter(Boolean),
+  };
+}
+
+function infoForIndexDrop(drop) {
+  return (typeof SL_DROP_TO_SUPERDROP !== 'undefined' && SL_DROP_TO_SUPERDROP[drop]?.superdrop) || 'Standalone';
+}
+
+export function filterSlIndexRows(rows, filters = ui.slViewer) {
+  const filtered = (rows || []).filter(row => {
+    const m = slIndexMeta(row);
+    return (filters.indexYear === 'all' || m.year === filters.indexYear)
+      && (filters.indexFinish === 'all' || m.finish === filters.indexFinish)
+      && (filters.indexSuperdrop === 'all' || m.superdrop === filters.indexSuperdrop)
+      && (filters.indexSubtype === 'all' || m.subtype === filters.indexSubtype)
+      && (filters.indexConfidence === 'all' || m.confidence === filters.indexConfidence)
+      && (filters.indexHolding === 'all' || m.holdings.includes(filters.indexHolding));
+  });
+  const [field, direction] = String(filters.indexReportSort || 'return_desc').split('_');
+  const key = field === 'gain' ? r => r.gain : field === 'value' ? r => r.value : field === 'cost' ? r => r.cost : field === 'name' ? r => r.drop : r => r.gainPct;
+  const mul = direction === 'asc' ? 1 : -1;
+  return filtered.sort((a,b) => field === 'name' ? String(key(a)).localeCompare(String(key(b))) * mul : ((key(a) ?? -Infinity) - (key(b) ?? -Infinity)) * mul);
+}
+
+export async function exportSlIndexReport() {
+  const rows = filterSlIndexRows(computeSlIndex().ranked);
+  const quote = value => `"${String(value ?? '').replace(/"/g, '""')}"`;
+  const lines = [['Rank','Drop','Superdrop','Year','Finish','Subtype','Confidence','MSRP Paid','Current Value','Gain Loss','Return Pct']];
+  rows.forEach((r, i) => {
+    const m = slIndexMeta(r);
+    lines.push([i + 1, r.drop, m.superdrop, m.year, m.finish, m.subtype, m.confidence, r.cost, r.value, r.gain, r.gainPct]);
+  });
+  const path = await window.api?.dialog?.saveFile?.({ title: 'Export Secret Lair Index Report', defaultPath: `secret-lair-index-${today()}.csv`, filterName: 'CSV files', extensions: ['csv'], content: '\ufeff' + lines.map(row => row.map(quote).join(',')).join('\n') });
+  if (path) toast(`Secret Lair report exported to ${path}`, 'success');
+}
+
 // The Index view body (headline → leaderboard → distribution → crack-vs-keep).
-function renderSlIndexBody(idx) {
+export function renderSlIndexBody(idx) {
   if (idx.dropCount === 0) {
     return `<div style="padding:40px;text-align:center;color:var(--text-muted)">
       No Secret Lair P&amp;L yet.<br>Own singles from a drop, or add a sealed drop with its purchase price, to see your index.
@@ -617,12 +680,74 @@ function renderSlIndexBody(idx) {
       </div>
     </div>`;
 
+  const reportOpen = !!ui.slViewer.indexExpanded;
+  const allRanked = Array.isArray(idx.ranked) ? idx.ranked : [];
+  const ranked = filterSlIndexRows(allRanked);
+  const metas = allRanked.map(slIndexMeta);
+  const optionValues = (values, current, allLabel = 'All') => ['all', ...new Set(values.filter(Boolean))].map(v => `<option value="${esc(v)}" ${current === v ? 'selected' : ''}>${v === 'all' ? allLabel : esc(v)}</option>`).join('');
+  const filteredCost = ranked.reduce((n, r) => n + (r.cost || 0), 0);
+  const filteredValue = ranked.reduce((n, r) => n + (r.value || 0), 0);
+  const filteredReturns = ranked.map(r => r.gainPct).filter(Number.isFinite).sort((a,b)=>a-b);
+  const medianReturn = filteredReturns.length ? filteredReturns[Math.floor(filteredReturns.length / 2)] : null;
+  const hitRate = ranked.length ? Math.round(ranked.filter(r => r.gain >= 0).length / ranked.length * 100) : 0;
   const leaderboard = `
     <div style="flex:1 1 280px;min-width:240px;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px 14px">
-      <div style="font-size:13px;font-weight:700;margin-bottom:8px">🏆 Best &amp; worst drops</div>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+        <div style="font-size:13px;font-weight:700">🏆 Best &amp; worst drops</div>
+        <button class="btn btn-ghost" style="font-size:11px;padding:3px 8px;margin-left:auto" data-act="ui-toggle" data-path="slViewer.indexExpanded" aria-expanded="${reportOpen}">
+          ${reportOpen ? 'Collapse report' : `Full report · ${allRanked.length}`}
+        </button>
+      </div>
       ${idx.best.map(lbRow).join('')}
       ${idx.worst.length ? `<div style="border-top:1px solid var(--border);margin:6px 0"></div>${idx.worst.map(lbRow).join('')}` : ''}
     </div>`;
+
+  const fullReportRows = ranked.map((r, i) => { const meta = slIndexMeta(r); return `<tr style="border-top:1px solid var(--border);cursor:pointer" data-slact="open-drop" data-arg="${esc(r.drop)}" title="Open ${esc(r.drop)}">
+      <td style="padding:8px 10px;color:var(--text-muted);text-align:right">${i + 1}</td>
+      <td style="padding:8px 10px">
+        <span class="bc-link" style="font-weight:600">${esc(r.drop)}</span>
+        <div style="font-size:11px;color:var(--text-muted)">${esc(meta.superdrop)} · ${esc(meta.year)} · ${esc(meta.finish)}${meta.confidence === 'fallback' ? ' · ⚠ fallback' : ''}</div>
+      </td>
+      <td style="padding:8px 10px;text-align:right">${r.costIsDefault ? `<span title="Assumed Secret Lair MSRP — link a sealed product for the exact cost" style="color:var(--text-muted)">≈${fmt(r.cost)}</span>` : fmt(r.cost)}</td>
+      <td style="padding:8px 10px;text-align:right">${fmt(r.value)}</td>
+      <td style="padding:8px 10px;text-align:right;font-weight:600;color:${gc(r.gain)}">${sign(r.gain)}${fmt(r.gain)}</td>
+      <td style="padding:8px 10px;text-align:right;font-weight:700;color:${gc(r.gainPct)}">${pct(r.gainPct)}</td>
+    </tr>`; }).join('') || `<tr><td colspan="6" style="padding:24px;text-align:center;color:var(--text-muted)">No engaged drops match these filters.</td></tr>`;
+  const fullReport = reportOpen ? `
+    <div style="margin-top:12px;background:var(--surface);border:1px solid var(--border);border-radius:8px;overflow:hidden">
+      <div style="display:flex;align-items:center;gap:8px;padding:11px 14px;border-bottom:1px solid var(--border)">
+        <div>
+          <div style="font-size:13px;font-weight:700">Full Secret Lair performance report</div>
+          <div style="font-size:11px;color:var(--text-muted)">${ranked.length} of ${allRanked.length} engaged drops · paid ${fmt(filteredCost)} · value ${fmt(filteredValue)} · median ${medianReturn == null ? '—' : pct(medianReturn)} · ${hitRate}% winners</div>
+        </div>
+        <button class="btn btn-ghost" style="font-size:11px;padding:3px 8px;margin-left:auto" data-act="exportSlIndexReport">Export CSV</button>
+        <button class="btn btn-ghost" style="font-size:11px;padding:3px 8px" data-act="ui-toggle" data-path="slViewer.indexExpanded">Collapse</button>
+      </div>
+      <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap;padding:8px 12px;background:var(--surface2);border-bottom:1px solid var(--border);font-size:11px">
+        <span style="color:var(--text-muted)">Filter</span>
+        <select data-act="ui-set" data-path="slViewer.indexYear" style="font-size:11px">${optionValues([...new Set(metas.map(m=>m.year))].sort().reverse(), ui.slViewer.indexYear, 'All years')}</select>
+        <select data-act="ui-set" data-path="slViewer.indexFinish" style="font-size:11px">${optionValues([...new Set(metas.map(m=>m.finish))].sort(), ui.slViewer.indexFinish)}</select>
+        <select data-act="ui-set" data-path="slViewer.indexSuperdrop" style="font-size:11px">${optionValues([...new Set(metas.map(m=>m.superdrop))].sort(), ui.slViewer.indexSuperdrop)}</select>
+        <select data-act="ui-set" data-path="slViewer.indexSubtype" style="font-size:11px">${optionValues([...new Set(metas.map(m=>m.subtype))].sort(), ui.slViewer.indexSubtype)}</select>
+        <select data-act="ui-set" data-path="slViewer.indexHolding" style="font-size:11px"><option value="all" ${ui.slViewer.indexHolding==='all'?'selected':''}>All holdings</option><option value="sealed" ${ui.slViewer.indexHolding==='sealed'?'selected':''}>Sealed</option><option value="opened" ${ui.slViewer.indexHolding==='opened'?'selected':''}>Opened</option><option value="singles" ${ui.slViewer.indexHolding==='singles'?'selected':''}>Singles</option></select>
+        <select data-act="ui-set" data-path="slViewer.indexConfidence" style="font-size:11px"><option value="all" ${ui.slViewer.indexConfidence==='all'?'selected':''}>All confidence</option><option value="exact" ${ui.slViewer.indexConfidence==='exact'?'selected':''}>Exact only</option><option value="fallback" ${ui.slViewer.indexConfidence==='fallback'?'selected':''}>Fallback only</option></select>
+        <select data-act="ui-set" data-path="slViewer.indexReportSort" style="font-size:11px"><option value="return_desc" ${ui.slViewer.indexReportSort==='return_desc'?'selected':''}>Return ↓</option><option value="return_asc" ${ui.slViewer.indexReportSort==='return_asc'?'selected':''}>Return ↑</option><option value="gain_desc" ${ui.slViewer.indexReportSort==='gain_desc'?'selected':''}>Gain ↓</option><option value="value_desc" ${ui.slViewer.indexReportSort==='value_desc'?'selected':''}>Value ↓</option><option value="cost_desc" ${ui.slViewer.indexReportSort==='cost_desc'?'selected':''}>Cost ↓</option><option value="name_asc" ${ui.slViewer.indexReportSort==='name_asc'?'selected':''}>Name A–Z</option></select>
+        <button class="btn btn-ghost" style="font-size:10px;padding:2px 7px" data-act="ui-set" data-path="slViewer.indexYear" data-val="all" data-also="slViewer.indexFinish=all;slViewer.indexSuperdrop=all;slViewer.indexSubtype=all;slViewer.indexHolding=all;slViewer.indexConfidence=all;slViewer.indexReportSort=return_desc">Reset</button>
+      </div>
+      <div style="max-height:440px;overflow:auto">
+        <table style="width:100%;border-collapse:collapse;font-size:13px">
+          <thead><tr>
+            <th style="padding:8px 10px;text-align:right;position:sticky;top:0;background:var(--surface);z-index:1">Rank</th>
+            <th style="padding:8px 10px;text-align:left;position:sticky;top:0;background:var(--surface);z-index:1">Drop</th>
+            <th style="padding:8px 10px;text-align:right;position:sticky;top:0;background:var(--surface);z-index:1">MSRP paid</th>
+            <th style="padding:8px 10px;text-align:right;position:sticky;top:0;background:var(--surface);z-index:1">Current value</th>
+            <th style="padding:8px 10px;text-align:right;position:sticky;top:0;background:var(--surface);z-index:1">Gain / Loss</th>
+            <th style="padding:8px 10px;text-align:right;position:sticky;top:0;background:var(--surface);z-index:1">Return</th>
+          </tr></thead>
+          <tbody>${fullReportRows}</tbody>
+        </table>
+      </div>
+    </div>` : '';
 
   const maxBucket = Math.max(1, ...idx.buckets.map(b => b.count));
   const distRow = (b) => `
@@ -660,6 +785,7 @@ function renderSlIndexBody(idx) {
 
   return `${headline}
     <div style="display:flex;gap:12px;flex-wrap:wrap">${leaderboard}${distribution}</div>
+    ${fullReport}
     ${crackKeep}
     <div style="font-size:11px;color:var(--text-muted);margin-top:14px;text-align:center">
       📈 The Secret Lair value-over-time chart lives on your Dashboard (“Secret Lair Index” panel).
@@ -684,6 +810,11 @@ export function sealedKeepValue(drop) {
     qty += s.quantity || 1;
     const mv = sealedMarketValue(s);
     if (mv != null) { value += mv * (s.quantity || 1); hasPrice = true; }
+  }
+  for (const item of slLotPnlRows()) {
+    if (item.dropName !== drop || item.status !== 'sealed') continue;
+    qty += item.quantity;
+    if (item.marketValue != null) { value += item.marketValue * item.quantity; hasPrice = true; }
   }
   if (!qty) return null;
   return { value: hasPrice ? value : null, qty };
@@ -789,6 +920,12 @@ function dropEconomicsBanner(drop) {
   const sealed = sealedPriceForDrop(drop);     // { price, source } | null
   const crack = slDropSinglesCache.get(drop);  // cached singles total | undefined
   const pricing = slDropPricing.has(drop);
+  const feeRate = Math.max(0, Math.min(100, Number(collection.settings?.slSellingFeePct ?? 13))) / 100;
+  const outboundShipping = Math.max(0, Number(collection.settings?.slSellingShipping ?? 5));
+  const lotBasis = slLotPnlRows().filter(x => x.dropName === drop).reduce((n, x) => n + x.allocatedCost, 0);
+  const linkedBasis = ownedSealed().filter(x => x.dropName === drop).reduce((n, x) => n + (Number(x.purchasePrice) || 0) * (Number(x.quantity) || 1), 0);
+  const landedBasis = lotBasis || linkedBasis;
+  const bonusCount = slBonusCardsForDrop(drop).length;
 
   const estNote = crack?.est
     ? ` · <span title="${crack.est} card${crack.est === 1 ? ' has' : 's have'} no Secret Lair price yet — estimated from the cheapest available printing">${crack.est} est. from cheapest print</span>`
@@ -806,13 +943,15 @@ function dropEconomicsBanner(drop) {
 
   let verdict = '';
   if (crack && sealed) {
-    const diff = crack.value - sealed.price;   // singles minus one sealed box
+    const netCrack = Math.max(0, crack.value * (1 - feeRate) - outboundShipping);
+    const netSealed = Math.max(0, sealed.price * (1 - feeRate) - outboundShipping);
+    const diff = netCrack - netSealed;   // estimated net singles minus net sealed
     const pct = sealed.price > 0 ? Math.round(Math.abs(diff) / sealed.price * 100) : null;
     const amt = `${fmt(Math.abs(diff))}${pct != null ? ` (${pct}%)` : ''}`;
     if (held) {
       verdict = diff >= 0
-        ? `<div style="margin-top:8px;font-weight:700;color:var(--green)">✂️ Crack it — the singles are worth ${amt} more than the sealed box.</div>`
-        : `<div style="margin-top:8px;font-weight:700;color:var(--text)">📦 Keep it sealed — the box carries a ${amt} premium over its singles.</div>`;
+        ? `<div style="margin-top:8px;font-weight:700;color:var(--green)">✂️ Crack it — estimated net singles are ${amt} ahead of selling sealed.</div>`
+        : `<div style="margin-top:8px;font-weight:700;color:var(--text)">📦 Keep it sealed — estimated net sealed proceeds are ${amt} ahead.</div>`;
     } else {
       verdict = diff >= 0
         ? `<div style="margin-top:8px;font-weight:700;color:var(--text)">📦 To complete this drop, the sealed box is cheaper by ${amt}.</div>`
@@ -829,6 +968,14 @@ function dropEconomicsBanner(drop) {
         <span><span style="color:var(--text-muted)">As sealed box</span> ${sealedCell}</span>
       </div>
       ${verdict}
+      ${(crack && sealed) ? `<div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:7px;font-size:11px;color:var(--text-muted)">
+        <span>Net singles ≈ <strong style="color:var(--text)">${fmt(Math.max(0, crack.value * (1 - feeRate) - outboundShipping))}</strong></span>
+        <span>Net sealed ≈ <strong style="color:var(--text)">${fmt(Math.max(0, sealed.price * (1 - feeRate) - outboundShipping))}</strong></span>
+        ${landedBasis ? `<span>Landed basis <strong style="color:var(--text)">${fmt(landedBasis)}</strong></span>` : ''}
+        <span>${(feeRate * 100).toFixed(1)}% fees + ${fmt(outboundShipping)} outbound shipping</span>
+        <button class="btn btn-ghost" style="font-size:10px;padding:1px 6px" data-act="showSlEconomicsSettings">Edit assumptions</button>
+      </div>` : ''}
+      <div style="font-size:10.5px;color:var(--text-muted);margin-top:6px">Guaranteed contents only. ${bonusCount ? `${bonusCount} documented bonus candidate${bonusCount === 1 ? '' : 's'} provide unpriced upside; no odds are assumed.` : 'No explicit drop-exclusive bonus candidates are included.'}</div>
     </div>`;
 }
 
@@ -1088,8 +1235,10 @@ export function renderSlViewer() {
   function viewToggle() {
     const v = sv.view || 'drops';
     const b = (id, label) => `<button class="btn ${v === id ? 'btn-primary' : 'btn-ghost'}" style="font-size:12px" data-act="ui-set" data-path="slViewer.view" data-val="${id}" data-also="slViewer.page=0">${label}</button>`;
-    return `<div style="display:flex;gap:8px;margin-bottom:12px">${b('drops', '📦 By Superdrop')}${b('collector', '🔢 By Collector №')}${b('pnl', '💰 P&L')}${b('index', '📈 Index')}</div>`;
+    return `<div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">${b('drops', '📦 By Superdrop')}${b('collector', '🔢 By Collector №')}${b('pnl', '💰 P&L')}${b('index', '📈 Index')}${b('intel', '🧠 Intelligence')}</div>`;
   }
+
+  if (sv.view === 'intel') return viewToggle() + renderSlIntelligenceView();
 
   // Collector-number view — flat gallery of every SLD printing, ordered by number
   if ((sv.view || 'drops') === 'collector') {
@@ -1115,7 +1264,7 @@ export function renderSlViewer() {
     // One merged control bar: view toggle + search + owned count, all on a single row.
     const headerBar = `
       <div style="display:flex;gap:10px;align-items:center;padding:8px 12px;background:var(--surface);border:1px solid var(--border);border-radius:8px">
-        <div style="display:flex;gap:6px;flex-shrink:0">${tb('drops', '📦 By Superdrop')}${tb('collector', '🔢 By Collector №')}${tb('pnl', '💰 P&L')}${tb('index', '📈 Index')}</div>
+        <div style="display:flex;gap:6px;flex-shrink:0">${tb('drops', '📦 By Superdrop')}${tb('collector', '🔢 By Collector №')}${tb('pnl', '💰 P&L')}${tb('index', '📈 Index')}${tb('intel', '🧠 Intelligence')}</div>
         <input type="text" id="slSearchInput" placeholder="Search by collector number, card name, or note…"
           value="${esc(sv.search || '')}"
           data-act="ui-set" data-path="slViewer.search" data-refocus="slSearchInput"
@@ -1144,7 +1293,7 @@ export function renderSlViewer() {
     const tbi = (id, label) => `<button class="btn ${sv.view === id ? 'btn-primary' : 'btn-ghost'}" style="font-size:12px;white-space:nowrap" data-act="ui-set" data-path="slViewer.view" data-val="${id}" data-also="slViewer.page=0">${label}</button>`;
     const idxHeader = `
       <div style="display:flex;gap:6px;align-items:center;padding:8px 12px;margin-bottom:14px;background:var(--surface);border:1px solid var(--border);border-radius:8px">
-        ${tbi('drops', '📦 By Superdrop')}${tbi('collector', '🔢 By Collector №')}${tbi('pnl', '💰 P&L')}${tbi('index', '📈 Index')}
+        ${tbi('drops', '📦 By Superdrop')}${tbi('collector', '🔢 By Collector №')}${tbi('pnl', '💰 P&L')}${tbi('index', '📈 Index')}${tbi('intel', '🧠 Intelligence')}
       </div>`;
     return idxHeader + renderSlIndexBody(computeSlIndex());
   }
@@ -1166,7 +1315,7 @@ export function renderSlViewer() {
 
     const headerBar = `
       <div style="display:flex;gap:10px;align-items:center;padding:8px 12px;background:var(--surface);border:1px solid var(--border);border-radius:8px">
-        <div style="display:flex;gap:6px;flex-shrink:0">${tb('drops', '📦 By Superdrop')}${tb('collector', '🔢 By Collector №')}${tb('pnl', '💰 P&L')}${tb('index', '📈 Index')}</div>
+        <div style="display:flex;gap:6px;flex-shrink:0">${tb('drops', '📦 By Superdrop')}${tb('collector', '🔢 By Collector №')}${tb('pnl', '💰 P&L')}${tb('index', '📈 Index')}${tb('intel', '🧠 Intelligence')}</div>
         <span style="margin-left:auto;font-size:12px;color:var(--text-muted)">
           ${rows.length} drop${rows.length !== 1 ? 's' : ''} · paid <strong style="color:var(--text)">${money(tot.cost)}</strong> · now <strong style="color:var(--text)">${money(tot.value)}</strong> ·
           <strong style="color:${gcol(totGain)}">${totGain >= 0 ? '+' : ''}${fmt(totGain)}${totPct != null ? ` (${pct(totPct)})` : ''}</strong>
@@ -1225,11 +1374,13 @@ export function renderSlViewer() {
     const drops = getDropsForSuperdrop(sv.superdrop);
     const pct = stats.total ? Math.round(stats.owned / stats.total * 100) : 0;
     const bonusCards = slBonusCardsForDrop(sv.drop);
-    const bonusPanel = bonusCards.length ? `
+    const observedBonus = (collection.slBonusPulls || []).filter(p => p.dropName === sv.drop);
+    const bonusPanel = (bonusCards.length || observedBonus.length) ? `
       <details style="margin:0 0 12px;padding:9px 13px;background:var(--surface);border:1px solid var(--border);border-radius:8px;font-size:12px">
-        <summary style="cursor:pointer;font-weight:700;color:var(--text)">🎁 ${bonusCards.length} documented exclusive bonus card${bonusCards.length === 1 ? '' : 's'}</summary>
+        <summary style="cursor:pointer;font-weight:700;color:var(--text)">🎁 Bonus cards · ${bonusCards.length} documented candidate${bonusCards.length === 1 ? '' : 's'} · ${observedBonus.length} observed</summary>
         <div style="display:grid;gap:6px;margin-top:9px;color:var(--text-dim)">
           ${bonusCards.map(b => `<div><strong style="color:var(--text)">${esc(b.cardName)}</strong> <span style="color:var(--text-muted)">#${esc(b.collectorNumber)}${b.variant ? ` · ${esc(b.variant)}` : ''}${b.chase ? ' · chase/random' : ''}</span>${b.notes ? `<br><span style="font-size:11px">${esc(b.notes)}</span>` : ''}</div>`).join('')}
+          ${observedBonus.length ? `<div style="border-top:1px solid var(--border);padding-top:7px;margin-top:3px"><strong style="color:var(--green)">Your observed pulls</strong></div>${observedBonus.map(b => `<div>✓ <strong style="color:var(--text)">${esc(b.cardName)}</strong> <span style="color:var(--text-muted)">${esc(b.openedAt)} · ×${b.quantity || 1}${b.variant ? ` · ${esc(b.variant)}` : ''}</span></div>`).join('')}` : ''}
         </div>
         <div style="font-size:10.5px;color:var(--text-muted);margin-top:8px">Supplemental catalog only. Bonus cards are not treated as guaranteed contents and do not affect completion.</div>
       </details>` : '';
@@ -1253,6 +1404,10 @@ export function renderSlViewer() {
           ${drops.length ? dropSelect(drops) : ''}
           <button class="btn btn-ghost" style="font-size:12px" data-act="ui-set" data-path="slViewer.drop" data-val="" data-also="slViewer.page=0">← Back to Superdrop</button>
           <button class="btn btn-ghost" style="font-size:12px" data-slact="edit-drop" data-arg="${esc(sv.drop)}">${slDropEdited(sv.drop) ? '✎ Edit (customized)' : '✎ Edit grouping / note'}</button>
+          <button class="btn btn-ghost" style="font-size:12px" data-act="showSlProductTruth" data-arg="${esc(sv.drop)}">🔎 Product truth</button>
+          <button class="btn btn-ghost" style="font-size:12px" data-act="showSlCompletionReport" data-arg="${esc(sv.drop)}">✓ Exact completion</button>
+          <button class="btn btn-ghost" style="font-size:12px" data-act="showSlBonusPullModal" data-arg="${esc(sv.drop)}">🎁 Log bonus</button>
+          <button class="btn btn-ghost" style="font-size:12px" data-act="showSlWatchModal" data-arg="${esc(sv.drop)}">★ Watch</button>
           ${missingIds.length ? `<button class="btn btn-ghost" style="font-size:12px" data-slact="want-missing" data-arg="${esc(sv.drop)}" title="Add this drop's missing cards to your want list">★ Want ${missingIds.length} missing${wantedMissing ? ` (${wantedMissing} on list)` : ''}</button>` : ''}
           <span style="margin-left:auto;font-size:13px;font-weight:700;color:${stats.owned===stats.total&&stats.total>0?'var(--green)':'var(--text-muted)'}">
             ${stats.owned} / ${stats.total} cards owned (${pct}%)
@@ -1324,10 +1479,13 @@ export function renderSlViewer() {
     <div style="margin:0 0 14px;padding:10px 14px;background:var(--surface);border:1px solid var(--border);border-radius:8px;font-size:12px">
       <div style="font-weight:700;color:var(--text);margin-bottom:6px">Official Wizards announcements</div>
       <div style="display:grid;gap:6px">
-        ${announcements.slice(0, 4).map(a => `<div style="display:flex;gap:8px;align-items:baseline;flex-wrap:wrap">
-          <a href="#" data-act="open-url" data-arg="${esc(a.url)}" style="font-weight:650">${esc(a.title)}</a>
-          <span style="color:var(--text-muted)">${esc((a.publishedAt || '').slice(0, 10) || 'date unavailable')}${a.saleDate ? ` · sale ${esc(a.saleDate)}` : ''}${a.prices?.length ? ` · ${fmt(a.prices[0].amount)} announced` : ''}</span>
-        </div>`).join('')}
+        ${announcements.slice(0, 4).map(a => {
+          const headlinePrice = announcementHeadlinePrice(a);
+          return `<div style="display:flex;gap:8px;align-items:baseline;flex-wrap:wrap">
+            <a href="#" data-act="open-url" data-arg="${esc(a.url)}" style="font-weight:650">${esc(a.title)}</a>
+            <span style="color:var(--text-muted)">${esc((a.publishedAt || '').slice(0, 10) || 'date unavailable')}${a.saleDate ? ` · sale ${esc(a.saleDate)}` : ''}${headlinePrice ? ` · ${fmt(headlinePrice.amount)} announced` : ''}</span>
+          </div>`;
+        }).join('')}
       </div>
     </div>` : '';
   const visibleSuperdrops = sortSuperdrops(SL_SUPERDROPS.filter(sd => superdropMatchesSearch(sd, sv.search)));

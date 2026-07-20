@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { parseBonusCardsHtml } from '../src/renderer-js/slBonus.js';
-import { parseAnnouncementArchiveHtml, parseAnnouncementDetailHtml } from '../src/renderer-js/slAnnouncements.js';
+import { announcementHeadlinePrice, parseAnnouncementArchiveHtml, parseAnnouncementDetailHtml } from '../src/renderer-js/slAnnouncements.js';
 
 describe('Secret Lair supplemental source parsers', () => {
   it('parses the bonus table without shifting rowspan columns', () => {
@@ -40,5 +40,21 @@ describe('Secret Lair supplemental source parsers', () => {
     expect(row.prices.map(p => p.amount)).toEqual(expect.arrayContaining([29.99, 39.99]));
     expect(row.bundles).toContain('Everything Bundle');
     expect(row.officialNotes[0]).toMatch(/supplies last/i);
+    expect(announcementHeadlinePrice(row)?.amount).toBe(29.99);
+  });
+
+  it('never presents a free-shipping threshold as an announced drop price', () => {
+    const shippingOnly = parseAnnouncementDetailHtml(`
+      <h1>Secret Lair: Cats Are the Best Superdrop</h1>
+      <p>All single orders over $99 USD ship free.</p>
+    `);
+    expect(shippingOnly.prices[0]).toMatchObject({ amount: 99, kind: 'shipping' });
+    expect(announcementHeadlinePrice(shippingOnly)).toBeNull();
+
+    const cachedRow = { prices: [
+      { label: 'All single orders over', amount: 99, currency: 'USD' },
+      { label: 'Non-foil edition', amount: 29.99, currency: 'USD' },
+    ] };
+    expect(announcementHeadlinePrice(cachedRow)?.amount).toBe(29.99);
   });
 });

@@ -30,8 +30,8 @@ const check = (label, cond, detail) => {
 const near = (a, b) => Math.abs(a - b) < 1e-6;
 
 (async () => {
-  const { computeSlIndex } = await import('../src/renderer-js/slTab.js');
-  const { collection } = await import('../src/renderer-js/state.js');
+  const { computeSlIndex, renderSlIndexBody } = await import('../src/renderer-js/slTab.js');
+  const { collection, ui } = await import('../src/renderer-js/state.js');
 
   collection.settings = {};
   collection.marketPriceHistory = {};
@@ -79,6 +79,16 @@ const near = (a, b) => Math.abs(a - b) < 1e-6;
   // ── leaderboard ──────────────────────────────────────────────────────────────
   check('best lists both drops, no overlap with worst', idx.best.length === 2 && idx.worst.length === 0,
     { best: idx.best.map(r => r.drop), worst: idx.worst.map(r => r.drop) });
+  check('full ranking retains every ROI row in best-to-worst order',
+    idx.ranked.length === 2 && idx.ranked[0].gainPct >= idx.ranked[1].gainPct,
+    idx.ranked.map(r => ({ drop: r.drop, gainPct: r.gainPct })));
+  ui.slViewer.indexExpanded = true;
+  const expandedHtml = renderSlIndexBody(idx);
+  check('expanded Index renders the full clickable report',
+    expandedHtml.includes('Full Secret Lair performance report')
+      && expandedHtml.includes('data-slact="open-drop"')
+      && expandedHtml.includes('2 of 2 engaged drops'),
+    expandedHtml.slice(0, 200));
 
   // ── crack-vs-keep rollup ─────────────────────────────────────────────────────
   check('1 sealed drop held, keep = 45', idx.crackVsKeep.heldCount === 1 && near(idx.crackVsKeep.keepTotal, 45), idx.crackVsKeep);

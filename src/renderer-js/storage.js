@@ -31,6 +31,10 @@ export async function autoSave() {
       window.api.failures.replace(collection.failedLookups || []),
       window.api.settings.set('settings_blob', settingsJson),
       window.api.settings.set('last_price_refresh', collection.lastPriceRefresh || ''),
+      window.api.settings.set('sl_purchase_lots', JSON.stringify(collection.slPurchaseLots || [])),
+      window.api.settings.set('sl_bonus_pulls', JSON.stringify(collection.slBonusPulls || [])),
+      window.api.settings.set('sl_watch_list', JSON.stringify(collection.slWatchList || [])),
+      window.api.settings.set('sl_market_quotes', JSON.stringify(collection.slMarketQuotes || [])),
       // Authoritative full replace — keeps the sealed table exactly in sync with
       // memory so a deleted product can never linger (sealed is small & bounded).
       window.api.sealed.replace(collection.sealed || []),
@@ -68,7 +72,9 @@ export async function autoLoad() {
       window.api.wantlist?.list?.() ?? Promise.resolve([]),
     ]);
 
-    if (!cardRows.length && !sealedRows.length && !deckRows.length && !Object.keys(prices).length) return false;
+    const hasSlIntelligence = ['sl_purchase_lots','sl_bonus_pulls','sl_watch_list','sl_market_quotes']
+      .some(key => settings[key] && settings[key] !== '[]');
+    if (!cardRows.length && !sealedRows.length && !deckRows.length && !Object.keys(prices).length && !hasSlIntelligence) return false;
 
     collection.cards = cardRows.map(r => ({
       id: r.id,
@@ -126,10 +132,19 @@ export async function autoLoad() {
     collection.failedLookups = failures;
     collection.portfolioSnapshots = Array.isArray(snapshots) ? snapshots : [];
     collection.wantList = Array.isArray(wantRows) ? wantRows : [];
+    const settingArray = key => {
+      try { const v = JSON.parse(settings[key] || '[]'); return Array.isArray(v) ? v : []; }
+      catch { return []; }
+    };
+    collection.slPurchaseLots = settingArray('sl_purchase_lots');
+    collection.slBonusPulls = settingArray('sl_bonus_pulls');
+    collection.slWatchList = settingArray('sl_watch_list');
+    collection.slMarketQuotes = settingArray('sl_market_quotes');
     collection.settings = settings.settings_blob
       ? JSON.parse(settings.settings_blob)
       : { pricechartingKey: '' };
     if (!collection.settings.pricechartingKey) collection.settings.pricechartingKey = '';
+    if (!collection.settings.cardTraderToken) collection.settings.cardTraderToken = '';
     collection.lastPriceRefresh = settings.last_price_refresh || null;
 
     return true;
@@ -179,6 +194,16 @@ export async function loadCollectionFile() {
       if (idx >= 0) { collection.sealed[idx] = { ...collection.sealed[idx], ...s }; sealedUpdated++; }
       else          { collection.sealed.push(s); sealedAdded++; }
     }
+
+    const mergeById = (target, incoming) => {
+      const map = new Map((target || []).map(x => [x.id, x]));
+      for (const row of (incoming || [])) map.set(row.id, { ...(map.get(row.id) || {}), ...row });
+      return [...map.values()];
+    };
+    collection.slPurchaseLots = mergeById(collection.slPurchaseLots, data.slPurchaseLots);
+    collection.slBonusPulls = mergeById(collection.slBonusPulls, data.slBonusPulls);
+    collection.slWatchList = mergeById(collection.slWatchList, data.slWatchList);
+    collection.slMarketQuotes = mergeById(collection.slMarketQuotes, data.slMarketQuotes);
 
     // Merge price history — incoming entries OVERWRITE same (key, date) pair,
     // but existing dates not present in incoming are preserved. Incoming

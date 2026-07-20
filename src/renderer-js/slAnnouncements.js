@@ -7,6 +7,27 @@ import { netFetch } from './utils.js';
 
 const ARCHIVE_URL = 'https://magic.wizards.com/en/news/announcements?search=Secret+Lair';
 const SETTINGS_KEY = 'sl_announcement_data';
+const SHIPPING_PRICE_RE = /\b(?:free\s+shipping|shipping|ships?\s+free|orders?\s+(?:over|above|of\s+at\s+least)|checkout|shipping\s+threshold)\b/i;
+const PRODUCT_PRICE_RE = /\b(?:non-?foil|foil|bundle|drop|edition)\b/i;
+
+function announcementPriceKind(label) {
+  if (SHIPPING_PRICE_RE.test(String(label || ''))) return 'shipping';
+  if (PRODUCT_PRICE_RE.test(String(label || ''))) return 'product';
+  return 'other';
+}
+
+// A Wizards article can mention other dollar amounts (most notably its free-
+// shipping threshold). Keep those facts in the source record, but never present
+// one as the announced product price. The label check also fixes old cached rows
+// created before prices carried an explicit kind.
+export function announcementHeadlinePrice(row) {
+  return (Array.isArray(row?.prices) ? row.prices : []).find(price => {
+    const amount = Number(price?.amount);
+    return Number.isFinite(amount)
+      && price?.kind !== 'shipping'
+      && !SHIPPING_PRICE_RE.test(String(price?.label || ''));
+  }) || null;
+}
 
 const decode = s => String(s || '')
   .replace(/&nbsp;/gi, ' ').replace(/&amp;/gi, '&').replace(/&quot;/gi, '"')
@@ -59,11 +80,14 @@ export function parseAnnouncementDetailHtml(html, seed = {}) {
   for (const m of body.matchAll(/([^\n]{0,100}?)\$\s*([\d,]+(?:\.\d{2})?)\s*(?:USD)?/gi)) {
     const label = m[1].replace(/^[\s:–—-]+|[\s:–—-]+$/g, '').slice(-90) || 'Announced price';
     const amount = parseFloat(m[2].replace(/,/g, ''));
-    if (!prices.some(p => p.label === label && p.amount === amount)) prices.push({ label, amount, currency: 'USD' });
+    const lineStart = body.lastIndexOf('\n', m.index) + 1;
+    const nextBreak = body.indexOf('\n', m.index + m[0].length);
+    const lineEnd = nextBreak < 0 ? body.length : nextBreak;
+    const kind = announcementPriceKind(body.slice(lineStart, lineEnd));
+    if (!prices.some(p => p.label === label && p.amount === amount)) prices.push({ label, amount, currency: 'USD', kind });
   }
   prices.sort((a, b) => {
-    const score = p => /non-?foil|foil|bundle|drop/i.test(p.label) ? 2
-      : (/order|shipping|free|checkout/i.test(p.label) ? 0 : 1);
+    const score = p => p.kind === 'product' ? 2 : (p.kind === 'shipping' ? 0 : 1);
     return score(b) - score(a);
   });
   const bundles = [...String(html || '').matchAll(/<h([1-4])\b[^>]*>([\s\S]*?bundle[\s\S]*?)<\/h\1>/gi)]

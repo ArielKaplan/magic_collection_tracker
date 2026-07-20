@@ -258,6 +258,7 @@ const ALLOWED_FETCH_HOSTS = new Set([
   'mtgjson.com',
   'tcgcsv.com',
   'www.pricecharting.com',
+  'api.cardtrader.com',  // optional authenticated cross-market sealed listings
   'mtg.wiki',           // Drop Series table: superdrop grouping + per-drop MSRPs + upcoming drops
   'magic.wizards.com',  // official Secret Lair announcements, sale windows, bundles and promotions
 ]);

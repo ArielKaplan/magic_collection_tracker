@@ -6,6 +6,8 @@ import { getSlProducts } from './slData.js';
 import { slAnnouncementInfo } from './slAnnouncements.js';
 import { slBonusInfo } from './slBonus.js';
 import { slWikiInfo } from './slWiki.js';
+import { slHistorySeedInfo } from './slHistorySeed.js';
+import { slIntelligenceSummary } from './slIntelligence.js';
 import { tcgcsvCache } from './state.js';
 import { esc } from './utils.js';
 
@@ -23,6 +25,8 @@ export function showSlDataGuide() {
   const wiki = slWikiInfo();
   const bonus = slBonusInfo();
   const official = slAnnouncementInfo();
+  const historySeed = slHistorySeedInfo();
+  const intelligence = slIntelligenceSummary();
   const ids = new Set();
   for (const p of products) for (const key of Object.keys(p.identifiers || {})) ids.add(key);
 
@@ -48,8 +52,10 @@ export function showSlDataGuide() {
             ${row('mtg.wiki Drop Series', 'Curated release structure', 'Superdrop grouping, release date, nonfoil MSRP, foil MSRP, and announced-but-unreleased rows.', 'With SL sync')}
             ${row('mtg.wiki Bonus Cards', 'Supplemental insert catalog', 'SLD collector number, type, card, variant, explicit drop exclusivity, notes and chase/random signals. Bonus rows never count as guaranteed contents.', 'With SL sync')}
             ${row('Wizards announcements', 'Official launch context', 'Recent official article, publication date, sale date/time, stated USD prices, bundle headings, promotion and WPN/store notes.', 'With SL sync')}
+            ${row('MTGJSON AllPrices seed', 'New-install card history', 'A reviewed build-time Secret Lair-only slice of TCGplayer/Card Kingdom USD retail history. The app never downloads the global payload; local/live points win on overlapping dates.', 'Weekly app-data build')}
+            ${row('CardTrader (optional)', 'Cross-market sealed listings', 'Lowest in-stock listings by exact CardTrader blueprint ID, kept in the returned currency. Requires the user’s CardTrader profile API token.', 'On demand')}
             ${row('PriceCharting (optional)', 'Second sealed estimate', 'Current new/sealed or loose value returned for a user-selected product. Requires the user’s paid API token; it is not historical data.', 'On demand')}
-            ${row('Local SQLite', 'Ownership and history', 'Collection copies, product links, cost basis, daily price snapshots, user grouping/note overrides, and every last-known-good source cache.', 'Continuous')}
+            ${row('Local SQLite', 'Ownership and intelligence', 'Collection copies, product links, cost basis, daily price snapshots, bundle purchase lots/allocations, observed bonus pulls, watches, market observations, user overrides, and every last-known-good source cache.', 'Continuous')}
           </tbody>
         </table>
       </div>
@@ -61,11 +67,22 @@ export function showSlDataGuide() {
         <li><strong style="color:var(--text)">Exact ownership.</strong> A nonfoil copy cannot complete a foil SKU. P&amp;L and missing-card checks use Scryfall ID + finish, not card-name guesses.</li>
         <li><strong style="color:var(--text)">Confidence is explicit.</strong> A product synthesized from subset tags is marked low-confidence. Collector-number sibling backfill repairs known orphan foil printings without rewriting the source.</li>
         <li><strong style="color:var(--text)">Enrichment stays separate.</strong> MSRP, official launch notes, bonus inserts and prices decorate products; they never silently mutate guaranteed contents.</li>
+        <li><strong style="color:var(--text)">User observations stay separate too.</strong> Bundle cost allocations affect economic basis, while observed bonus pulls, watches and manual market quotes never rewrite sourced contents.</li>
       </ol>
+
+      <h3 style="font-size:13px;margin:18px 0 8px">What the Intelligence workspace adds</h3>
+      <ul style="font-size:12.5px;color:var(--text-dim);line-height:1.65;padding-left:20px;margin:0 0 14px">
+        <li>Bundle purchase lots allocate subtotal, tax, shipping and fees across exact SKUs by relative MSRP or equally.</li>
+        <li>Product Truth exposes guaranteed contents, identifiers, confidence, release/MSRP, source-labeled market observations and available history.</li>
+        <li>Exact Completion audits printing, finish and required quantity; wrong-finish copies are reported rather than counted.</li>
+        <li>The Index full report filters by year, superdrop, finish, subtype, holding state and confidence; it can rank by several economic fields and export CSV.</li>
+        <li>Crack-or-keep estimates net proceeds with editable fee/shipping assumptions and always excludes unknown bonus-card odds.</li>
+        <li>Release radar, watch targets, the observed bonus journal and data-quality counts remain local to this computer.</li>
+      </ul>
 
       <div style="padding:10px 12px;border-left:3px solid var(--accent2);background:var(--surface);border-radius:6px;font-size:12px;color:var(--text-dim);line-height:1.55">
         <strong style="color:var(--text)">Pricing meaning:</strong> card values are printing-and-finish specific. Sealed TCGCSV market is the primary product estimate;
-        low/mid/high/direct-low are retained for context. Prices are estimates, not guaranteed sale proceeds, and exclude condition, fees, shipping and tax unless you record them locally.
+        low/mid/high/direct-low are retained for context. CardTrader, PriceCharting and manual observations remain source/currency labeled. Prices are estimates, not guaranteed sale proceeds; net decision estimates apply the user’s explicit fee/shipping assumptions.
       </div>
 
       <h3 style="font-size:13px;margin:18px 0 8px">Source health on this computer</h3>
@@ -76,6 +93,8 @@ export function showSlDataGuide() {
         <div style="padding:9px 11px;background:var(--surface);border-radius:7px"><strong style="color:var(--text)">Official articles</strong><br>${official?.count?.toLocaleString() || 0} rows · ${esc(when(official?.fetchedAt))}</div>
         <div style="padding:9px 11px;background:var(--surface);border-radius:7px"><strong style="color:var(--text)">TCGCSV products</strong><br>${tcgcsvCache.sealedProducts.length.toLocaleString()} rows · ${esc(when(tcgcsvCache.lastRefresh))}</div>
         <div id="sl-help-scryfall-health" style="padding:9px 11px;background:var(--surface);border-radius:7px"><strong style="color:var(--text)">Scryfall bulk index</strong><br>Checking local index…</div>
+        <div style="padding:9px 11px;background:var(--surface);border-radius:7px"><strong style="color:var(--text)">History seed</strong><br>${historySeed.series.toLocaleString()} series · ${esc(when(historySeed.generatedAt))}</div>
+        <div style="padding:9px 11px;background:var(--surface);border-radius:7px"><strong style="color:var(--text)">Local intelligence</strong><br>${intelligence.lots} lots · ${intelligence.pulls} pulls · ${intelligence.watches} watches · ${intelligence.quotes} quotes</div>
       </div>
 
       <h3 style="font-size:13px;margin:18px 0 8px">Limits and safeguards</h3>
@@ -90,6 +109,7 @@ export function showSlDataGuide() {
         <a href="#" data-act="open-url" data-arg="https://mtgjson.com">MTGJSON</a> ·
         <a href="#" data-act="open-url" data-arg="https://scryfall.com/docs/api">Scryfall</a> ·
         <a href="#" data-act="open-url" data-arg="https://tcgcsv.com">TCGCSV</a> ·
+        <a href="#" data-act="open-url" data-arg="https://www.cardtrader.com/docs/api/full/reference">CardTrader API</a> ·
         <a href="#" data-act="open-url" data-arg="https://mtg.wiki/page/Secret_Lair/Drop_Series">mtg.wiki</a> ·
         <a href="#" data-act="open-url" data-arg="https://magic.wizards.com/en/news/announcements?search=Secret+Lair">Wizards</a>.
       </p>

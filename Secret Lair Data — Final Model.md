@@ -1,6 +1,6 @@
 # Secret Lair Data — Final Model and Source Guide
 
-*Final implementation reference · 2026-07-20 · Mana Ledger 1.1.x*
+*Final implementation reference · 2026-07-20 · Mana Ledger 1.3.x*
 
 ## Shareable summary
 
@@ -12,9 +12,13 @@ Mana Ledger does not rely on one “Secret Lair database,” because no single s
 - **mtg.wiki supplies the Secret Lair-specific release structure that the catalog APIs do not model.** The Drop Series table supplies superdrops, release dates, nonfoil/foil MSRP and upcoming drops. Its separate Bonus Cards table supplies documented inserts, variants, exclusivity and notes.
 - **Official Wizards announcements supply launch context.** Recent articles add official sale timing, announced USD prices, bundle names, promotion details and WPN/store notes.
 - **PriceCharting is an optional secondary sealed estimate.** It is queried only when the user supplies a paid API token.
-- **Local SQLite stores ownership and history.** Collection copies, cost basis, user overrides, daily snapshots and last-known-good source caches remain on the user's computer.
+- **CardTrader is an optional live-listing comparison.** When the user supplies a profile API token, Mana Ledger queries the exact preserved CardTrader blueprint ID and keeps each returned currency separate.
+- **A reviewed MTGJSON AllPrices slice seeds history.** The build workflow extracts only exact Secret Lair printing/finish USD retail series; the desktop never downloads the global file.
+- **Local SQLite stores ownership, history and intelligence overlays.** Collection copies, bundle purchase lots and allocated landed cost, observed bonus pulls, watches, labeled market observations, user overrides, daily snapshots and last-known-good source caches remain on the user's computer.
 
 The economic unit is a **purchasable SKU**, not a display-name string. The ownership unit is an **exact Scryfall printing plus finish**. A nonfoil copy therefore cannot complete a foil product, even when both products use the same Scryfall printing ID.
+
+User-authored intelligence is deliberately orthogonal to sourced truth: a purchase-lot allocation can change cost basis, but an observed bonus pull or marketplace quote never changes the product's guaranteed-contents contract.
 
 ## 1. Source contracts
 
@@ -137,6 +141,21 @@ Implementation details:
 
 The token is sent only to `www.pricecharting.com` through the main-process host allowlist. Settings now links to the current API documentation and no longer describes the service as a free email-signup API.
 
+### CardTrader (optional)
+
+Role: source-labeled cross-market sealed listing comparison.
+
+Implementation details:
+
+- requires the user's CardTrader profile API token;
+- joins the product with MTGJSON's preserved `cardtraderId`, used as CardTrader's `blueprint_id`;
+- queries `GET /api/v2/marketplace/products?blueprint_id=…`;
+- retains the lowest in-stock listing separately for every returned currency;
+- records the observation date, listing count and exact blueprint context;
+- never currency-converts or blends the listing into the primary TCGCSV valuation.
+
+The token is sent only to `api.cardtrader.com` through the main-process host allowlist. CardTrader documents Bearer-token authentication and cautions that the marketplace endpoint is lightly cached, so Mana Ledger presents it as a listing observation rather than a guaranteed executable price.
+
 ### Local SQLite
 
 Role: private user state, last-known-good caches and history.
@@ -150,6 +169,9 @@ It stores:
 - Secret Lair model tables and legacy projections;
 - user grouping/note overrides;
 - supplemental source caches and timestamps.
+- bundle purchase lots with subtotal, tax, shipping, other fees, allocation method and per-SKU landed-cost allocations;
+- observed bonus pulls, watched drops/targets and source/currency-labeled secondary market observations;
+- the applied Secret Lair history-seed version.
 
 No collection contents are sent to a source provider.
 
@@ -187,6 +209,19 @@ No collection contents are sent to a source provider.
 Primary membership is `(product_uuid, scryfall_id, finish)`. The runtime ownership key is `(scryfall_id, finish)`.
 
 The legacy `sl_drop_cards` and `sl_scryfall_drops` relations remain as projections for existing UI paths. They are outputs of the product model, not the source of truth.
+
+### User intelligence overlays
+
+The renderer maintains four versionable arrays which are persisted as independent JSON settings blobs in SQLite and included in manual JSON backups:
+
+| Record | Important fields | Economic effect |
+|---|---|---|
+| `slPurchaseLots` | lot ID/name/date, subtotal, tax, shipping, fees, total, allocation method; items with product UUID, drop, finish, quantity, status and allocated cost | Allocated cost becomes the exact P&L basis; sealed items use exact-ID TCGCSV value |
+| `slBonusPulls` | drop/product, observed card, collector number, variant, date, quantity, note | Journal only; never changes guaranteed contents or completion |
+| `slWatchList` | drop/product, target sealed price, sale-window flag, note | Produces local refresh-time price/sale alerts |
+| `slMarketQuotes` | product/drop, source, amount, currency, quote basis, date, URL/note | Comparison only; never silently replaces primary value |
+
+Bundle allocations may be equal per SKU or weighted by each SKU's finish-aware wiki MSRP. The full landed total is allocated with rounding settled on the final item, so the child costs always sum back to the purchase lot.
 
 ## 3. Reconciliation algorithm
 
@@ -233,7 +268,16 @@ Mana Ledger handles both by recording finish on every product-card edge. Product
 
 ### Historical data decision
 
-Mana Ledger records local daily history and portfolio snapshots. MTGJSON `AllPrices` was evaluated as a complementary 90-day backfill source, but it is intentionally **not downloaded by the desktop app**: it is a very large global all-card payload, while Mana Ledger needs only a small Secret Lair slice, and its vendor/finish series would require a versioned import contract. A future build-time extractor can publish a reviewed SL-only seed without imposing that bandwidth and memory cost on every user. The Help guide does not claim that history is present today.
+Mana Ledger records local daily history and portfolio snapshots and now ships a reviewed Secret Lair-only seed produced from MTGJSON `AllPrices`:
+
+1. The GitHub data workflow—not the desktop—downloads the large global payload.
+2. The extractor joins only SLD MTGJSON UUIDs to exact Scryfall printing IDs and supported finishes.
+3. It accepts TCGplayer USD retail first and Card Kingdom USD retail second. Cardmarket EUR is deliberately excluded from the USD seed.
+4. It retains the latest seven daily observations plus one older observation per week, providing a compact view of the 90-day source window.
+5. The generated asset is versioned (`schemaVersion`, generation time, source version and per-series provider).
+6. On first use of a new seed, points are inserted under source `mtgjson-seed`; local/live Scryfall observations replace seed values on overlapping dates in the in-memory view.
+
+Product Truth can aggregate those exact printing/finish series into a guaranteed-singles product history. It reports change, range and interval volatility only when at least 75% of product rows are priced on an observation date.
 
 Prices are estimates, not guaranteed proceeds. Condition, language, taxes, shipping, platform fees and liquidity can materially change realized value.
 
@@ -247,6 +291,8 @@ Prices are estimates, not guaranteed proceeds. Condition, language, taxes, shipp
 | wiki Drop Series | SL sync | at least 100 parsed rows | keep last good cache plus baked grouping |
 | wiki Bonus Cards | SL sync | at least 100 parsed rows | keep last good cache; bonus UI may be absent |
 | Wizards announcements | SL sync | at least one relevant archive article | keep last good cache; official strip may be absent |
+| MTGJSON SL history seed | Weekly reviewed build/manual workflow | exact SLD UUID + finish, positive USD retail points, versioned compact output | prior shipped seed remains; desktop performs no global download |
+| CardTrader | On demand | authenticated exact blueprint response with in-stock positive listing | prior observation remains; TCGCSV remains primary |
 | PriceCharting | On demand | successful API status | TCGCSV remains available |
 
 The sources are isolated. A Wizards layout change cannot erase product contents; a wiki failure cannot erase the baked grouping; a TCGCSV group failure cannot corrupt MTGJSON membership.
@@ -259,7 +305,8 @@ The baked shared baseline remains important for fresh installs and offline use. 
 2. reconcile and emit `src/renderer/secretlair.js`;
 3. run the generated-data smoke test and all unit tests;
 4. upload the reconciliation report as an artifact;
-5. open a reviewable pull request only when the baked baseline changed.
+5. on Sundays or manual runs, extract the compact reviewed SLD-only `AllPrices` seed;
+6. open a reviewable pull request only when the baked baseline or history seed changed.
 
 The live bonus and official announcement sources are not baked because they are independent contextual feeds and should not be confused with guaranteed contents.
 
@@ -268,6 +315,10 @@ The live bonus and official announcement sources are not baked because they are 
 - **Help → Secret Lair Data Guide:** source breakdown, model behavior, pricing semantics, limits and live cache health.
 - **Settings → Secret Lair Data:** summary plus a direct link to the full guide.
 - **Secret Lair Explorer:** Data Guide button beside refresh; upcoming wiki rows; official Wizards article strip; per-drop explicit bonus-card panel.
+- **Drop actions:** Product Truth, Exact Completion, Log Bonus and Watch expose the relational model without conflating sourced and observed data.
+- **Secret Lair Intelligence:** bundle purchase lots/landed-cost allocations, release radar and watch alerts, source-quality metrics, observed bonus journal and market-observation counts.
+- **Index full report:** filters for year, finish, superdrop, subtype, holding state and confidence; selectable ranking; cohort metrics; CSV export; every row opens its drop.
+- **Crack or Keep:** gross guaranteed-singles/sealed values plus estimated net proceeds under editable fee/shipping assumptions; unknown bonus odds are excluded.
 - **About:** complete source attribution.
 
 ## 9. Known limits
@@ -275,6 +326,8 @@ The live bonus and official announcement sources are not baked because they are 
 - Source release timing differs; temporary count mismatches are normal.
 - MTGJSON contents can contain curation gaps. Those are marked with low-confidence fallbacks rather than hidden.
 - TCGCSV supplies aggregate product pricing, not condition-specific live inventory or guaranteed transaction prices.
+- CardTrader values are current listings in the user's account currency, not completed-sale history; currencies remain separate.
+- Cardmarket's former public API documentation endpoint currently returns HTTP 410, so Mana Ledger preserves its MTGJSON ID and offers outbound/manual observation workflows instead of depending on an unavailable contract.
 - Random bonus-card odds are often unpublished. Mana Ledger never invents odds or treats a catalog row as guaranteed.
 - Official announcement HTML is less stable than a public API, so extraction is conservative and last-known-good.
 - Display-name normalization remains necessary for user-facing grouping, but stable IDs control membership and pricing whenever available.
@@ -283,15 +336,16 @@ The live bonus and official announcement sources are not baked because they are 
 ### Complementary sources evaluated but not treated as runtime truth
 
 - **[`mtgjson/mtg-sealed-content`](https://github.com/mtgjson/mtg-sealed-content):** this is the upstream curation project behind MTGJSON sealed contents. It is the right correction/contribution channel when a product chain is wrong, but consuming both it and the published MTGJSON build would duplicate one authority.
-- **MTGJSON `AllPrices`:** valuable for a future reviewed SL-only historical seed; deliberately excluded from desktop runtime because the global payload is disproportionate and its vendor/finish series needs an explicit import/version contract.
+- **MTGJSON `AllPrices`:** now consumed only by the reviewed weekly build extractor; the global payload remains deliberately excluded from desktop runtime.
 - **The Secret Lair storefront:** useful for browsing current commerce, but its SPA/product availability is not a durable historical catalog. Official Wizards announcement articles are the more stable official launch record.
-- **Other marketplaces:** the model now preserves their MTGJSON identifiers so Cardmarket, Card Kingdom, CardTrader or other adapters can be added without rebuilding product identity. They are not currently mixed into the primary TCGCSV/Scryfall valuation because currencies, conditions, fees and price definitions are not interchangeable.
+- **Other marketplaces:** CardTrader now has an optional exact-blueprint adapter. Cardmarket, Card Kingdom and other preserved identifiers remain available as outbound/manual observations unless a stable, licensed API contract is configured. They are never mixed into the primary TCGCSV/Scryfall valuation because currencies, conditions, fees and price definitions are not interchangeable.
 
 ## 10. Source and attribution links
 
 - [MTGJSON](https://mtgjson.com/)
 - [Scryfall API and bulk data](https://scryfall.com/docs/api)
 - [TCGCSV](https://tcgcsv.com/)
+- [CardTrader API](https://www.cardtrader.com/docs/api/full/reference)
 - [mtg.wiki Secret Lair Drop Series](https://mtg.wiki/page/Secret_Lair/Drop_Series)
 - [mtg.wiki Secret Lair Bonus Cards](https://mtg.wiki/page/Secret_Lair/Bonus_cards)
 - [Wizards announcement archive](https://magic.wizards.com/en/news/announcements?search=Secret+Lair)

@@ -12,6 +12,19 @@ user-facing: what changed, not how.
 
 ## [Unreleased]
 
+### Added
+- **Secret Lair Intelligence workspace.** Track bundle purchase lots with allocated landed cost, observed bonus pulls, watched drops and targets, release radar, source quality, and source/currency-labeled market observations.
+- **Product Truth and Exact Completion reports.** Inspect the exact sealed SKU, guaranteed printing/finish quantities, preserved marketplace identifiers, confidence, MSRP, history, missing cards, and wrong-finish copies.
+- **A real Secret Lair price-history baseline.** New installs receive 4,000+ exact printing/finish series from a reviewed, compact MTGJSON history seed; local refreshed prices take precedence and future seeds update automatically.
+- **Optional CardTrader comparisons.** Users with a CardTrader API token can retrieve exact-blueprint lowest listings without blending different currencies or replacing the primary TCGplayer valuation.
+
+### Changed
+- **Crack-or-keep now estimates net proceeds.** Editable selling-fee and outbound-shipping assumptions are applied to both guaranteed singles and sealed value; undocumented bonus odds remain excluded.
+- **The Secret Lair Index now has a full report.** Expand the best/worst panel into every held drop, filter by year, finish, superdrop, subtype, confidence or holding type, change the ranking, open any drop, and export CSV.
+
+### Fixed
+- **Official announcement shipping thresholds are no longer displayed as drop prices.** Amounts such as “free shipping over $99” remain source context but cannot become the announced product price.
+
 ## [1.2.0] - 2026-07-20
 
 ### Added

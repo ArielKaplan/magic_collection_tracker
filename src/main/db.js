@@ -395,15 +395,22 @@ function bulkStorePrices(snapshots) {
 function getAllPriceHistory() {
   // Returns { scryfall: { 'id|foil': [{date,price},...] }, tcgcsv: { 'id|foil': [...] } }
   const rows = db.prepare(`
-    SELECT scryfall_id, foil, date, source, price FROM price_history ORDER BY date ASC
+    SELECT scryfall_id, foil, date, source, price
+    FROM price_history
+    ORDER BY date ASC, source ASC
   `).all();
   const scryfall = {}, tcgcsv = {};
+  const daily = { scryfall: {}, tcgcsv: {} };
   for (const r of rows) {
     const k = `${r.scryfall_id}|${r.foil}`;
-    const bucket = r.source === 'tcgcsv' ? tcgcsv : scryfall;
-    if (!bucket[k]) bucket[k] = [];
-    bucket[k].push({ date: r.date, price: r.price });
+    const bucketName = r.source === 'tcgcsv' ? 'tcgcsv' : 'scryfall';
+    if (!daily[bucketName][k]) daily[bucketName][k] = new Map();
+    // SQL sorts mtgjson-seed before scryfall, so a local/live Scryfall point on
+    // the same date overwrites the build-time seed. The UI sees one point/day.
+    daily[bucketName][k].set(r.date, { date: r.date, price: r.price, source: r.source });
   }
+  for (const [k, m] of Object.entries(daily.scryfall)) scryfall[k] = [...m.values()];
+  for (const [k, m] of Object.entries(daily.tcgcsv)) tcgcsv[k] = [...m.values()];
   return { scryfall, tcgcsv };
 }
 

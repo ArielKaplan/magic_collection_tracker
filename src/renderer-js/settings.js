@@ -101,11 +101,18 @@ export function showSettings() {
       <strong style="color:var(--text)">TCGCSV</strong> is built-in and free — no key needed. It searches TCGPlayer group data and works automatically.<br>
       <strong style="color:var(--text)">PriceCharting</strong> adds a second current-value source with broader collectible coverage.
       It requires a paid API subscription and token; see
-      <a href="https://www.pricecharting.com/api-documentation" target="_blank">PriceCharting API documentation</a>.
+      <a href="https://www.pricecharting.com/api-documentation" target="_blank">PriceCharting API documentation</a>.<br>
+      <strong style="color:var(--text)">CardTrader</strong> can add live lowest listings by exact blueprint ID when you provide your profile API token; see
+      <a href="https://www.cardtrader.com/docs/api/full/reference" target="_blank">CardTrader API documentation</a>.
     </p>
     <div class="form-group">
       <label>PriceCharting API Token <span style="color:var(--text-dim);font-weight:400">(optional)</span></label>
       <input type="password" id="cfg-pckey" placeholder="Paste your PriceCharting API token here" value="${esc(collection.settings.pricechartingKey || '')}">
+    </div>
+    <div class="form-group">
+      <label>CardTrader API Token <span style="color:var(--text-dim);font-weight:400">(optional)</span></label>
+      <input type="password" id="cfg-cardtrader-key" placeholder="Enables exact blueprint listing comparisons" value="${esc(collection.settings.cardTraderToken || '')}">
+      <div style="font-size:11px;color:var(--text-muted);margin-top:4px">Sent only to <code>api.cardtrader.com</code>. The product model’s CardTrader ID is used as the exact blueprint join.</div>
     </div>
 
     <h3 style="margin-top:22px">Secret Lair Data</h3>
@@ -236,6 +243,7 @@ export function showSettings() {
 
   document.getElementById('cfg-save').addEventListener('click', () => {
     collection.settings.pricechartingKey = document.getElementById('cfg-pckey').value.trim();
+    collection.settings.cardTraderToken = document.getElementById('cfg-cardtrader-key').value.trim();
     const pickChips = id =>
       [...document.querySelectorAll(`#${id} .col-chip-on`)].map(b => b.dataset.val);
     collection.settings.ticker = {
@@ -284,7 +292,11 @@ export function showSettings() {
     collection.marketPriceHistory  = {};
     collection.cardMetadata        = {};
     collection.failedLookups       = [];
-    collection.settings            = { pricechartingKey: '' };
+    collection.slPurchaseLots      = [];
+    collection.slBonusPulls        = [];
+    collection.slWatchList         = [];
+    collection.slMarketQuotes      = [];
+    collection.settings            = { pricechartingKey: '', cardTraderToken: '' };
     collection.lastPriceRefresh    = null;
     clearPendingPriceSnaps();
     hideModal();

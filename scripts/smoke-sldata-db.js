@@ -63,6 +63,21 @@ check('re-init does not throw', !reinitThrew);
 got = db.getSlData();
 check('model survives restart', got.products.length === 2 && got.products.find(x => x.uuid === 'p-foil').cards[0].finish === 'foil', got.products.length);
 
+// Seed/live price-history precedence and market separation.
+db.bulkStorePrices([
+  { scryfallId: 'sid-base', foil: 'normal', date: '2026-07-19', source: 'mtgjson-seed', price: 10 },
+  { scryfallId: 'sid-base', foil: 'normal', date: '2026-07-19', source: 'scryfall', price: 12 },
+  { scryfallId: 'sid-base', foil: 'normal', date: '2026-07-19', source: 'tcgcsv', price: 13 },
+]);
+const history = db.getAllPriceHistory();
+check('live Scryfall replaces same-day MTGJSON seed point',
+  history.scryfall['sid-base|normal']?.length === 1 && history.scryfall['sid-base|normal'][0].price === 12
+    && history.scryfall['sid-base|normal'][0].source === 'scryfall',
+  history.scryfall['sid-base|normal']);
+check('TCGCSV history remains a separate market series',
+  history.tcgcsv['sid-base|normal']?.length === 1 && history.tcgcsv['sid-base|normal'][0].price === 13,
+  history.tcgcsv['sid-base|normal']);
+
 // ── clearSlData + resetAll wipe the model ────────────────────────────────────
 db.replaceSlData(dropCards, std, stn, products);
 db.clearSlData();

@@ -38,7 +38,7 @@ export let ui = {
   sealed: { search: '', type: 'all', status: 'all' },
   wantList: { search: '', groupByDrop: false, view: 'table' },
   decks: { deckId: null, search: '', view: 'list', ownFilter: 'all' },
-  slViewer: { superdrop: '', drop: '', page: 0, sort: 'date_desc', search: '', view: 'drops', layout: 'tiles', pnlSort: 'gainpct_desc' },
+  slViewer: { superdrop: '', drop: '', page: 0, sort: 'date_desc', search: '', view: 'drops', layout: 'tiles', pnlSort: 'gainpct_desc', indexExpanded: false, indexYear: 'all', indexFinish: 'all', indexSuperdrop: 'all', indexSubtype: 'all', indexConfidence: 'all', indexHolding: 'all', indexReportSort: 'return_desc' },
   slRefreshing: false,
   precons: { line: '', deck: '', search: '', sort: 'date_desc', deckView: 'gallery', tableSort: 'name_asc', showJumpstart: false },
   failures: { filter: 'all', retrying: false },
@@ -51,10 +51,17 @@ export function makeCollection() {
   return {
     version: 3,
     lastPriceRefresh: null,
-    settings: { pricechartingKey: '' },
+    settings: { pricechartingKey: '', cardTraderToken: '' },
     cards: [],
     sealed: [],
     wantList: [],   // cards the user wants to acquire (see wantlist.js)
+    // Secret Lair intelligence records are user-authored overlays. They never
+    // rewrite sourced product contents and are persisted as separate SQLite
+    // settings blobs so backups/export retain the full decision history.
+    slPurchaseLots: [], // bundle/lot cost basis + per-SKU allocations
+    slBonusPulls: [],   // observed bonus cards (supplemental, never guaranteed)
+    slWatchList: [],    // watched drops/upcoming sales and optional target prices
+    slMarketQuotes: [], // labeled manual/secondary market observations
     decks: [],
     priceHistory: {},
     marketPriceHistory: {},  // scryfallId|foil → [{date,price}] from TCGCSV (market price)
