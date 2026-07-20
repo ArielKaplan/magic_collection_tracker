@@ -1,5 +1,7 @@
 // Render smoke test for the sectioned Settings workspace.
 'use strict';
+const fs = require('fs');
+const path = require('path');
 const noop = () => {};
 let markup = '';
 const modal = { classList: { toggle: noop, remove: noop } };
@@ -25,6 +27,7 @@ globalThis.confirm = () => true;
   showSettings('features');
 
   const panelCount = (markup.match(/data-settings-panel=/g) || []).length;
+  const styles = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'styles.css'), 'utf8');
   const checks = {
     sixSections: panelCount === 6,
     focusedFeatures: /settings-panel active" data-settings-panel="features"/.test(markup),
@@ -34,6 +37,8 @@ globalThis.confirm = () => true;
     secretLairControls: markup.includes('id="cfg-msrp-nonfoil"') && markup.includes('showSlDataGuide'),
     dataControls: markup.includes('id="cfg-backup-now"') && markup.includes('id="cfg-reset-all"'),
     actions: markup.includes('id="cfg-cancel"') && markup.includes('id="cfg-save"'),
+    constrainedModalContent: /\.modal-settings\s+#modal-content\s*\{[^}]*height:\s*100%[^}]*overflow:\s*hidden/s.test(styles),
+    scrollableSettingsStage: /\.settings-stage\s*\{[^}]*overflow-y:\s*auto/s.test(styles),
   };
   console.log(checks);
   if (!Object.values(checks).every(Boolean)) process.exit(1);

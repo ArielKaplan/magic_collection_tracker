@@ -12,6 +12,9 @@ user-facing: what changed, not how.
 
 ## [Unreleased]
 
+### Fixed
+- **Data & Backups now scrolls inside Settings.** Long backup histories remain fully accessible while the Settings header, section navigation, and Save controls stay in place.
+
 ## [1.4.1] - 2026-07-20
 
 ### Changed
