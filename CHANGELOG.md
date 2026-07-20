@@ -12,6 +12,8 @@ user-facing: what changed, not how.
 
 ## [Unreleased]
 
+## [1.4.1] - 2026-07-20
+
 ### Changed
 - **Settings is now a focused, sectioned workspace.** General, Features, Pricing, Secret Lair, Data & Backups, and Updates & Support each have their own compact panel, replacing the single long scrolling list while preserving every existing control.
 - **Insights is now opt-in and hidden by default.** Enable it locally under **Settings → Features** to add the Insights workspace to the left navigation. Turning it off hides the workspace without deleting saved reports.
