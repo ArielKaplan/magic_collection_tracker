@@ -8,7 +8,7 @@ import { attributeDropFor, buildSlModel, finishGroup, projectLegacy, requiredFin
 import { refreshSlWikiData, slWikiGroupFor, slWikiMsrp, slWikiRowFor } from './slWiki.js';
 import { refreshSlBonusData, slBonusCardsForDrop } from './slBonus.js';
 import { refreshSlAnnouncements, slAnnouncements } from './slAnnouncements.js';
-import { refreshSlUpcomingData, slUpcomingCardContext, slUpcomingGroups } from './slUpcoming.js';
+import { refreshSlUpcomingData, slUpcomingCardContext, slUpcomingGroups, sumUpcomingCheapest } from './slUpcoming.js';
 import { evaluateSlWatchAlerts, renderSlIntelligenceView, slLotPnlRows } from './slIntelligence.js';
 import { upcomingSecretLairsEnabled } from './features.js';
 import { collection, tcgcsvCache, ui } from './state.js';
@@ -46,6 +46,7 @@ const SL_ACTIONS = {
   'commit-drop':    a => commitSlDrop(a),
   'commit-note':    (a, el) => commitSlNote(el.dataset.bucket || 'cards', a),
   'price-singles':  a => priceSlDropSingles(a),
+  'price-upcoming-singles': a => priceUpcomingSingles(a),
   'want-missing':   a => addDropMissingToWantList(a),
   'edit-sd-note':   a => editSlSuperdropNote(a),
   'edit-card-note': a => editSlCardNote(a),
@@ -806,6 +807,31 @@ export function renderSlIndexBody(idx) {
 // ─────────────────────────────────────────────────────────────────────────────
 const slDropSinglesCache = new Map();  // drop -> { value, priced, names, at }
 const slDropPricing = new Set();        // drops with a fetch in flight
+const slUpcomingSinglesCache = new Map(); // announced drop -> cheapest-print estimate
+const slUpcomingPricing = new Set();      // announced drops with a lookup in flight
+
+export async function priceUpcomingSingles(drop) {
+  if (slUpcomingPricing.has(drop)) return;
+  const group = slUpcomingGroups().find(item => item.drop === drop);
+  if (!group?.expectedCards?.length) {
+    toast('No announced card names are available to price yet.', 'info');
+    return;
+  }
+  slUpcomingPricing.add(drop);
+  render();
+  try {
+    const names = [...new Set(group.expectedCards.map(card => card.name).filter(Boolean))];
+    const cheapest = await fetchCheapestPrints(names);
+    const result = sumUpcomingCheapest(group.expectedCards, cheapest);
+    slUpcomingSinglesCache.set(drop, { ...result, at: Date.now() });
+    if (!result.pricedCopies) toast('Scryfall does not have a priced printing for these announced cards yet.', 'info');
+  } catch (error) {
+    toast(`Couldn't price announced singles: ${error.message}`, 'error');
+  } finally {
+    slUpcomingPricing.delete(drop);
+    render();
+  }
+}
 
 // "Keep" value: market value of still-sealed copies of this drop you hold.
 // Returns { value, qty } (value null if held but never price-looked-up), or null.
@@ -1274,7 +1300,7 @@ export function renderSlViewer() {
 
     if (selected) {
       const waitDays = daysUntil(selected.releaseDate);
-      const totalExpected = selected.expectedCards.length;
+      const totalExpected = selected.expectedCount ?? selected.expectedCards.reduce((sum, card) => sum + (card.quantity || 1), 0);
       const pendingCards = selected.unmatchedCards || [];
       const previewTiles = selected.cards.map(card => slCardTile(card.id, card.collectorNumber, undefined, { preview: true })).join('');
       const referenceTiles = selected.referenceCards.map(card => slCardTile(card.id, undefined, undefined, { reference: true })).join('');
@@ -1282,7 +1308,7 @@ export function renderSlViewer() {
         <div class="sl-upcoming-card-placeholder" title="Scryfall has not published this Secret Lair printing yet">
           <div class="sl-upcoming-placeholder-mark">?</div>
           <strong>${esc(card.displayName || card.name)}</strong>
-          <span>${card.quantity > 1 ? `${card.quantity} copies · ` : ''}Card image and ID pending</span>
+          <span>${card.quantity > 1 ? `${card.quantity} ${card.variantGroup ? 'additional variants' : 'copies'} · ` : ''}Card image and ID pending</span>
         </div>`).join('');
       const unrevealedTile = !totalExpected ? `
         <div class="sl-upcoming-card-placeholder sl-upcoming-unrevealed">
@@ -1290,6 +1316,15 @@ export function renderSlViewer() {
           <strong>Contents not revealed yet</strong>
           <span>This drop is official. Card names and artwork will appear here as sources publish them.</span>
         </div>` : '';
+      const singlesEstimate = slUpcomingSinglesCache.get(selected.drop);
+      const singlesPricing = slUpcomingPricing.has(selected.drop);
+      const singlesPrice = singlesPricing
+        ? '<span class="sl-upcoming-price-working">⏳ Finding cheapest printings…</span>'
+        : singlesEstimate
+          ? `<span><strong>≈ ${fmt(singlesEstimate.value)}</strong><small>${singlesEstimate.pricedCopies}/${singlesEstimate.totalCopies} announced card${singlesEstimate.totalCopies === 1 ? '' : 's'} priced${singlesEstimate.missingNames.length ? ` · unavailable: ${esc(singlesEstimate.missingNames.join(', '))}` : ''}</small></span>
+             <button class="btn btn-ghost" data-slact="price-upcoming-singles" data-arg="${esc(selected.drop)}">Refresh estimate</button>`
+          : `<span><strong>Cheapest-print singles estimate</strong><small>Uses each announced card name and quantity; unreleased artwork is not assigned a made-up price.</small></span>
+             <button class="btn btn-sm" data-slact="price-upcoming-singles" data-arg="${esc(selected.drop)}">💰 Price the singles</button>`;
       return viewToggle() + refreshBtn + `
         <section class="sl-upcoming-page">
           <button class="btn btn-ghost sl-upcoming-back" data-act="ui-set" data-path="slViewer.upcomingDrop" data-val="">&larr; All upcoming drops</button>
@@ -1302,9 +1337,10 @@ export function renderSlViewer() {
             ${selected.url ? `<a href="#" class="btn btn-ghost" data-act="open-url" data-arg="${esc(selected.url)}">Official announcement &rarr;</a>` : ''}
           </div>
           ${selected.summary ? `<p class="sl-upcoming-summary">${esc(selected.summary)}</p>` : ''}
+          <div class="sl-upcoming-price">${singlesPrice}</div>
           <div class="sl-upcoming-coverage">
-            <strong>${selected.cards.length}${totalExpected ? ` of ${totalExpected}` : ''}</strong>
-            <span>${totalExpected ? `exact Secret Lair IDs · ${selected.referenceCards.length} reference printing${selected.referenceCards.length === 1 ? '' : 's'}` : 'card printing IDs available so far'}</span>
+            <strong>${selected.matchedCount ?? selected.cards.length}${totalExpected ? ` of ${totalExpected}` : ''}</strong>
+            <span>${totalExpected ? `${selected.cards.length} exact Secret Lair ID${selected.cards.length === 1 ? '' : 's'} · ${selected.referenceCount ?? selected.referenceCards.length} reference card${(selected.referenceCount ?? selected.referenceCards.length) === 1 ? '' : 's'}` : 'card printing IDs available so far'}</span>
             <small>Reference cards show the announced card identity, not the unreleased Secret Lair artwork. Exact previews replace them automatically when Scryfall publishes those printings.</small>
           </div>
           <div class="gallery-grid sl-upcoming-card-grid">${previewTiles}${referenceTiles}${placeholderTiles}${unrevealedTile}</div>
@@ -1328,7 +1364,7 @@ export function renderSlViewer() {
             <h3>${esc(group.drop)}</h3>
             <p>${esc(formatDate(group.releaseDate))}${waitDays != null ? ` · ${waitDays} day${waitDays === 1 ? '' : 's'} away` : ''}</p>
             <div class="sl-upcoming-drop-foot">
-              <span><strong>${group.cards.length}</strong> exact${group.referenceCards.length ? ` · ${group.referenceCards.length} reference` : ''}${group.expectedCards.length ? ` · ${group.expectedCards.length} announced` : ''}</span>
+              <span><strong>${group.cards.length}</strong> exact${group.referenceCards.length ? ` · ${group.referenceCards.length} reference` : ''}${group.expectedCount ? ` · ${group.expectedCount} announced` : ''}</span>
               <span>Explore &rarr;</span>
             </div>
           </div>
@@ -1630,7 +1666,7 @@ export function renderSlViewer() {
           const hero = [...group.cards, ...group.referenceCards].find(card => card.artCrop || card.imageUri);
           return `<article data-act="ui-set" data-path="slViewer.view" data-val="upcoming" data-also="slViewer.upcomingDrop=${esc(group.drop)}">
             ${hero ? `<img src="${esc(hero.artCrop || hero.imageUri)}" alt="" loading="lazy" data-imgerr="hide">` : '<div class="sl-upcoming-art-pending">Preview pending</div>'}
-            <div><strong>${esc(group.drop)}</strong><span>${esc(group.releaseDate)} · ${group.cards.length} exact${group.referenceCards.length ? ` · ${group.referenceCards.length} reference` : ''}</span></div>
+            <div><strong>${esc(group.drop)}</strong><span>${esc(group.releaseDate)} · ${group.cards.length} exact${group.referenceCards.length ? ` · ${group.referenceCards.length} reference` : ''}${group.expectedCount ? ` · ${group.expectedCount} announced` : ''}</span></div>
           </article>`;
         }).join('')}
       </div>

@@ -2859,6 +2859,22 @@ body[data-binder-open="true"]::before {
   font-size: 12.5px;
   line-height: 1.6;
 }
+.sl-upcoming-price {
+  max-width: 760px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 10px;
+  padding: 11px 13px;
+  background: linear-gradient(110deg, rgba(232,184,75,.08), var(--surface));
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.sl-upcoming-price > span { min-width: 0; }
+.sl-upcoming-price strong { display: block; color: var(--text); font-size: 13px; }
+.sl-upcoming-price small { display: block; margin-top: 2px; color: var(--text-muted); font-size: 9.5px; line-height: 1.45; }
+.sl-upcoming-price-working { color: var(--text-muted); font-size: 11px; }
 .sl-upcoming-coverage {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
@@ -2960,6 +2976,7 @@ body[data-binder-open="true"]::before {
 @media (max-width: 720px) {
   .sl-upcoming-hero,
   .sl-upcoming-detail-head { align-items: flex-start; flex-direction: column; }
+  .sl-upcoming-price { align-items: flex-start; flex-direction: column; }
   .sl-upcoming-stats { justify-content: flex-start; }
   .sl-upcoming-landing-grid { grid-template-columns: 1fr; }
   .sl-upcoming-unrevealed { grid-column: auto; }

@@ -133,6 +133,8 @@ const check = (label, cond, detail) => {
   const ud = renderSlViewer();
   check('upcoming drop reuses the card gallery with a preview printing',
     ud.includes('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa') && ud.includes('sl-card-preview') && ud.includes('1 of 1'));
+  check('upcoming drop offers quantity-aware cheapest-print singles pricing',
+    ud.includes('Cheapest-print singles estimate') && ud.includes('data-slact="price-upcoming-singles"'));
 
   // ── landing tiles date sort: undated superdrop last both directions ─────────
   sv.view = 'drops'; sv.layout = 'tiles'; sv.sort = 'date_asc';

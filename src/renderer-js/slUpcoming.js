@@ -154,21 +154,55 @@ export function buildUpcomingLairs(cards, announcements = [], wikiRows = [], asO
       const matched = [];
       const referenceMatches = [];
       const unmatched = [];
+      const usedExactIds = new Set();
+      const usedReferenceIds = new Set();
       for (const expected of expectedCards) {
         const expectedKey = norm(expected.name);
-        const card = futureCards.find(item => item.releasedAt === releaseDate
-          && (norm(item.name) === expectedKey || norm(item.flavorName) === expectedKey))
-          || references.find(item => item.releasedAt === releaseDate && item.setCode === 'sld'
+        const exactCandidates = [...futureCards, ...references.filter(item => item.setCode === 'sld')]
+          .filter(item => item.releasedAt === releaseDate
+            && (norm(item.name) === expectedKey || norm(item.flavorName) === expectedKey)
+            && !usedExactIds.has(item.id))
+          .filter((item, index, all) => all.findIndex(other => other.id === item.id) === index)
+          .sort((a, b) => a.collectorNumber.localeCompare(b.collectorNumber, undefined, { numeric: true }));
+        const variantQuantity = expected.quantity > 1
+          && (/\btokens?\b/i.test(expected.displayName) || exactCandidates.length > 1);
+        const selectedExact = variantQuantity
+          ? exactCandidates.slice(0, expected.quantity)
+          : exactCandidates.slice(0, 1);
+        for (const card of selectedExact) {
+          usedExactIds.add(card.id);
+          matched.push({
+            ...card,
+            quantity: variantQuantity ? 1 : expected.quantity,
+            displayName: card.flavorName || expected.displayName,
+          });
+        }
+
+        const exactUnits = variantQuantity
+          ? selectedExact.length
+          : (selectedExact.length ? expected.quantity : 0);
+        let remaining = Math.max(0, expected.quantity - exactUnits);
+        if (remaining) {
+          const reference = references.find(item => !usedReferenceIds.has(item.id)
+            && item.setCode !== 'sld'
             && (norm(item.name) === expectedKey || norm(item.flavorName) === expectedKey));
-        if (card) matched.push({ ...card, quantity: expected.quantity, displayName: expected.displayName });
-        else {
-          const reference = references.find(item => norm(item.name) === expectedKey || norm(item.flavorName) === expectedKey);
-          if (reference) referenceMatches.push({ ...reference, quantity: expected.quantity, displayName: expected.displayName });
-          else unmatched.push(expected);
+          if (reference && !selectedExact.length) {
+            usedReferenceIds.add(reference.id);
+            const referenceUnits = variantQuantity ? 1 : remaining;
+            referenceMatches.push({ ...reference, quantity: referenceUnits, displayName: expected.displayName });
+            remaining -= referenceUnits;
+          }
+        }
+        if (remaining) {
+          unmatched.push({ ...expected, quantity: remaining, variantGroup: variantQuantity });
         }
       }
 
-      const coveredCount = matched.length + referenceMatches.length;
+      const expectedCount = expectedCards.reduce((sum, card) => sum + card.quantity, 0);
+      const matchedCount = matched.reduce((sum, card) => sum + card.quantity, 0);
+      const referenceCount = referenceMatches.reduce((sum, card) => sum + card.quantity, 0);
+      const pendingCount = unmatched.reduce((sum, card) => sum + card.quantity, 0);
+      const coveredCount = matchedCount + referenceCount;
 
       groups.push({
         drop,
@@ -180,9 +214,13 @@ export function buildUpcomingLairs(cards, announcements = [], wikiRows = [], asO
         referenceCards: referenceMatches,
         expectedCards,
         unmatchedCards: unmatched,
+        expectedCount,
+        matchedCount,
+        referenceCount,
+        pendingCount,
         status: !expectedCards.length ? 'announced'
-          : (matched.length === expectedCards.length ? 'full'
-            : (coveredCount === expectedCards.length && !matched.length ? 'outlined'
+          : (matchedCount === expectedCount ? 'full'
+            : (coveredCount === expectedCount && !matchedCount ? 'outlined'
               : (coveredCount ? 'partial' : 'pending'))),
         source: 'Wizards + Scryfall',
       });
@@ -205,6 +243,10 @@ export function buildUpcomingLairs(cards, announcements = [], wikiRows = [], asO
       referenceCards: [],
       expectedCards: [],
       unmatchedCards: [],
+      expectedCount: 0,
+      matchedCount: 0,
+      referenceCount: 0,
+      pendingCount: 0,
       status: 'announced',
       source: 'mtg.wiki',
     });
@@ -212,6 +254,28 @@ export function buildUpcomingLairs(cards, announcements = [], wikiRows = [], asO
   }
 
   return groups.sort((a, b) => a.releaseDate.localeCompare(b.releaseDate) || a.drop.localeCompare(b.drop));
+}
+
+export function sumUpcomingCheapest(expectedCards, cheapestByName = {}) {
+  const rows = (Array.isArray(expectedCards) ? expectedCards : []).map(card => {
+    const quantity = Math.max(1, Number(card?.quantity) || 1);
+    const name = clean(card?.name, 180);
+    const hit = cheapestByName?.[name];
+    const unitPrice = hit?.price == null ? null : Number(hit.price);
+    return {
+      name,
+      quantity,
+      unitPrice: Number.isFinite(unitPrice) ? unitPrice : null,
+      setName: clean(hit?.set_name || hit?.setName, 180),
+    };
+  }).filter(row => row.name);
+  return {
+    value: rows.reduce((sum, row) => sum + (row.unitPrice == null ? 0 : row.unitPrice * row.quantity), 0),
+    totalCopies: rows.reduce((sum, row) => sum + row.quantity, 0),
+    pricedCopies: rows.reduce((sum, row) => sum + (row.unitPrice == null ? 0 : row.quantity), 0),
+    missingNames: rows.filter(row => row.unitPrice == null).map(row => row.name),
+    rows,
+  };
 }
 
 export function slUpcomingGroups() {

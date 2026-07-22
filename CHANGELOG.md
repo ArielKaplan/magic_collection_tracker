@@ -12,6 +12,12 @@ user-facing: what changed, not how.
 
 ## [Unreleased]
 
+### Fixed
+- **Upcoming multi-art token drops now show every published variant.** Quantity rows such as “7x Food Tokens” match all distinct future Scryfall IDs instead of stopping after the first card, while unpublished variants remain visibly pending.
+
+### Added
+- **Upcoming drops can price their announced singles.** The Explorer now totals the cheapest available printing for every parsed card name, multiplied by its announced quantity, while keeping that estimate separate from unreleased Secret Lair artwork and prices.
+
 ## [1.6.1] - 2026-07-22
 
 ### Changed
