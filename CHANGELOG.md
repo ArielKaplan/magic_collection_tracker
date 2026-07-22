@@ -12,6 +12,8 @@ user-facing: what changed, not how.
 
 ## [Unreleased]
 
+## [1.6.2] - 2026-07-22
+
 ### Fixed
 - **Upcoming multi-art token drops now show every published variant.** Quantity rows such as “7x Food Tokens” match all distinct future Scryfall IDs instead of stopping after the first card, while unpublished variants remain visibly pending.
 

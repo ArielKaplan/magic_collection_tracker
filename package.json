@@ -1,6 +1,6 @@
 {
   "name": "secret-lair-tracker",
-  "version": "1.6.1",
+  "version": "1.6.2",
   "description": "MTG Secret Lair & collection tracker — desktop edition",
   "main": "src/main/main.js",
   "scripts": {
