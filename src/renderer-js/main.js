@@ -229,6 +229,16 @@ async function init() {
 
   render();
 
+  // Older announcement caches predate structured drop/card extraction. When
+  // the experimental Upcoming feature is enabled, upgrade those cached future
+  // articles in the background so article-level placeholders self-heal.
+  if (NS_features.upcomingSecretLairsEnabled() && NS_slAnnouncements.slAnnouncementsNeedDetailUpgrade()) {
+    setTimeout(async () => {
+      await NS_slUpcoming.refreshUpcomingSources({ silent: true });
+      render();
+    }, 500);
+  }
+
   // First-run welcome — only on a genuinely empty, fresh install.
   await NS_firstRun.maybeShowFirstRun();
 

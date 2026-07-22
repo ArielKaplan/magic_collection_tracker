@@ -1,10 +1,11 @@
-import { insightsEnabled, localIntelligenceConfigured, setInsightsEnabled, setLocalIntelligenceEnabled, syncFeatureVisibility } from './features.js';
+import { insightsEnabled, localIntelligenceConfigured, setInsightsEnabled, setLocalIntelligenceEnabled, setUpcomingSecretLairsEnabled, syncFeatureVisibility, upcomingSecretLairsEnabled } from './features.js';
 import { hideModal, showModal } from './modals.js';
 import { clearPendingPriceSnaps } from './prices.js';
 import { render } from './render.js';
 import { collection } from './state.js';
 import { autoSave } from './storage.js';
 import { renderTickerTape, tickerSettings } from './ticker.js';
+import { refreshUpcomingSources } from './slUpcoming.js';
 import { updaterUI, wireUpdaterUI } from './updaterUI.js';
 import { esc, toast } from './utils.js';
 
@@ -134,7 +135,7 @@ export function showSettings(initialSection = 'general') {
 
           <section class="${panelClass('features')}" data-settings-panel="features">
             <div class="settings-panel-title"><span>Features</span><h2>Choose what appears in your workspace</h2><p>Optional areas stay out of sight until you explicitly turn them on.</p></div>
-            ${settingCard('Advanced features', 'These switches are local preferences—not accounts, subscriptions, or access locks. Both features are off by default.', `
+            ${settingCard('Advanced features', 'These switches are local preferences—not accounts, subscriptions, or access locks. Optional features are off by default.', `
               <div class="settings-feature-stack">
                 <label class="settings-feature-row" for="cfg-insights-enabled">
                   <span class="settings-feature-icon">✦</span>
@@ -148,8 +149,14 @@ export function showSettings(initialSection = 'general') {
                   <input type="checkbox" id="cfg-local-intelligence-enabled" ${localIntelligenceConfigured() ? 'checked' : ''}>
                   <span class="settings-switch" aria-hidden="true"></span>
                 </label>
+                <label class="settings-feature-row" for="cfg-upcoming-secret-lairs-enabled">
+                  <span class="settings-feature-icon">SL</span>
+                  <span class="settings-feature-copy"><strong>Upcoming Secret Lairs <em>experimental</em></strong><small>Explore announced drop contents before release, with exact preview IDs and clearly labeled reference printings.</small><span>Official Wizards announcements + Scryfall · hidden from the Explorer while off</span></span>
+                  <input type="checkbox" id="cfg-upcoming-secret-lairs-enabled" ${upcomingSecretLairsEnabled() ? 'checked' : ''}>
+                  <span class="settings-switch" aria-hidden="true"></span>
+                </label>
               </div>
-              <div class="settings-feature-note">Local Intelligence lives inside <strong>Insights</strong> and requires it. Turning either feature off hides its workspace without deleting reports or changing collection records.</div>`)}
+              <div class="settings-feature-note">Local Intelligence lives inside <strong>Insights</strong> and requires it. Turning an optional feature off hides its workspace without deleting reports, preview caches, or collection records.</div>`)}
           </section>
 
           <section class="${panelClass('pricing')}" data-settings-panel="pricing">
@@ -230,6 +237,7 @@ export function showSettings(initialSection = 'general') {
   }
 
   document.getElementById('cfg-save')?.addEventListener('click', () => {
+    const wasUpcomingEnabled = upcomingSecretLairsEnabled();
     collection.settings.pricechartingKey = document.getElementById('cfg-pckey')?.value.trim() || '';
     collection.settings.cardTraderToken = document.getElementById('cfg-cardtrader-key')?.value.trim() || '';
     const pickChips = id => [...document.querySelectorAll(`#${id} .col-chip-on`)].map(b => b.dataset.val);
@@ -244,9 +252,18 @@ export function showSettings(initialSection = 'general') {
     collection.settings.useBulkData = !!document.getElementById('cfg-bulk-data')?.checked;
     setInsightsEnabled(!!document.getElementById('cfg-insights-enabled')?.checked);
     setLocalIntelligenceEnabled(!!document.getElementById('cfg-local-intelligence-enabled')?.checked);
+    setUpcomingSecretLairsEnabled(!!document.getElementById('cfg-upcoming-secret-lairs-enabled')?.checked);
+    const shouldPrimeUpcoming = !wasUpcomingEnabled && upcomingSecretLairsEnabled();
     syncFeatureVisibility();
     hideModal(); renderTickerTape(); autoSave(); render();
     toast('Settings saved', 'success');
+    if (shouldPrimeUpcoming) {
+      toast('Upcoming Secret Lairs enabled — parsing official announcements…', 'info', 10000);
+      refreshUpcomingSources({ silent: true }).then(ok => {
+        render();
+        toast(ok ? 'Upcoming Secret Lair previews are ready' : 'Upcoming previews enabled; some sources could not refresh', ok ? 'success' : 'info');
+      });
+    }
   });
 
   document.getElementById('cfg-clear-cards')?.addEventListener('click', async () => {
@@ -271,7 +288,7 @@ export function showSettings(initialSection = 'general') {
     collection.cards = []; collection.sealed = []; collection.priceHistory = {}; collection.marketPriceHistory = {};
     collection.cardMetadata = {}; collection.failedLookups = []; collection.slPurchaseLots = []; collection.slBonusPulls = [];
     collection.slWatchList = []; collection.slMarketQuotes = []; collection.savedReports = [];
-    collection.settings = { pricechartingKey: '', cardTraderToken: '', insightsEnabled: false, localIntelligenceEnabled: false };
+    collection.settings = { pricechartingKey: '', cardTraderToken: '', insightsEnabled: false, localIntelligenceEnabled: false, upcomingSecretLairsEnabled: false };
     collection.lastPriceRefresh = null;
     clearPendingPriceSnaps(); syncFeatureVisibility(); hideModal(); render();
     toast('Database reset — starting fresh', 'success');

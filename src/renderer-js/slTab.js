@@ -10,6 +10,7 @@ import { refreshSlBonusData, slBonusCardsForDrop } from './slBonus.js';
 import { refreshSlAnnouncements, slAnnouncements } from './slAnnouncements.js';
 import { refreshSlUpcomingData, slUpcomingCardContext, slUpcomingGroups } from './slUpcoming.js';
 import { evaluateSlWatchAlerts, renderSlIntelligenceView, slLotPnlRows } from './slIntelligence.js';
+import { upcomingSecretLairsEnabled } from './features.js';
 import { collection, tcgcsvCache, ui } from './state.js';
 import { esc, fmt, netFetch, toast, today } from './utils.js';
 import { addDropMissingToWantList, isCardWanted, toggleSlCardWant } from './wantlist.js';
@@ -357,14 +358,16 @@ export function slCardTile(scryfallId, numLabel, requiredFinish, options = {}) {
   const val = owned ? cardCurrentValue(ownedPrintings[0]) : null;
   const note = slCardNote(scryfallId);
   const wanted = !owned && isCardWanted(scryfallId);
-  const preview = !!options.preview && !owned;
+  const reference = !!options.reference;
+  const preview = !!options.preview && !owned && !reference;
+  const sourcedPreview = preview || reference;
   return `
-    <div class="gallery-card${owned ? ' sl-card-owned' : (preview ? ' sl-card-preview' : ' sl-card-missing')}${wanted ? ' sl-card-wanted' : ''}" data-sl-card="${esc(scryfallId)}"
-      data-slact="card-modal" data-arg="${esc(scryfallId)}" title="${owned ? `Owned (qty: ${totalQty})` : (preview ? 'Upcoming preview' : (wanted ? 'On your want list' : 'Not in collection'))}${numLabel ? ` · #${esc(numLabel)}` : ''}">
+    <div class="gallery-card${owned ? ' sl-card-owned' : (sourcedPreview ? ' sl-card-preview' : ' sl-card-missing')}${wanted ? ' sl-card-wanted' : ''}" data-sl-card="${esc(scryfallId)}"
+      data-slact="card-modal" data-arg="${esc(scryfallId)}" title="${reference ? `Reference printing — final Secret Lair printing pending${owned ? ` · owned qty: ${totalQty}` : ''}` : (owned ? `Owned (qty: ${totalQty})` : (preview ? 'Exact upcoming Secret Lair preview' : (wanted ? 'On your want list' : 'Not in collection')))}${numLabel ? ` · #${esc(numLabel)}` : ''}">
       <img src="${esc(img)}" alt="" loading="lazy"
         data-imgerr="hide-card"
-        style="${owned || preview ? '' : 'filter:grayscale(60%) brightness(0.65)'}">
-      ${owned ? `<span class="sl-owned-badge">✓ ${totalQty}</span>` : (wanted ? `<span class="sl-want-badge">★</span>` : (preview ? `<span class="sl-preview-badge">Preview</span>` : `<span class="sl-missing-badge">✗</span>`))}
+        style="${owned || sourcedPreview ? '' : 'filter:grayscale(60%) brightness(0.65)'}">
+      ${reference ? `<span class="sl-preview-badge sl-reference-badge">Reference</span>` : (owned ? `<span class="sl-owned-badge">✓ ${totalQty}</span>` : (wanted ? `<span class="sl-want-badge">★</span>` : (preview ? `<span class="sl-preview-badge">Exact preview</span>` : `<span class="sl-missing-badge">✗</span>`)))}
       ${val != null ? `<span class="gallery-price">${fmt(val)}</span>` : ''}
       ${numLabel ? `<span style="position:absolute;bottom:4px;left:4px;background:rgba(0,0,0,.72);color:#fff;font-size:10px;font-weight:600;padding:1px 5px;border-radius:4px;pointer-events:none">#${esc(numLabel)}</span>` : ''}
       ${note ? `<span title="${esc(note)}" style="position:absolute;top:4px;left:4px;font-size:12px;pointer-events:none">📝</span>` : ''}
@@ -994,6 +997,11 @@ function slDropReleaseDate(drop) {
 
 export function renderSlViewer() {
   const sv = ui.slViewer;
+  const upcomingEnabled = upcomingSecretLairsEnabled();
+  if (!upcomingEnabled && sv.view === 'upcoming') {
+    sv.view = 'drops';
+    sv.upcomingDrop = '';
+  }
   const hasSl = typeof SL_SUPERDROPS !== 'undefined' && typeof SL_DROP_TO_SCRYFALL_IDS !== 'undefined';
   if (!hasSl) return `<div style="padding:40px;text-align:center;color:var(--text-muted)">Secret Lair data not loaded.</div>`;
 
@@ -1238,8 +1246,9 @@ export function renderSlViewer() {
   function viewToggle() {
     const v = sv.view || 'drops';
     const b = (id, label) => `<button class="btn ${v === id ? 'btn-primary' : 'btn-ghost'}" style="font-size:12px" data-act="ui-set" data-path="slViewer.view" data-val="${id}" data-also="slViewer.page=0">${label}</button>`;
-    const upcomingCount = slUpcomingGroups().length;
-    return `<div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">${b('drops', '📦 By Superdrop')}${b('upcoming', `Upcoming${upcomingCount ? ` · ${upcomingCount}` : ''}`)}${b('collector', '🔢 By Collector №')}${b('pnl', '💰 P&L')}${b('index', '📈 Index')}${b('intel', '🧠 Intelligence')}${b('announcements', '📣 Announcements')}</div>`;
+    const upcomingCount = upcomingEnabled ? slUpcomingGroups().length : 0;
+    const upcomingButton = upcomingEnabled ? b('upcoming', `Upcoming${upcomingCount ? ` · ${upcomingCount}` : ''}`) : '';
+    return `<div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">${b('drops', '📦 By Superdrop')}${upcomingButton}${b('collector', '🔢 By Collector №')}${b('pnl', '💰 P&L')}${b('index', '📈 Index')}${b('intel', '🧠 Intelligence')}${b('announcements', '📣 Announcements')}</div>`;
   }
 
   if (sv.view === 'intel') return viewToggle() + renderSlIntelligenceView();
@@ -1260,7 +1269,7 @@ export function renderSlViewer() {
       const current = new Date(`${today()}T00:00:00Z`).getTime();
       return Number.isFinite(target) ? Math.max(0, Math.ceil((target - current) / 86400000)) : null;
     };
-    const statusText = status => ({ full: 'Full preview', partial: 'Partial preview', pending: 'IDs pending', announced: 'Announced' }[status] || 'Announced');
+    const statusText = status => ({ full: 'Full exact preview', partial: 'Partially matched', outlined: 'Card list ready', pending: 'Names parsed', announced: 'Announced' }[status] || 'Announced');
     const selected = groups.find(group => group.drop === sv.upcomingDrop);
 
     if (selected) {
@@ -1268,6 +1277,7 @@ export function renderSlViewer() {
       const totalExpected = selected.expectedCards.length;
       const pendingCards = selected.unmatchedCards || [];
       const previewTiles = selected.cards.map(card => slCardTile(card.id, card.collectorNumber, undefined, { preview: true })).join('');
+      const referenceTiles = selected.referenceCards.map(card => slCardTile(card.id, undefined, undefined, { reference: true })).join('');
       const placeholderTiles = pendingCards.map(card => `
         <div class="sl-upcoming-card-placeholder" title="Scryfall has not published this Secret Lair printing yet">
           <div class="sl-upcoming-placeholder-mark">?</div>
@@ -1294,17 +1304,18 @@ export function renderSlViewer() {
           ${selected.summary ? `<p class="sl-upcoming-summary">${esc(selected.summary)}</p>` : ''}
           <div class="sl-upcoming-coverage">
             <strong>${selected.cards.length}${totalExpected ? ` of ${totalExpected}` : ''}</strong>
-            <span>${totalExpected ? 'officially listed cards linked to real Scryfall printing IDs' : 'card printing IDs available so far'}</span>
-            <small>Preview data stays separate from released product truth until MTGJSON publishes the final SKU contents.</small>
+            <span>${totalExpected ? `exact Secret Lair IDs · ${selected.referenceCards.length} reference printing${selected.referenceCards.length === 1 ? '' : 's'}` : 'card printing IDs available so far'}</span>
+            <small>Reference cards show the announced card identity, not the unreleased Secret Lair artwork. Exact previews replace them automatically when Scryfall publishes those printings.</small>
           </div>
-          <div class="gallery-grid sl-upcoming-card-grid">${previewTiles}${placeholderTiles}${unrevealedTile}</div>
+          <div class="gallery-grid sl-upcoming-card-grid">${previewTiles}${referenceTiles}${placeholderTiles}${unrevealedTile}</div>
         </section>`;
     }
 
     const linkedCards = groups.reduce((sum, group) => sum + group.cards.length, 0);
+    const referenceCards = groups.reduce((sum, group) => sum + group.referenceCards.length, 0);
     const fullPreviews = groups.filter(group => group.status === 'full').length;
     const cards = filtered.map(group => {
-      const hero = group.cards.find(card => card.artCrop || card.imageUri);
+      const hero = [...group.cards, ...group.referenceCards].find(card => card.artCrop || card.imageUri);
       const waitDays = daysUntil(group.releaseDate);
       return `
         <article class="sl-upcoming-drop-card" data-act="ui-set" data-path="slViewer.upcomingDrop" data-val="${esc(group.drop)}">
@@ -1317,7 +1328,7 @@ export function renderSlViewer() {
             <h3>${esc(group.drop)}</h3>
             <p>${esc(formatDate(group.releaseDate))}${waitDays != null ? ` · ${waitDays} day${waitDays === 1 ? '' : 's'} away` : ''}</p>
             <div class="sl-upcoming-drop-foot">
-              <span><strong>${group.cards.length}</strong>${group.expectedCards.length ? ` / ${group.expectedCards.length}` : ''} IDs live</span>
+              <span><strong>${group.cards.length}</strong> exact${group.referenceCards.length ? ` · ${group.referenceCards.length} reference` : ''}${group.expectedCards.length ? ` · ${group.expectedCards.length} announced` : ''}</span>
               <span>Explore &rarr;</span>
             </div>
           </div>
@@ -1329,12 +1340,13 @@ export function renderSlViewer() {
           <div>
             <div class="sl-upcoming-eyebrow">Release horizon</div>
             <h2>Explore upcoming Secret Lairs</h2>
-            <p>Official product announcements are matched to future Scryfall printings as soon as real card IDs and images become public.</p>
+            <p>Official announcements become structured drop lists. Exact future printings appear when available; announced names use clearly labeled reference printings until then.</p>
           </div>
           <div class="sl-upcoming-stats">
             <span><strong>${groups.length}</strong> upcoming drop${groups.length === 1 ? '' : 's'}</span>
-            <span><strong>${linkedCards}</strong> live Scryfall ID${linkedCards === 1 ? '' : 's'}</span>
-            <span><strong>${fullPreviews}</strong> full preview${fullPreviews === 1 ? '' : 's'}</span>
+            <span><strong>${linkedCards}</strong> exact preview ID${linkedCards === 1 ? '' : 's'}</span>
+            <span><strong>${referenceCards}</strong> reference card${referenceCards === 1 ? '' : 's'}</span>
+            <span><strong>${fullPreviews}</strong> fully exact drop${fullPreviews === 1 ? '' : 's'}</span>
           </div>
         </header>
         <div class="sl-upcoming-search">
@@ -1606,7 +1618,7 @@ export function renderSlViewer() {
 
   // Landing — show all superdrops as completion cards, with announced-but-
   // Unreleased drops joined from official announcements, Scryfall, and wiki data.
-  const upcoming = slUpcomingGroups();
+  const upcoming = upcomingEnabled ? slUpcomingGroups() : [];
   const upcomingStrip = upcoming.length ? `
     <section class="sl-upcoming-landing">
       <div class="sl-upcoming-landing-head">
@@ -1615,10 +1627,10 @@ export function renderSlViewer() {
       </div>
       <div class="sl-upcoming-landing-grid">
         ${upcoming.slice(0, 4).map(group => {
-          const hero = group.cards.find(card => card.artCrop || card.imageUri);
+          const hero = [...group.cards, ...group.referenceCards].find(card => card.artCrop || card.imageUri);
           return `<article data-act="ui-set" data-path="slViewer.view" data-val="upcoming" data-also="slViewer.upcomingDrop=${esc(group.drop)}">
             ${hero ? `<img src="${esc(hero.artCrop || hero.imageUri)}" alt="" loading="lazy" data-imgerr="hide">` : '<div class="sl-upcoming-art-pending">Preview pending</div>'}
-            <div><strong>${esc(group.drop)}</strong><span>${esc(group.releaseDate)} · ${group.cards.length}${group.expectedCards.length ? `/${group.expectedCards.length}` : ''} IDs live</span></div>
+            <div><strong>${esc(group.drop)}</strong><span>${esc(group.releaseDate)} · ${group.cards.length} exact${group.referenceCards.length ? ` · ${group.referenceCards.length} reference` : ''}</span></div>
           </article>`;
         }).join('')}
       </div>
@@ -1677,7 +1689,7 @@ export async function showSlViewerModal(scryfallId) {
   const id = scryfallId.toLowerCase();
   const img = `https://cards.scryfall.io/large/front/${id[0]}/${id[1]}/${id}.jpg`;
   const slInfo = typeof getSlInfoById === 'function' ? getSlInfoById(scryfallId) : [];
-  const upcomingInfo = slUpcomingCardContext(scryfallId);
+  const upcomingInfo = upcomingSecretLairsEnabled() ? slUpcomingCardContext(scryfallId) : null;
 
   showModal(`
     <div style="display:flex;gap:22px;align-items:flex-start;flex-wrap:wrap">
@@ -1710,7 +1722,7 @@ export async function showSlViewerModal(scryfallId) {
         `).join('') : ''}
         ${upcomingInfo ? `
           <span style="color:var(--text-muted)">Upcoming drop</span><span class="sl-type-badge">${esc(upcomingInfo.drop)}</span>
-          <span style="color:var(--text-muted)">Releases</span><span>${esc(upcomingInfo.releaseDate)} · preview printing</span>
+          <span style="color:var(--text-muted)">Releases</span><span>${esc(upcomingInfo.releaseDate)} · ${upcomingInfo.matchType === 'reference' ? 'reference printing; final Secret Lair ID pending' : 'exact preview printing'}</span>
         ` : ''}
         ${(typeof preconsContaining === 'function' ? preconsContaining(scryfallId) : []).slice(0, 3).map(p => `
           <span style="color:var(--text-muted)">Precon</span>

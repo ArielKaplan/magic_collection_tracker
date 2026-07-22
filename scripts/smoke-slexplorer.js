@@ -61,7 +61,7 @@ const check = (label, cond, detail) => {
   const { loadSlAnnouncementsFromSettings, slAnnouncements } = await import('../src/renderer-js/slAnnouncements.js');
   const { loadSlUpcomingFromSettings } = await import('../src/renderer-js/slUpcoming.js');
   const { setSlProducts } = await import('../src/renderer-js/slData.js');
-  const { ui } = await import('../src/renderer-js/state.js');
+  const { collection, ui } = await import('../src/renderer-js/state.js');
 
   await loadSlWikiFromSettings();
   await loadSlAnnouncementsFromSettings();
@@ -108,6 +108,8 @@ const check = (label, cond, detail) => {
   check('landing table rows navigate via open-superdrop, newest first, undated last',
     JSON.stringify(sdOrder) === JSON.stringify(['Newer SD', 'Test SD', 'No-date SD']), sdOrder);
   check('landing table has Drops column header', lt.includes('>Drops<'));
+  check('upcoming feature is absent from the Explorer while its advanced setting is off',
+    !lt.includes('Upcoming Secret Lairs') && !lt.includes('data-val="upcoming"'));
 
   const officialPreview = lt.slice(lt.indexOf('Official Wizards announcements'));
   check('landing announcement strip previews exactly four articles',
@@ -122,10 +124,11 @@ const check = (label, cond, detail) => {
   check('all-announcements view explains omitted product prices and contains no parsed price',
     av.includes('Product prices are omitted') && !av.includes('$29.99') && !av.includes('announced price'));
 
+  collection.settings.upcomingSecretLairsEnabled = true;
   Object.assign(sv, { view: 'upcoming', upcomingDrop: '', search: '' });
   const uv = renderSlViewer();
   check('upcoming view renders an official drop with exact Scryfall coverage',
-    uv.includes('Explore upcoming Secret Lairs') && uv.includes('Future Preview Drop') && uv.includes('<strong>1</strong> live Scryfall ID'));
+    uv.includes('Explore upcoming Secret Lairs') && uv.includes('Future Preview Drop') && uv.includes('<strong>1</strong> exact preview ID'));
   sv.upcomingDrop = 'Future Preview Drop';
   const ud = renderSlViewer();
   check('upcoming drop reuses the card gallery with a preview printing',

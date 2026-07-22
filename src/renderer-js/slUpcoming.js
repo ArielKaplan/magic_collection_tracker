@@ -4,12 +4,13 @@
 // Scryfall knows exact future SLD printing IDs and card images. This module
 // joins those two sources without pretending that unrevealed cards exist.
 
-import { slAnnouncements } from './slAnnouncements.js';
+import { refreshSlAnnouncements, slAnnouncements } from './slAnnouncements.js';
 import { upcomingSlDrops } from './slWiki.js';
 import { netFetch, today } from './utils.js';
 
 const SETTINGS_KEY = 'sl_upcoming_data';
 const MAX_PAGES = 5;
+const COLLECTION_BATCH_SIZE = 75;
 
 const clean = (value, max = 300) => String(value || '').replace(/\s+/g, ' ').trim().slice(0, max);
 const norm = value => clean(value).toLowerCase()
@@ -31,6 +32,7 @@ export function compactUpcomingScryfallCard(card) {
     finishes: Array.isArray(card?.finishes) ? card.finishes.map(value => clean(value, 20)).filter(Boolean) : [],
     typeLine: clean(card?.type_line || card?.typeLine || face.type_line, 180),
     rarity: clean(card?.rarity, 30),
+    setCode: clean(card?.set || card?.setCode, 12).toLowerCase(),
     imageUri: safeImage(images.normal || card?.imageUri),
     artCrop: safeImage(images.art_crop || card?.artCrop),
     scryfallUri: /^https:\/\/scryfall\.com\//i.test(card?.scryfall_uri || card?.scryfallUri || '') ? (card.scryfall_uri || card.scryfallUri) : '',
@@ -42,9 +44,12 @@ const sanitizeCache = value => ({
   cards: (Array.isArray(value?.cards) ? value.cards : [])
     .map(compactUpcomingScryfallCard)
     .filter(card => card.id && card.name && card.releasedAt),
+  references: (Array.isArray(value?.references) ? value.references : [])
+    .map(compactUpcomingScryfallCard)
+    .filter(card => card.id && card.name && card.releasedAt),
 });
 
-let upcomingData = null; // { fetchedAt, cards }
+let upcomingData = null; // { fetchedAt, cards, references }
 
 export async function loadSlUpcomingFromSettings() {
   try {
@@ -68,9 +73,41 @@ export async function refreshSlUpcomingData(opts = {}) {
       cards.push(...(json.data || []).map(compactUpcomingScryfallCard));
       url = json.has_more ? json.next_page : null;
     }
-    upcomingData = sanitizeCache({ fetchedAt: new Date().toISOString(), cards });
+    const announcedNames = [];
+    const seenNames = new Set();
+    for (const article of slAnnouncements()) {
+      if (!article?.saleDate || article.saleDate <= today()) continue;
+      for (const drop of (article.revealedDrops || [])) {
+        for (const item of (drop.cards || [])) {
+          const name = clean(item?.name, 180);
+          const key = norm(name);
+          if (name && !seenNames.has(key)) {
+            seenNames.add(key);
+            announcedNames.push(name);
+          }
+        }
+      }
+    }
+
+    // Scryfall may not have assigned the future SLD printing yet. Resolve the
+    // announced oracle names in bulk so the UI can show a clearly labeled
+    // reference printing instead of an empty silhouette in the meantime.
+    const references = [];
+    for (let i = 0; i < announcedNames.length; i += COLLECTION_BATCH_SIZE) {
+      const identifiers = announcedNames.slice(i, i + COLLECTION_BATCH_SIZE).map(name => ({ name }));
+      const response = await netFetch('https://api.scryfall.com/cards/collection', {
+        method: 'POST',
+        headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identifiers }),
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status} from Scryfall collection lookup`);
+      const json = await response.json();
+      references.push(...(json.data || []).map(compactUpcomingScryfallCard));
+    }
+
+    upcomingData = sanitizeCache({ fetchedAt: new Date().toISOString(), cards, references });
     await window.api?.settings?.set(SETTINGS_KEY, JSON.stringify(upcomingData));
-    window.logger?.success?.('SL', `Upcoming previews: ${upcomingData.cards.length} future Scryfall printings`);
+    window.logger?.success?.('SL', `Upcoming previews: ${upcomingData.cards.length} future Scryfall printings · ${upcomingData.references.length} named references`);
     return true;
   } catch (error) {
     if (!opts.silent) window.logger?.warn?.('SL', `upcoming preview sync failed (using last good data): ${error.message}`);
@@ -78,12 +115,24 @@ export async function refreshSlUpcomingData(opts = {}) {
   }
 }
 
+export async function refreshUpcomingSources(opts = {}) {
+  const announcementsOk = await refreshSlAnnouncements({ silent: true });
+  const previewsOk = await refreshSlUpcomingData({ silent: true });
+  if (!opts.silent && (!announcementsOk || !previewsOk)) {
+    window.logger?.warn?.('SL', 'Upcoming preview refresh completed with a source unavailable; last-good cache retained where possible');
+  }
+  return announcementsOk && previewsOk;
+}
+
 const articleGroupName = title => clean(title, 240).replace(/^Secret Lair\s*:\s*/i, '') || 'Upcoming Secret Lair';
 
-export function buildUpcomingLairs(cards, announcements = [], wikiRows = [], asOf = today()) {
+export function buildUpcomingLairs(cards, announcements = [], wikiRows = [], asOf = today(), referenceCards = []) {
   const futureCards = (Array.isArray(cards) ? cards : [])
     .map(compactUpcomingScryfallCard)
     .filter(card => card.id && card.releasedAt > asOf);
+  const references = (Array.isArray(referenceCards) ? referenceCards : [])
+    .map(compactUpcomingScryfallCard)
+    .filter(card => card.id && card.name);
   const groups = [];
   const seen = new Set();
 
@@ -103,14 +152,23 @@ export function buildUpcomingLairs(cards, announcements = [], wikiRows = [], asO
         quantity: Math.max(1, Number(item?.quantity) || 1),
       })).filter(item => item.name);
       const matched = [];
+      const referenceMatches = [];
       const unmatched = [];
       for (const expected of expectedCards) {
         const expectedKey = norm(expected.name);
         const card = futureCards.find(item => item.releasedAt === releaseDate
-          && (norm(item.name) === expectedKey || norm(item.flavorName) === expectedKey));
+          && (norm(item.name) === expectedKey || norm(item.flavorName) === expectedKey))
+          || references.find(item => item.releasedAt === releaseDate && item.setCode === 'sld'
+            && (norm(item.name) === expectedKey || norm(item.flavorName) === expectedKey));
         if (card) matched.push({ ...card, quantity: expected.quantity, displayName: expected.displayName });
-        else unmatched.push(expected);
+        else {
+          const reference = references.find(item => norm(item.name) === expectedKey || norm(item.flavorName) === expectedKey);
+          if (reference) referenceMatches.push({ ...reference, quantity: expected.quantity, displayName: expected.displayName });
+          else unmatched.push(expected);
+        }
       }
+
+      const coveredCount = matched.length + referenceMatches.length;
 
       groups.push({
         drop,
@@ -119,9 +177,13 @@ export function buildUpcomingLairs(cards, announcements = [], wikiRows = [], asO
         url: clean(article.url, 500),
         summary: clean(article.summary, 700),
         cards: matched,
+        referenceCards: referenceMatches,
         expectedCards,
         unmatchedCards: unmatched,
-        status: !expectedCards.length ? 'announced' : (matched.length === expectedCards.length ? 'full' : (matched.length ? 'partial' : 'pending')),
+        status: !expectedCards.length ? 'announced'
+          : (matched.length === expectedCards.length ? 'full'
+            : (coveredCount === expectedCards.length && !matched.length ? 'outlined'
+              : (coveredCount ? 'partial' : 'pending'))),
         source: 'Wizards + Scryfall',
       });
       seen.add(key);
@@ -140,6 +202,7 @@ export function buildUpcomingLairs(cards, announcements = [], wikiRows = [], asO
       url: '',
       summary: '',
       cards: [],
+      referenceCards: [],
       expectedCards: [],
       unmatchedCards: [],
       status: 'announced',
@@ -152,14 +215,16 @@ export function buildUpcomingLairs(cards, announcements = [], wikiRows = [], asO
 }
 
 export function slUpcomingGroups() {
-  return buildUpcomingLairs(upcomingData?.cards || [], slAnnouncements(), upcomingSlDrops(), today());
+  return buildUpcomingLairs(upcomingData?.cards || [], slAnnouncements(), upcomingSlDrops(), today(), upcomingData?.references || []);
 }
 
 export function slUpcomingCardContext(scryfallId) {
   const id = String(scryfallId || '').toLowerCase();
   for (const group of slUpcomingGroups()) {
     const card = group.cards.find(item => item.id === id);
-    if (card) return { ...group, card };
+    if (card) return { ...group, card, matchType: 'exact' };
+    const reference = group.referenceCards.find(item => item.id === id);
+    if (reference) return { ...group, card: reference, matchType: 'reference' };
   }
   return null;
 }
@@ -171,5 +236,6 @@ export function slUpcomingInfo() {
     printingCount: upcomingData.cards.length,
     groupCount: groups.length,
     matchedCount: groups.reduce((sum, group) => sum + group.cards.length, 0),
+    referenceCount: groups.reduce((sum, group) => sum + group.referenceCards.length, 0),
   } : null;
 }

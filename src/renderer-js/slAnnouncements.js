@@ -48,6 +48,7 @@ export const sanitizeAnnouncementRow = row => {
     bundles: cleanHumanList(clean.bundles, 20, 240),
     officialNotes: cleanHumanList(clean.officialNotes, 12, 420),
     revealedDrops: cleanRevealedDrops(clean.revealedDrops),
+    detailVersion: Math.max(0, Number(clean.detailVersion) || 0),
   };
 };
 
@@ -151,6 +152,7 @@ export function parseAnnouncementDetailHtml(html, seed = {}) {
     bundles: [...new Set(bundles)].slice(0, 20),
     officialNotes: [...new Set(noteLines)].slice(0, 12),
     revealedDrops: parseRevealedDrops(source),
+    detailVersion: 2,
     summary: seed.summary || firstSummary || body.slice(0, 600),
   });
 }
@@ -204,6 +206,9 @@ export async function refreshSlAnnouncements(opts = {}) {
 }
 
 export function slAnnouncements() { return announcementData?.rows || []; }
+export function slAnnouncementsNeedDetailUpgrade(asOf = new Date().toISOString().slice(0, 10)) {
+  return slAnnouncements().some(row => row?.saleDate > asOf && row.detailVersion < 2);
+}
 export function slAnnouncementInfo() {
   return announcementData ? { fetchedAt: announcementData.fetchedAt, count: announcementData.rows.length } : null;
 }

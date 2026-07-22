@@ -21,7 +21,7 @@ globalThis.confirm = () => true;
 (async () => {
   const { showSettings } = await import('../src/renderer-js/settings.js');
   const { collection } = await import('../src/renderer-js/state.js');
-  collection.settings = { pricechartingKey: '', cardTraderToken: '', insightsEnabled: false, localIntelligenceEnabled: false };
+  collection.settings = { pricechartingKey: '', cardTraderToken: '', insightsEnabled: false, localIntelligenceEnabled: false, upcomingSecretLairsEnabled: false };
   collection.cards = [];
   collection.savedReports = [{ id: 'r1' }];
   showSettings('features');
@@ -33,6 +33,7 @@ globalThis.confirm = () => true;
     focusedFeatures: /settings-panel active" data-settings-panel="features"/.test(markup),
     insightsOptIn: markup.includes('id="cfg-insights-enabled"') && !markup.includes('id="cfg-insights-enabled" checked'),
     intelligenceOptIn: markup.includes('id="cfg-local-intelligence-enabled"') && !markup.includes('id="cfg-local-intelligence-enabled" checked'),
+    upcomingOptIn: markup.includes('id="cfg-upcoming-secret-lairs-enabled"') && !markup.includes('id="cfg-upcoming-secret-lairs-enabled" checked'),
     localPrivacy: markup.includes('no API key') && markup.includes('no collection data leaves this computer'),
     preservesReports: markup.includes('1 saved report on this computer'),
     pricingControls: markup.includes('id="cfg-pckey"') && markup.includes('id="cfg-bulk-data"'),

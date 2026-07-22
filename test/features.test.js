@@ -1,15 +1,19 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { insightsEnabled, localIntelligenceConfigured, localIntelligenceEnabled, setInsightsEnabled, setLocalIntelligenceEnabled, syncFeatureVisibility } from '../src/renderer-js/features.js';
+import { insightsEnabled, localIntelligenceConfigured, localIntelligenceEnabled, setInsightsEnabled, setLocalIntelligenceEnabled, setUpcomingSecretLairsEnabled, syncFeatureVisibility, upcomingSecretLairsEnabled } from '../src/renderer-js/features.js';
 import { collection, ui } from '../src/renderer-js/state.js';
 
 const originalSettings = { ...collection.settings };
 const originalTab = ui.activeTab;
 const originalInsightsView = ui.insights.view;
+const originalSlView = ui.slViewer.view;
+const originalUpcomingDrop = ui.slViewer.upcomingDrop;
 
 afterEach(() => {
   collection.settings = { ...originalSettings };
   ui.activeTab = originalTab;
   ui.insights.view = originalInsightsView;
+  ui.slViewer.view = originalSlView;
+  ui.slViewer.upcomingDrop = originalUpcomingDrop;
   delete globalThis.document;
 });
 
@@ -29,6 +33,19 @@ describe('optional feature visibility', () => {
     expect(localIntelligenceEnabled()).toBe(false);
     setInsightsEnabled(true);
     expect(localIntelligenceEnabled()).toBe(true);
+  });
+
+  it('keeps Upcoming Secret Lairs off until explicitly enabled and exits its view when disabled', () => {
+    collection.settings = {};
+    expect(upcomingSecretLairsEnabled()).toBe(false);
+    setUpcomingSecretLairsEnabled(true);
+    expect(upcomingSecretLairsEnabled()).toBe(true);
+    setUpcomingSecretLairsEnabled(false);
+    ui.slViewer.view = 'upcoming';
+    ui.slViewer.upcomingDrop = 'Future Drop';
+    syncFeatureVisibility();
+    expect(ui.slViewer.view).toBe('drops');
+    expect(ui.slViewer.upcomingDrop).toBe('');
   });
 
   it('hides the navigation entry and exits Insights when disabled', () => {

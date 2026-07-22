@@ -24,12 +24,25 @@ export function setLocalIntelligenceEnabled(enabled) {
   collection.settings.localIntelligenceEnabled = enabled === true;
 }
 
+export function upcomingSecretLairsEnabled() {
+  return collection.settings?.upcomingSecretLairsEnabled === true;
+}
+
+export function setUpcomingSecretLairsEnabled(enabled) {
+  collection.settings = collection.settings || {};
+  collection.settings.upcomingSecretLairsEnabled = enabled === true;
+}
+
 // Keep optional features absent from normal navigation until enabled. This is
 // presentation gating only — no account, entitlement, or security claim.
 export function syncFeatureVisibility() {
   const enabled = insightsEnabled();
   const leavingInsights = !enabled && ui.activeTab === 'insights';
   if (!localIntelligenceEnabled() && ui.insights?.view === 'intelligence') ui.insights.view = 'build';
+  if (!upcomingSecretLairsEnabled() && ui.slViewer?.view === 'upcoming') {
+    ui.slViewer.view = 'drops';
+    ui.slViewer.upcomingDrop = '';
+  }
   if (leavingInsights) ui.activeTab = 'dashboard';
   if (typeof document !== 'undefined') {
     const tab = document.getElementById('insightsTab');

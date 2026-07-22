@@ -2672,6 +2672,10 @@ body[data-binder-open="true"]::before {
   letter-spacing: .045em;
   text-transform: uppercase;
 }
+.sl-reference-badge {
+  color: #eaf4ff;
+  background: rgba(60, 111, 164, .96);
+}
 .sl-upcoming-page {
   max-width: 1180px;
 }
@@ -2816,6 +2820,8 @@ body[data-binder-open="true"]::before {
 }
 .sl-upcoming-status.status-full { color: var(--green); }
 .sl-upcoming-status.status-partial { color: var(--accent2); }
+.sl-upcoming-status.status-outlined { color: #8fc5ff; }
+.sl-upcoming-status.status-pending { color: var(--text-dim); }
 .sl-upcoming-drop-body { padding: 13px 14px; }
 .sl-upcoming-drop-body h3 {
   margin: 4px 0 6px;

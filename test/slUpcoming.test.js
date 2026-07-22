@@ -47,6 +47,18 @@ describe('upcoming Secret Lair source join', () => {
     expect(groups[0].unmatchedCards.map(card => card.name)).toEqual(['Food']);
   });
 
+  it('fills announced-name gaps with labeled reference printings without treating them as exact SLD previews', () => {
+    const references = [
+      { id: 'cccccccc-cccc-cccc-cccc-cccccccccccc', name: 'Wedding Ring', released_at: '2021-11-19', set: 'voc', collector_number: '32' },
+      { id: 'dddddddd-dddd-dddd-dddd-dddddddddddd', name: 'Food', released_at: '2024-01-01', set: 'tclb', collector_number: '18' },
+    ];
+    const groups = buildUpcomingLairs([cards[0]], announcements, [], '2099-07-01', references);
+    expect(groups[0].cards.map(card => card.name)).toEqual(['Stardew Valley']);
+    expect(groups[0].referenceCards.map(card => card.name)).toEqual(['Wedding Ring', 'Food']);
+    expect(groups[0].unmatchedCards).toEqual([]);
+    expect(groups[0].status).toBe('partial');
+  });
+
   it('preserves announced wiki drops even before any card IDs are public', () => {
     const groups = buildUpcomingLairs([], [], [{
       drop: 'Unrevealed Drop', superdrop: 'Future Superdrop', date: '2099-08-10',

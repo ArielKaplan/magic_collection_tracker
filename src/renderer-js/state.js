@@ -63,7 +63,7 @@ export function makeCollection() {
   return {
     version: 3,
     lastPriceRefresh: null,
-    settings: { pricechartingKey: '', cardTraderToken: '', insightsEnabled: false, localIntelligenceEnabled: false },
+    settings: { pricechartingKey: '', cardTraderToken: '', insightsEnabled: false, localIntelligenceEnabled: false, upcomingSecretLairsEnabled: false },
     cards: [],
     sealed: [],
     wantList: [],   // cards the user wants to acquire (see wantlist.js)
