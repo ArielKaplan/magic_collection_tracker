@@ -109,9 +109,9 @@ const check = (label, cond, detail) => {
   Object.assign(sv, { view: 'announcements', superdrop: '', drop: '' });
   const av = renderSlViewer();
   check('all-announcements view renders every cached article',
-    ANNOUNCEMENTS.every(row => av.includes(row.title)) && av.includes('6 cached articles'));
-  check('all-announcements view documents the 20-result cap and contains no parsed price',
-    av.includes('up to 20') && !av.includes('$29.99') && !av.includes('announced price'));
+    ANNOUNCEMENTS.every(row => av.includes(row.title)) && av.includes('6 recent articles'));
+  check('all-announcements view explains omitted product prices and contains no parsed price',
+    av.includes('Product prices are omitted') && !av.includes('$29.99') && !av.includes('announced price'));
 
   // ── landing tiles date sort: undated superdrop last both directions ─────────
   sv.view = 'drops'; sv.layout = 'tiles'; sv.sort = 'date_asc';
