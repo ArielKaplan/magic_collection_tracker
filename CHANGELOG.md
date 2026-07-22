@@ -12,6 +12,9 @@ user-facing: what changed, not how.
 
 ## [Unreleased]
 
+### Fixed
+- **Card previews now size themselves to their content.** Owned and unowned card dialogs expand across available desktop space, wrap long card and drop details without sideways scrolling, and collapse into a clean single-column layout on smaller windows.
+
 ## [1.6.2] - 2026-07-22
 
 ### Fixed

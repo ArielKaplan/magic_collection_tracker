@@ -1557,6 +1557,56 @@ body[data-binder-open="true"]::before {
 @keyframes slideUp { from { transform: translateY(18px) scale(0.98); opacity: 0; } to { transform: translateY(0) scale(1); opacity: 1; } }
 .modal.modal-wide { max-width: 820px; }
 
+/* Card details use the available desktop space instead of inheriting the
+   generic 560px dialog. Long rules text and drop names wrap inside the data
+   column, so the dialog never needs a horizontal scrollbar. */
+.modal.modal-card {
+  width: fit-content;
+  min-width: min(720px, calc(100vw - 40px));
+  max-width: min(980px, calc(100vw - 40px));
+  box-sizing: border-box;
+  overflow-x: hidden;
+}
+.modal-card #modal-content { min-width: 0; max-width: 100%; }
+.card-detail-layout {
+  display: grid;
+  grid-template-columns: minmax(220px, 280px) minmax(360px, 1fr);
+  gap: 22px;
+  align-items: start;
+}
+.card-detail-layout-no-image { grid-template-columns: minmax(360px, 1fr); }
+.card-detail-image {
+  display: block;
+  width: 100%;
+  max-width: 280px;
+  border-radius: 12px;
+  box-shadow: 0 6px 28px rgba(0, 0, 0, 0.65);
+}
+.card-detail-content { min-width: 0; width: 100%; }
+.card-detail-copy { min-width: 0; color: var(--text-muted); font-size: 13px; padding-top: 8px; }
+.card-detail-grid {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 4px 14px;
+  font-size: 13px;
+  margin-bottom: 16px;
+}
+.card-detail-grid > * { min-width: 0; overflow-wrap: anywhere; }
+.card-detail-grid .sl-type-badge {
+  max-width: 100%;
+  white-space: normal;
+  line-height: 1.45;
+  justify-self: start;
+}
+.card-detail-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+
+@media (max-width: 760px) {
+  .modal.modal-card { width: 100%; min-width: 0; max-width: 560px; padding: 24px; }
+  .card-detail-layout,
+  .card-detail-layout-no-image { grid-template-columns: minmax(0, 1fr); }
+  .card-detail-image { width: min(100%, 280px); justify-self: center; }
+}
+
 .modal h2 {
   font-size: 24px;
   font-weight: 700;

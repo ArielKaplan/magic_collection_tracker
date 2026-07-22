@@ -1728,14 +1728,12 @@ export async function showSlViewerModal(scryfallId) {
   const upcomingInfo = upcomingSecretLairsEnabled() ? slUpcomingCardContext(scryfallId) : null;
 
   showModal(`
-    <div style="display:flex;gap:22px;align-items:flex-start;flex-wrap:wrap">
-      <img src="${esc(img)}" alt=""
-        style="width:240px;border-radius:12px;box-shadow:0 6px 28px rgba(0,0,0,0.65);flex-shrink:0"
-        data-imgerr="hide">
-      <div style="flex:1;min-width:200px">
-        <div id="sl-modal-details" style="color:var(--text-muted);font-size:13px;padding-top:8px">Loading card details…</div>
+    <div class="card-detail-layout">
+      <img class="card-detail-image" src="${esc(img)}" alt="" data-imgerr="hide">
+      <div class="card-detail-content">
+        <div id="sl-modal-details" class="card-detail-copy">Loading card details…</div>
       </div>
-    </div>`);
+    </div>`, 'card');
 
   try {
     const resp = await netFetch(`https://api.scryfall.com/cards/${scryfallId}`);
@@ -1747,7 +1745,7 @@ export async function showSlViewerModal(scryfallId) {
     el.innerHTML = `
       <h2 style="margin:0 0 4px;color:var(--text)">${esc(data.name || '')}</h2>
       <div style="color:var(--text-muted);font-size:13px;margin-bottom:14px">${esc(data.set_name || '')} · ${esc((data.set || '').toUpperCase())} · #${esc(data.collector_number || '?')}</div>
-      <div style="display:grid;grid-template-columns:auto 1fr;gap:4px 14px;font-size:13px;margin-bottom:16px">
+      <div class="card-detail-grid">
         <span style="color:var(--text-muted)">Rarity</span>   <span style="text-transform:capitalize">${esc(data.rarity || '—')}</span>
         <span style="color:var(--text-muted)">Type</span>     <span>${esc(data.type_line || '—')}</span>
         <span style="color:var(--text-muted)">CMC</span>      <span>${data.cmc ?? '—'}</span>
@@ -1767,7 +1765,7 @@ export async function showSlViewerModal(scryfallId) {
         <span style="color:var(--text-muted)">In binder</span><span style="color:#f87171;font-weight:600">Not owned</span>
       </div>
       ${data.prices?.usd ? `<div style="font-size:22px;font-weight:700;color:var(--text);margin-bottom:14px">$${data.prices.usd}</div>` : ''}
-      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <div class="card-detail-actions">
         <a href="${esc(scryfallUrl)}" target="_blank" class="btn btn-ghost" style="font-size:12px;text-decoration:none">View on Scryfall ↗</a>
         <button class="btn btn-ghost" style="font-size:12px" data-slact="open-printings" data-arg="${esc(data.name || '')}">View all printings ◇</button>
         <button class="btn btn-primary" style="font-size:12px" data-slact="add-owned" data-arg="${esc(scryfallId)}">＋ Add owned copy</button>
