@@ -31,12 +31,14 @@
 
 <style>
   .empty { color: var(--text-muted, #4a4668); font-size: 12px; padding: 6px 0; }
-  table { width: 100%; border-collapse: collapse; font-size: 11.5px; }
-  th { text-align: left; font-weight: 600; color: var(--text-dim, #7a7692); border-bottom: 1px solid var(--border, #252545); padding: 4px 6px; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.05em; }
-  td { padding: 4px 6px; border-bottom: 1px solid rgba(255,255,255,0.03); }
-  .name { font-weight: 600; max-width: 130px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  table { width: 100%; border-collapse: collapse; table-layout: auto; font-size: 12px; }
+  th { text-align: left; font-weight: 650; color: var(--text-muted, #6f6d76); border-bottom: 1px solid var(--border, #252545); padding: 5px 8px 8px; font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.065em; }
+  td { padding: 6px 8px; border-bottom: 1px solid rgba(255,255,255,0.035); line-height: 1.25; }
+  th:nth-child(n+4), td:nth-child(n+4) { text-align: right; font-variant-numeric: tabular-nums lining-nums; }
+  tbody tr:hover td { background: rgba(255,255,255,.018); }
+  .name { font-weight: 620; min-width: 150px; max-width: 260px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .dim { color: var(--text-dim, #7a7692); }
-  .strong { font-weight: 700; }
+  .strong { font-weight: 680; }
   .up { color: var(--green, #3dba6f); }
   .down { color: var(--red, #e05555); }
 </style>

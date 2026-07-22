@@ -12,8 +12,8 @@
 
 {#if !rg.count}
   <div class="empty">
-    No sales recorded yet. Right-click a card or sealed product →
-    <strong>💵 Sell / dispose</strong> to log a sale and see realized gains here.
+    <span class="empty-mark"></span>
+    <div><strong>No realized activity yet</strong><p>Use <b>Sell / dispose</b> on a card or sealed product to build this history.</p></div>
   </div>
 {:else}
   <div class="totals">
@@ -42,7 +42,13 @@
 {/if}
 
 <style>
-  .empty { color: var(--text-muted, #9a96aa); font-size: 13px; line-height: 1.6; padding: 8px 2px; }
+  .empty { height: 100%; min-height: 110px; display: flex; align-items: center; justify-content: center; gap: 13px; padding: 18px; color: var(--text-muted, #6f6d76); border: 1px dashed var(--border); border-radius: 10px; background: rgba(255,255,255,.012); }
+  .empty-mark { width: 34px; height: 34px; flex: 0 0 auto; border: 1px solid var(--border2); border-radius: 50%; position: relative; }
+  .empty-mark::before { content: ''; position: absolute; left: 9px; right: 9px; top: 16px; height: 1px; background: var(--text-muted); }
+  .empty strong,.empty p { display: block; }
+  .empty strong { color: var(--text); font-size: 12.5px; font-weight: 640; }
+  .empty p { margin: 4px 0 0; max-width: 280px; font-size: 11px; line-height: 1.5; }
+  .empty b { color: var(--text-dim); font-weight: 600; }
   .totals { margin-bottom: 14px; }
   .big { font-size: 26px; font-weight: 800; letter-spacing: -0.02em; line-height: 1; }
   .totals-sub { font-size: 11.5px; color: var(--text-dim, #7a7692); margin-top: 4px; }

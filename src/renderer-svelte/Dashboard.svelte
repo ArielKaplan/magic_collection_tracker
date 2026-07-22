@@ -1,34 +1,71 @@
 <script>
   import { onMount, onDestroy } from 'svelte';
   import Panel from './Panel.svelte';
+  import LedgerIcon from './LedgerIcon.svelte';
   import CustomChart from './panels/CustomChart.svelte';
   import { PANELS, panelDef, isCustomPanel, defaultLayout } from './panels.js';
   import { layout, snapEnabled } from './stores.js';
 
   const SETTING_KEY = 'dashboard_layout_v2';
   const AUTO_KEY = 'dashboard_auto_layout';
+  const VISUAL_LAYOUT_KEY = 'dashboard_visual_layout_version';
+  const VISUAL_LAYOUT_VERSION = 3;
   let saveTimer;
   let canvasEl;
   let resizeObs;
   let arrangeTimer;
   let autoLayout = true;
+  let responsiveWidths = new Map();
+  let showCustomize = false;
+  let customizeEl;
+
+  const PANEL_GROUPS = [
+    { label: 'Portfolio summary', ids: ['kpi-total', 'kpi-cards', 'kpi-sealed', 'kpi-cost', 'kpi-realized', 'kpi-refresh'] },
+    { label: 'Collection', ids: ['kpi-binders', 'kpi-want', 'cotd', 'top10', 'stats'] },
+    { label: 'Performance', ids: ['portfolio-history', 'sl-index', 'realized-gains', 'top-movers'] },
+    { label: 'Breakdowns', ids: ['val-binder', 'val-color', 'val-type', 'val-cmc', 'val-rarity', 'set-count', 'set-value', 'year-count'] },
+  ];
+  const CURATED_ORDER = [
+    'kpi-total', 'kpi-cards', 'kpi-sealed', 'kpi-cost',
+    'kpi-binders', 'kpi-want', 'kpi-realized', 'kpi-refresh',
+    'portfolio-history', 'sl-index',
+    'top-movers', 'val-binder',
+    'cotd', 'top10', 'stats', 'realized-gains',
+    'val-color', 'val-type', 'val-rarity', 'val-cmc',
+    'set-count', 'set-value', 'year-count',
+  ];
 
   let panelsState = [];
   const unsub = layout.subscribe(v => panelsState = v);
   onDestroy(unsub);
 
   onMount(async () => {
-    const raw = await window.api.settings.get(SETTING_KEY);
+    const [raw, rawAuto, rawVisualVersion] = await Promise.all([
+      window.api.settings.get(SETTING_KEY),
+      window.api.settings.get(AUTO_KEY),
+      window.api.settings.get(VISUAL_LAYOUT_KEY),
+    ]);
+    autoLayout = rawAuto == null || rawAuto === '' ? true : rawAuto === '1';
     let parsed = null;
     if (raw) { try { parsed = JSON.parse(raw); } catch {} }
-    const initial = (parsed && Array.isArray(parsed) && parsed.length) ? parsed : defaultLayout();
+    let initial = (parsed && Array.isArray(parsed) && parsed.length) ? parsed : defaultLayout();
+
+    // Auto-arranged dashboards adopt the new editorial sizing once. Manual
+    // layouts remain untouched because their positions are user-authored.
+    if (autoLayout && Number(rawVisualVersion || 0) < VISUAL_LAYOUT_VERSION) {
+      initial = initial.map(p => {
+        const def = panelDef(p.id);
+        return def ? { ...p, width: def.defaultSize.w, height: def.defaultSize.h } : p;
+      });
+      window.api.settings.set(VISUAL_LAYOUT_KEY, String(VISUAL_LAYOUT_VERSION)).catch?.(() => {});
+    }
     // Ensure every defined panel has a state row (so newly-added panel types
     // appear after a code update without the user needing to reset). They're
     // added visible — a new panel type is a new feature worth surfacing; the
     // user can hide it. Auto-layout (on by default) tiles it into the canvas.
     for (const def of PANELS) {
       if (!initial.find(p => p.id === def.id)) {
-        initial.push({ id: def.id, x: 12, y: 12, width: def.defaultSize.w, height: def.defaultSize.h, collapsed: false, visible: true, zIndex: initial.length + 1 });
+        initial.push({ id: def.id, x: 14, y: 14, width: def.defaultSize.w, height: def.defaultSize.h, collapsed: false, visible: def.defaultVisible !== false, zIndex: initial.length + 1 });
       }
     }
     // Clamp into bounds — panels dragged to negative coords would render
@@ -36,8 +73,6 @@
     for (const p of initial) { p.x = Math.max(0, p.x || 0); p.y = Math.max(0, p.y || 0); }
     layout.set(initial);
 
-    const rawAuto = await window.api.settings.get(AUTO_KEY);
-    autoLayout = rawAuto == null || rawAuto === '' ? true : rawAuto === '1';
     if (autoLayout) requestAnimationFrame(arrangeToCanvas);
 
     // Re-flow on window/canvas resize while auto layout is on.
@@ -49,9 +84,16 @@
     if (canvasEl) resizeObs.observe(canvasEl);
   });
   onDestroy(() => { resizeObs?.disconnect(); clearTimeout(arrangeTimer); });
+  onMount(() => {
+    const closeCustomize = event => {
+      if (showCustomize && customizeEl && !customizeEl.contains(event.target)) showCustomize = false;
+    };
+    window.addEventListener('pointerdown', closeCustomize);
+    return () => window.removeEventListener('pointerdown', closeCustomize);
+  });
 
   function canvasWidth() {
-    return Math.max(420, (canvasEl?.clientWidth || 1480) - 12);
+    return Math.max(320, (canvasEl?.clientWidth || 1480) - 14);
   }
 
   // Tile all visible panels into the actual canvas width, keeping each
@@ -59,24 +101,29 @@
   // append at the end. Hidden panels are left untouched.
   function arrangeToCanvas() {
     const W = canvasWidth();
-    const gap = 12;
+    const gap = 14;
     const order = [];
-    for (const def of PANELS) {
-      const p = panelsState.find(pp => pp.id === def.id && pp.visible);
-      if (p) order.push(p);
+    for (const id of CURATED_ORDER) {
+      const def = panelDef(id);
+      const p = panelsState.find(pp => pp.id === id && pp.visible);
+      if (p) order.push({ panel: p, breakBefore: def?.breakBefore === true });
     }
     for (const p of panelsState) {
-      if (p.visible && isCustomPanel(p.id)) order.push(p);
+      if (p.visible && isCustomPanel(p.id)) order.push({ panel: p, breakBefore: false });
     }
-    let x = 12, y = 12, rowMax = 0;
+    let x = 14, y = 14, rowMax = 0;
     const pos = new Map();
-    for (const p of order) {
-      const h = p.collapsed ? 34 : p.height;
-      if (x > 12 && x + p.width > W) { x = 12; y += rowMax + gap; rowMax = 0; }
+    const widths = new Map();
+    for (const { panel: p, breakBefore } of order) {
+      const h = p.collapsed ? 40 : p.height;
+      const displayWidth = Math.min(p.width, Math.max(280, W - 14));
+      if (x > 14 && (breakBefore || x + displayWidth > W)) { x = 14; y += rowMax + gap; rowMax = 0; }
       pos.set(p.id, { x, y });
-      x += p.width + gap;
+      widths.set(p.id, displayWidth);
+      x += displayWidth + gap;
       rowMax = Math.max(rowMax, h);
     }
+    responsiveWidths = widths;
     panelsState = panelsState.map(p => pos.has(p.id) ? { ...p, ...pos.get(p.id) } : p);
     layout.set(panelsState);
     scheduleSave();
@@ -84,6 +131,7 @@
 
   function setAutoLayout(v) {
     autoLayout = v;
+    if (!v) responsiveWidths = new Map();
     window.api.settings.set(AUTO_KEY, v ? '1' : '0').catch?.(() => {});
     if (v) arrangeToCanvas();
   }
@@ -138,6 +186,9 @@
   }
 
   function toggleSnap() { snapEnabled.update(v => !v); }
+  function handleKeydown(event) {
+    if (event.key === 'Escape') showCustomize = false;
+  }
   let snap = false;
   const unsub2 = snapEnabled.subscribe(v => snap = v);
   onDestroy(unsub2);
@@ -205,40 +256,72 @@
   }
 </script>
 
-<div class="dashboard-root">
-  <div class="dash-toolbar">
-    <span class="dash-title">DASHBOARD</span>
-    <span class="dash-divider"></span>
+<svelte:window on:keydown={handleKeydown} />
 
-    <div class="dash-chips">
-      {#each PANELS as def}
-        {@const p = panelsState.find(pp => pp.id === def.id)}
-        <button
-          class="chip"
-          class:on={p?.visible}
-          on:click={() => toggleVisible(def.id)}
-          title={p?.visible ? `Hide ${def.title}` : `Show ${def.title}`}
-        >
-          <span>{def.icon}</span><span>{def.title}</span>
-        </button>
-      {/each}
+<div class="dashboard-root">
+  <header class="dash-toolbar">
+    <div class="dash-heading">
+      <span>Mana Ledger</span>
+      <strong>Portfolio dashboard</strong>
     </div>
 
-    <span class="dash-spacer"></span>
-    <button class="tb-btn tb-btn-new" on:click={openNewChartModal} title="Add a custom chart panel">
-      ＋ New Chart
-    </button>
-    <button class="tb-btn" on:click={toggleSnap} title="Snap-to-grid (8px)">
-      <span class={snap ? 'tb-on' : ''}>⊞</span> Snap
-    </button>
-    <button class="tb-btn" class:tb-btn-active={autoLayout} on:click={autoArrange}
-      title={autoLayout ? 'Auto-layout is on — panels re-flow to fit the window. Drag a panel to take manual control.' : 'Tile all visible panels to fit the window and re-flow on resize'}>
-      ▦ Auto-arrange
-    </button>
-    <button class="tb-btn" on:click={resetLayout} title="Reset to default layout">
-      ↺ Reset
-    </button>
-  </div>
+    <div class="dash-actions">
+      <div class="customize-shell" bind:this={customizeEl}>
+        <button class="tb-btn" class:tb-btn-active={showCustomize} aria-expanded={showCustomize} on:click={() => showCustomize = !showCustomize}>
+          <LedgerIcon name="sliders" size={15} />
+          Customize
+          <span class="visible-count">{visiblePanels.length}</span>
+        </button>
+
+        {#if showCustomize}
+          <div class="customize-popover">
+            <div class="customize-head">
+              <div><span>Dashboard panels</span><strong>Choose what earns space</strong></div>
+              <button on:click={() => showCustomize = false} aria-label="Close customization"><LedgerIcon name="close" size={15} /></button>
+            </div>
+            <div class="customize-groups">
+              {#each PANEL_GROUPS as group}
+                <section>
+                  <h3>{group.label}</h3>
+                  <div class="customize-grid">
+                    {#each group.ids as panelId}
+                      {@const def = panelDef(panelId)}
+                      {@const p = panelsState.find(pp => pp.id === panelId)}
+                      {#if def && p}
+                        <button class:on={p.visible} class="customize-item" on:click={() => toggleVisible(panelId)} aria-pressed={p.visible}>
+                          <span class="customize-icon"><LedgerIcon name={panelId} size={15} /></span>
+                          <span>{def.title}</span>
+                          <span class="customize-check">{#if p.visible}<LedgerIcon name="check" size={13} />{/if}</span>
+                        </button>
+                      {/if}
+                    {/each}
+                  </div>
+                </section>
+              {/each}
+            </div>
+            <div class="customize-foot">
+              <button on:click={toggleSnap} class:on={snap} aria-pressed={snap}>
+                <span class="mini-switch"><span></span></span>
+                Snap panels to an 8px grid
+              </button>
+              <span>{visiblePanels.length} of {PANELS.length} visible</span>
+            </div>
+          </div>
+        {/if}
+      </div>
+
+      <button class="tb-btn tb-btn-new" on:click={openNewChartModal} title="Add a custom chart panel">
+        <LedgerIcon name="plus" size={15} /> New chart
+      </button>
+      <button class="tb-btn" class:tb-btn-active={autoLayout} on:click={autoArrange}
+        title={autoLayout ? 'Auto-layout is on. Drag a panel to take manual control.' : 'Arrange visible panels and re-flow them on resize'}>
+        <LedgerIcon name="arrange" size={15} /> Arrange
+      </button>
+      <button class="tb-btn tb-btn-quiet" on:click={resetLayout} title="Reset to the curated default layout">
+        <LedgerIcon name="reset" size={15} /> Reset
+      </button>
+    </div>
+  </header>
 
   {#if showNewChartModal}
     <div class="nc-overlay" on:click|self={() => showNewChartModal = false}>
@@ -303,11 +386,10 @@
         <Panel
           id={p.id}
           title={def.title}
-          icon={def.icon}
           description={def.description || ''}
           x={p.x}
           y={p.y}
-          width={p.width}
+          width={responsiveWidths.get(p.id) || p.width}
           height={p.height}
           collapsed={p.collapsed}
           zIndex={p.zIndex}
@@ -324,10 +406,9 @@
         <Panel
           id={p.id}
           title={p.config.title || 'Custom Chart'}
-          icon="📊"
           x={p.x}
           y={p.y}
-          width={p.width}
+          width={responsiveWidths.get(p.id) || p.width}
           height={p.height}
           collapsed={p.collapsed}
           zIndex={p.zIndex}
@@ -351,63 +432,101 @@
     display: flex;
     flex-direction: column;
     height: 100%;
+    min-width: 0;
   }
 
   .dash-toolbar {
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 8px 12px;
-    background: var(--surface, #10101e);
+    justify-content: space-between;
+    gap: 20px;
+    padding: 10px 16px;
+    background: linear-gradient(180deg, color-mix(in srgb, var(--surface2, #1d1d22) 52%, var(--surface, #16161a)), var(--surface, #16161a));
     border-bottom: 1px solid var(--border, #252545);
     flex-shrink: 0;
-    flex-wrap: wrap;
-    min-height: 40px;
+    min-height: 58px;
+    position: relative;
+    z-index: 100;
   }
-  .dash-title { font-size: 11px; font-weight: 700; letter-spacing: 0.12em; color: var(--text-muted, #6f6d76); }
-  .dash-divider { width: 1px; height: 16px; background: var(--border, #252545); }
-  .dash-spacer { flex: 1; }
-
-  .dash-chips { display: flex; gap: 4px; flex-wrap: wrap; }
-  .chip {
-    display: inline-flex; align-items: center; gap: 4px;
-    padding: 3px 8px;
-    border-radius: 99px;
-    border: 1px solid var(--border, #252545);
-    background: transparent;
-    color: var(--text-dim, #7a7692);
-    font-size: 10.5px;
-    font-weight: 600;
-    cursor: pointer;
-    font-family: inherit;
-    transition: all 0.12s;
-    line-height: 1.4;
-  }
-  .chip:hover { color: var(--text, #ece9e1); border-color: var(--border2, #303058); }
-  .chip.on {
-    color: var(--accent2, #e8b84b);
-    border-color: rgba(200,155,60,0.4);
-    background: rgba(200,155,60,0.1);
-  }
+  .dash-heading { display: flex; flex-direction: column; min-width: 150px; }
+  .dash-heading span { color: var(--accent, #c89b3c); font-size: 9px; font-weight: 750; letter-spacing: .09em; line-height: 1.2; text-transform: uppercase; }
+  .dash-heading strong { margin-top: 2px; color: var(--text, #ececef); font-size: 16px; font-weight: 680; letter-spacing: -.015em; line-height: 1.25; }
+  .dash-actions { display: flex; align-items: center; justify-content: flex-end; gap: 7px; min-width: 0; }
+  .customize-shell { position: relative; }
 
   .tb-btn {
-    padding: 4px 10px;
+    min-height: 34px;
+    padding: 6px 11px;
     background: transparent;
     border: 1px solid var(--border, #252545);
-    border-radius: 6px;
-    color: var(--text-dim, #7a7692);
+    border-radius: 8px;
+    color: var(--text-dim, #a3a1aa);
     font-size: 11.5px;
-    font-weight: 500;
+    font-weight: 580;
     cursor: pointer;
     font-family: inherit;
     white-space: nowrap;
-    transition: all 0.12s;
+    transition: background .12s ease, border-color .12s ease, color .12s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
   }
   .tb-btn:hover { color: var(--text, #ece9e1); border-color: var(--border2, #303058); background: rgba(255,255,255,0.04); }
-  .tb-on { color: var(--accent2, #e8b84b); }
-  .tb-btn-active { color: var(--accent2, #e8b84b); border-color: rgba(207,188,255,0.4); background: rgba(207,188,255,0.08); }
-  .tb-btn-new { color: var(--accent2, #e8b84b); border-color: rgba(200,155,60,0.4); }
-  .tb-btn-new:hover { background: rgba(200,155,60,0.1); border-color: rgba(200,155,60,0.6); color: var(--accent2, #e8b84b); }
+  .tb-btn-active { color: var(--text, #ececef); border-color: color-mix(in srgb, var(--accent, #c89b3c) 55%, var(--border)); background: var(--accent-soft, rgba(200,155,60,.12)); }
+  .tb-btn-new { color: #16130b; border-color: var(--accent, #c89b3c); background: var(--accent2, #e8b84b); font-weight: 680; }
+  .tb-btn-new:hover { background: #f0c45a; border-color: #f0c45a; color: #16130b; }
+  .tb-btn-quiet { border-color: transparent; }
+  .visible-count { min-width: 19px; height: 18px; display: grid; place-items: center; padding: 0 5px; border-radius: 99px; color: var(--text-dim); background: rgba(255,255,255,.055); font-size: 9.5px; font-variant-numeric: tabular-nums; }
+
+  .customize-popover {
+    position: absolute;
+    z-index: 10;
+    top: calc(100% + 10px);
+    right: 0;
+    width: min(680px, calc(100vw - 40px));
+    max-height: min(690px, calc(100vh - 112px));
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    overflow: hidden;
+    color: var(--text, #ececef);
+    background: color-mix(in srgb, var(--surface2, #1d1d22) 76%, var(--surface, #16161a));
+    border: 1px solid var(--border2, #3a3a44);
+    border-radius: 14px;
+    box-shadow: 0 22px 70px rgba(0,0,0,.62);
+  }
+  .customize-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 18px 14px; border-bottom: 1px solid var(--border); }
+  .customize-head div span,
+  .customize-head div strong { display: block; }
+  .customize-head div span { color: var(--accent, #c89b3c); font-size: 9px; font-weight: 750; letter-spacing: .085em; text-transform: uppercase; }
+  .customize-head div strong { margin-top: 3px; font-size: 15px; font-weight: 680; letter-spacing: -.01em; }
+  .customize-head > button { width: 30px; height: 30px; display: grid; place-items: center; color: var(--text-dim); background: transparent; border: 0; border-radius: 7px; cursor: pointer; }
+  .customize-head > button:hover { color: var(--text); background: rgba(255,255,255,.055); }
+  .customize-groups { min-height: 0; overflow-y: auto; padding: 14px 16px 18px; }
+  .customize-groups section + section { margin-top: 16px; }
+  .customize-groups h3 { margin: 0 0 7px 2px; color: var(--text-muted, #6f6d76); font-size: 9.5px; font-weight: 700; letter-spacing: .075em; text-transform: uppercase; }
+  .customize-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+  .customize-item { min-width: 0; display: grid; grid-template-columns: 28px minmax(0, 1fr) 20px; align-items: center; gap: 8px; min-height: 42px; padding: 6px 9px; color: var(--text-dim); background: rgba(0,0,0,.12); border: 1px solid transparent; border-radius: 9px; font: inherit; font-size: 11.5px; text-align: left; cursor: pointer; }
+  .customize-item:hover { color: var(--text); background: rgba(255,255,255,.035); border-color: var(--border); }
+  .customize-item.on { color: var(--text); background: rgba(200,155,60,.065); border-color: rgba(200,155,60,.18); }
+  .customize-icon { width: 28px; height: 28px; display: grid; place-items: center; color: var(--text-muted); background: rgba(255,255,255,.035); border-radius: 7px; }
+  .customize-item.on .customize-icon,
+  .customize-check { color: var(--accent2, #e8b84b); }
+  .customize-item > span:nth-child(2) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .customize-check { width: 20px; height: 20px; display: grid; place-items: center; }
+  .customize-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 11px 16px; color: var(--text-muted); border-top: 1px solid var(--border); font-size: 10px; }
+  .customize-foot > button { display: inline-flex; align-items: center; gap: 8px; padding: 0; color: var(--text-dim); background: transparent; border: 0; font: inherit; font-size: 11px; cursor: pointer; }
+  .mini-switch { width: 28px; height: 16px; padding: 2px; display: block; border-radius: 99px; background: var(--border2); transition: background .14s ease; }
+  .mini-switch span { display: block; width: 12px; height: 12px; border-radius: 50%; background: var(--text-muted); transition: transform .14s ease, background .14s ease; }
+  .customize-foot > button.on .mini-switch { background: var(--accent, #c89b3c); }
+  .customize-foot > button.on .mini-switch span { transform: translateX(12px); background: #fff7e3; }
+
+  @media (max-width: 760px) {
+    .dash-toolbar { align-items: flex-start; flex-direction: column; gap: 9px; }
+    .dash-actions { width: 100%; justify-content: flex-start; overflow-x: auto; }
+    .customize-grid { grid-template-columns: 1fr; }
+    .customize-popover { position: fixed; top: 104px; left: 12px; right: 12px; width: auto; }
+  }
 
   /* ── New Chart Modal ──────────────────────────────────────────────── */
   .nc-overlay {
@@ -485,7 +604,6 @@
     position: relative;
     flex: 1;
     overflow: auto;
-    background:
-      radial-gradient(circle at 1px 1px, rgba(255,255,255,0.025) 1px, transparent 0) 0 0 / 24px 24px;
+    background: radial-gradient(ellipse at 50% -12%, rgba(200,155,60,.025), transparent 38%), var(--bg, #0e0e10);
   }
 </style>

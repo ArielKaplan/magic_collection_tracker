@@ -1,12 +1,12 @@
 <script>
   import { onMount, onDestroy, createEventDispatcher } from 'svelte';
   import interact from 'interactjs';
+  import LedgerIcon from './LedgerIcon.svelte';
   import { snapEnabled, SNAP_PX, collectionVersion } from './stores.js';
   import { isFilterActive, chipState, cycleBinderState, emptyFilter } from './filter.js';
 
   export let id;
   export let title;
-  export let icon = '';
   export let description = '';          // help text shown via ⓘ button
   export let x = 0;
   export let y = 0;
@@ -125,15 +125,15 @@
   on:pointerdown={bringToFront}
   style:transform={`translate(${x}px, ${y}px)`}
   style:width={`${width}px`}
-  style:height={collapsed ? `34px` : `${height}px`}
+  style:height={collapsed ? `40px` : `${height}px`}
   style:z-index={zIndex}
 >
   <header class="panel-handle">
-    {#if icon}<span class="panel-icon">{icon}</span>{/if}
+    <span class="panel-icon"><LedgerIcon name={id} size={15} /></span>
     <span class="panel-title">{title}</span>
-    <span class="panel-actions">
+    <span class="panel-actions" class:panel-actions-active={filterActive || showInfo}>
       {#if description}
-        <button class="panel-btn info-btn" class:info-on={showInfo} title="About this panel" on:click={toggleInfo} on:pointerdown|stopPropagation>ⓘ</button>
+        <button class="panel-btn info-btn" class:info-on={showInfo} title="About this panel" aria-label="About this panel" on:click={toggleInfo} on:pointerdown|stopPropagation><LedgerIcon name="info" size={14} /></button>
       {/if}
       {#if filterable}
         <button
@@ -143,17 +143,17 @@
           on:click={toggleFilter}
           on:pointerdown|stopPropagation
         >
-          ⚲
+          <LedgerIcon name="filter" size={13} />
           {#if filterActive}<span class="filter-dot"></span>{/if}
         </button>
       {/if}
-      <button class="panel-btn" title={collapsed ? 'Expand' : 'Collapse'} on:click={toggleCollapse} on:pointerdown|stopPropagation>
-        {collapsed ? '▾' : '▴'}
+      <button class="panel-btn" title={collapsed ? 'Expand' : 'Collapse'} aria-label={collapsed ? 'Expand panel' : 'Collapse panel'} on:click={toggleCollapse} on:pointerdown|stopPropagation>
+        <LedgerIcon name={collapsed ? 'down' : 'up'} size={14} />
       </button>
       {#if deletable}
-        <button class="panel-btn panel-btn-delete" title="Delete chart" on:click={() => dispatch('delete')} on:pointerdown|stopPropagation>🗑</button>
+        <button class="panel-btn panel-btn-delete" title="Delete chart" aria-label="Delete chart" on:click={() => dispatch('delete')} on:pointerdown|stopPropagation><LedgerIcon name="trash" size={14} /></button>
       {:else}
-        <button class="panel-btn" title="Hide" on:click={close} on:pointerdown|stopPropagation>×</button>
+        <button class="panel-btn" title="Hide panel" aria-label="Hide panel" on:click={close} on:pointerdown|stopPropagation><LedgerIcon name="close" size={14} /></button>
       {/if}
     </span>
   </header>
@@ -203,43 +203,49 @@
   .panel-card {
     position: absolute;
     top: 0; left: 0;
-    background: var(--surface, #10101e);
+    background: linear-gradient(145deg, color-mix(in srgb, var(--surface2, #1d1d22) 28%, var(--surface, #16161a)), var(--surface, #16161a) 44%);
     border: 1px solid var(--border, #252545);
-    border-radius: 10px;
-    box-shadow: 0 2px 12px rgba(0,0,0,0.4);
+    border-radius: 12px;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.28);
     display: flex;
     flex-direction: column;
     overflow: visible;          /* popover can spill out */
     transition: box-shadow 0.15s, border-color 0.15s;
     user-select: none;
   }
-  .panel-card:hover { border-color: var(--border2, #303058); box-shadow: 0 4px 18px rgba(0,0,0,0.5); }
+  .panel-card:hover { border-color: color-mix(in srgb, var(--border2, #3a3a44) 82%, var(--accent, #c89b3c)); box-shadow: 0 8px 26px rgba(0,0,0,0.34); }
 
   .panel-handle {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 8px;
     padding: 6px 8px 6px 10px;
-    background: rgba(255,255,255,0.025);
+    background: rgba(255,255,255,0.018);
     border-bottom: 1px solid var(--border, #252545);
     cursor: grab;
     flex-shrink: 0;
-    height: 34px;
-    border-radius: 10px 10px 0 0;
+    height: 40px;
+    border-radius: 12px 12px 0 0;
   }
   .panel-handle:active { cursor: grabbing; }
-  .panel-icon { font-size: 13px; opacity: 0.85; }
-  .panel-title { font-size: 11.5px; font-weight: 600; color: var(--text, #ece9e1); flex: 1; letter-spacing: 0.02em; text-transform: uppercase; opacity: 0.85; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .panel-icon {
+    width: 26px; height: 26px; display: grid; place-items: center;
+    color: var(--text-dim, #a3a1aa); border-radius: 8px;
+    background: rgba(255,255,255,0.025);
+  }
+  .panel-title { font-size: 12.5px; font-weight: 650; color: var(--text, #ece9e1); flex: 1; letter-spacing: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-  .panel-actions { display: flex; gap: 2px; }
+  .panel-actions { display: flex; gap: 1px; opacity: 0.28; transition: opacity 0.14s ease; }
+  .panel-card:hover .panel-actions,
+  .panel-card:focus-within .panel-actions,
+  .panel-actions-active { opacity: 1; }
   .panel-btn {
-    width: 22px; height: 22px;
+    width: 24px; height: 24px;
     border: none;
     background: transparent;
     color: var(--text-dim, #7a7692);
     cursor: pointer;
     border-radius: 4px;
-    font-size: 12px;
     line-height: 1;
     display: flex;
     align-items: center;
@@ -249,7 +255,6 @@
   }
   .panel-btn:hover { background: rgba(255,255,255,0.08); color: var(--text, #ece9e1); }
   .filter-btn.filter-on { color: var(--accent2, #e8b84b); }
-  .info-btn { font-size: 13px; }
   .info-btn.info-on { color: var(--accent2, #e8b84b); }
 
   .info-popover {
@@ -284,11 +289,16 @@
 
   .panel-body {
     flex: 1;
-    padding: 12px 14px;
-    overflow: auto;
-    font-size: 12.5px;
+    min-width: 0;
+    padding: 16px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    font-size: 13px;
     color: var(--text, #ece9e1);
   }
+  .panel-body::-webkit-scrollbar { width: 6px; height: 0; }
+  .panel-body::-webkit-scrollbar-thumb { background: transparent; border: 0; }
+  .panel-card:hover .panel-body::-webkit-scrollbar-thumb { background: var(--border2, #3a3a44); }
 
   /* Filter popover */
   .filter-popover {
@@ -360,9 +370,10 @@
     border-right: 2px solid var(--text-muted, #4a4668);
     border-bottom: 2px solid var(--text-muted, #4a4668);
     border-bottom-right-radius: 3px;
-    opacity: 0.6;
+    opacity: 0;
+    transition: opacity .14s ease;
   }
   .panel-card:hover .panel-resize-br::after { opacity: 1; }
 
-  .collapsed .panel-handle { border-bottom: none; border-radius: 10px; }
+  .collapsed .panel-handle { border-bottom: none; border-radius: 12px; }
 </style>

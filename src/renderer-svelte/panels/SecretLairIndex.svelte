@@ -101,19 +101,22 @@
       · {fmt(idx.realized)} realized
     </div>
   </div>
-  {#if count > 0}
+  {#if count > 1}
     <div class="chart-wrap"><canvas bind:this={canvas}></canvas></div>
   {:else}
-    <p class="hint">The value-over-time line fills in as daily price-refresh snapshots accrue.</p>
+    <div class="tracking-state"><strong>Index tracking is active</strong><span>The comparison line appears after the next daily snapshot.</span></div>
   {/if}
 {/if}
 
 <style>
   .head { margin-bottom: 8px; }
-  .ret { font-size: 24px; font-weight: 800; letter-spacing: -0.02em; line-height: 1; }
-  .sub { font-size: 11.5px; color: var(--text-dim, #7a7692); margin-top: 4px; }
+  .ret { font-size: 28px; font-weight: 700; letter-spacing: -0.025em; line-height: 1.05; font-variant-numeric: tabular-nums lining-nums; }
+  .sub { font-size: 11.5px; color: var(--text-dim, #a3a1aa); margin-top: 5px; line-height: 1.45; }
   .chart-wrap { width: 100%; height: calc(100% - 46px); min-height: 120px; display: flex; align-items: stretch; }
   canvas { width: 100% !important; height: 100% !important; }
   .empty { color: var(--text-muted, #4a4668); font-size: 12px; padding: 8px 0; line-height: 1.5; }
-  .hint { color: var(--text-muted, #4a4668); font-size: 10.5px; margin: 0; }
+  .tracking-state { margin-top: 18px; padding: 15px 16px; border: 1px dashed var(--border); border-radius: 9px; background: rgba(255,255,255,.012); }
+  .tracking-state strong,.tracking-state span { display: block; }
+  .tracking-state strong { color: var(--text); font-size: 12px; font-weight: 630; }
+  .tracking-state span { margin-top: 4px; color: var(--text-muted); font-size: 10.5px; line-height: 1.45; }
 </style>

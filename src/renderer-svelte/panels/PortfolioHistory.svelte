@@ -115,18 +115,21 @@
 </script>
 
 {#if count === 0}
-  <p class="empty">No value history yet. Refresh prices (F5) to start tracking your collection value over time — one point is recorded per day.</p>
+  <div class="empty-state"><strong>Start your value history</strong><span>Refresh prices to record the first daily portfolio snapshot.</span></div>
+{:else if count === 1}
+  <div class="empty-state tracking"><strong>Tracking started today</strong><span>Your trend line appears after the next daily price snapshot.</span></div>
 {:else}
-  {#if count === 1}<p class="hint">Tracking started today — the line fills in as more daily snapshots are recorded.</p>{/if}
-  <div class="chart-wrap" class:with-hint={count === 1}>
+  <div class="chart-wrap">
     <canvas bind:this={canvas}></canvas>
   </div>
 {/if}
 
 <style>
   .chart-wrap { width: 100%; height: 100%; min-height: 140px; display: flex; align-items: stretch; }
-  .chart-wrap.with-hint { height: calc(100% - 22px); }
   canvas { width: 100% !important; height: 100% !important; }
-  .empty { color: var(--text-muted, #4a4668); font-size: 12px; padding: 8px 0; line-height: 1.5; }
-  .hint { color: var(--text-muted, #4a4668); font-size: 10.5px; margin: 0 0 4px; }
+  .empty-state { height: 100%; min-height: 150px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 24px; border: 1px dashed var(--border); border-radius: 10px; background: rgba(255,255,255,.012); }
+  .empty-state::before { content: ''; width: 42px; height: 24px; margin-bottom: 14px; border-left: 2px solid var(--accent); border-bottom: 2px solid var(--accent); clip-path: polygon(0 70%,25% 48%,43% 62%,68% 20%,100% 0,100% 100%,0 100%); opacity: .75; }
+  .empty-state strong { color: var(--text); font-size: 13.5px; font-weight: 650; }
+  .empty-state span { max-width: 360px; margin-top: 5px; color: var(--text-muted); font-size: 11.5px; line-height: 1.5; }
+  .empty-state.tracking::before { opacity: 1; }
 </style>

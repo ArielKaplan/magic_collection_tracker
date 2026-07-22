@@ -303,28 +303,27 @@ export function renderCardOfTheDay() {
   const value = cardCurrentValue(card);
   const totalVal = value != null ? value * card.quantity : null;
   const foilLabel = card.foil !== 'normal' ? FOIL_LABEL[card.foil] : null;
+  const condition = String(card.condition || '').replace(/_/g, ' ');
 
   return `
-    <div style="display:flex;gap:14px;align-items:flex-start">
+    <div class="cotd-layout">
       ${imgUrl ? `
-        <img src="${esc(imgUrl)}" alt="${esc(card.name)}"
-          style="width:155px;flex-shrink:0;border-radius:10px;box-shadow:0 4px 18px rgba(0,0,0,0.6)"
-          data-imgerr="hide">` : ''}
-      <div style="flex:1;min-width:0">
-        <div style="font-size:15px;font-weight:700;color:var(--text);line-height:1.25;margin-bottom:2px">${esc(card.name)}</div>
-        <div style="font-size:11px;color:var(--text-muted);margin-bottom:8px">${esc(card.setName)} · ${esc(card.setCode.toUpperCase())}</div>
-        ${foilLabel ? `<span class="badge badge-${card.foil}" style="margin-bottom:8px;display:inline-block">${foilLabel}</span>` : ''}
-        <div style="display:grid;grid-template-columns:auto 1fr;gap:2px 8px;font-size:12px;color:var(--text-dim);margin-bottom:10px">
-          <span style="color:var(--text-muted)">Binder</span><span>${esc(card.binderName)}</span>
-          <span style="color:var(--text-muted)">Rarity</span><span style="text-transform:capitalize">${esc(card.rarity || '—')}</span>
-          <span style="color:var(--text-muted)">Qty</span><span>${card.quantity}</span>
-          ${card.condition ? `<span style="color:var(--text-muted)">Cond</span><span>${esc(card.condition)}</span>` : ''}
+        <img class="cotd-image" src="${esc(imgUrl)}" alt="${esc(card.name)}" data-imgerr="hide">` : ''}
+      <div class="cotd-copy">
+        <div class="cotd-name">${esc(card.name)}</div>
+        <div class="cotd-set">${esc(card.setName)} · ${esc(card.setCode.toUpperCase())}</div>
+        ${foilLabel ? `<span class="badge badge-${card.foil} cotd-badge">${foilLabel}</span>` : ''}
+        <div class="cotd-meta">
+          <span>Binder</span><strong>${esc(card.binderName)}</strong>
+          <span>Rarity</span><strong style="text-transform:capitalize">${esc(card.rarity || '—')}</strong>
+          <span>Quantity</span><strong>${card.quantity}</strong>
+          ${condition ? `<span>Condition</span><strong style="text-transform:capitalize">${esc(condition)}</strong>` : ''}
         </div>
         ${value != null
-          ? `<div style="font-size:20px;font-weight:700;color:var(--text);margin-bottom:2px">${fmt(value)}</div>
-             ${card.quantity > 1 ? `<div style="font-size:11px;color:var(--text-muted);margin-bottom:10px">× ${card.quantity} = ${fmt(totalVal)}</div>` : '<div style="margin-bottom:10px"></div>'}`
-          : '<div style="font-size:12px;color:var(--text-muted);margin-bottom:10px">No price data</div>'}
-        <button class="btn btn-ghost" style="font-size:11px;padding:3px 10px" data-act="ui-inc" data-path="cotdOffset">🎲 New Card</button>
+          ? `<div class="cotd-price">${fmt(value)}</div>
+             ${card.quantity > 1 ? `<div class="cotd-total">× ${card.quantity} = ${fmt(totalVal)}</div>` : ''}`
+          : '<div class="cotd-total">No price data</div>'}
+        <button class="btn btn-ghost cotd-action" data-act="ui-inc" data-path="cotdOffset">Another card</button>
       </div>
     </div>`;
 }

@@ -135,7 +135,10 @@ body {
   min-height: 100vh;
   font-size: 13.5px;
   line-height: 1.5;
-  letter-spacing: 0.01em;
+  letter-spacing: 0;
+  font-kerning: normal;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -3142,7 +3145,7 @@ tr.want-hit td { border-bottom-color: rgba(123, 216, 159, 0.18); }
 }
 
 /* ── KPI numerics (Svelte dashboard) ───── */
-.kpi-value { font-family: var(--font-sans); font-weight: 700; letter-spacing: -0.02em; }
+.kpi-value { font-family: var(--font-sans); font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums lining-nums; }
 
 /* ── Focus ring ────────────────────────── */
 :focus-visible {

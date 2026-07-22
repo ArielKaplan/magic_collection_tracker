@@ -14,7 +14,7 @@
 </div>
 
 <style>
-  .kpi { display: flex; flex-direction: column; gap: 4px; padding-top: 4px; }
-  .value { font-size: 24px; font-weight: 800; letter-spacing: -0.02em; color: var(--text, #ececef); line-height: 1; }
-  .sub { font-size: 11px; color: var(--text-dim, #7a7692); }
+  .kpi { height: 100%; display: flex; flex-direction: column; justify-content: center; gap: 7px; }
+  .value { font-size: 27px; font-weight: 700; letter-spacing: -0.025em; color: var(--text, #ececef); line-height: 1.05; font-variant-numeric: tabular-nums lining-nums; }
+  .sub { font-size: 12px; color: var(--text-dim, #a3a1aa); line-height: 1.4; }
 </style>
