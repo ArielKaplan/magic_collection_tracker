@@ -12,6 +12,9 @@ user-facing: what changed, not how.
 
 ## [Unreleased]
 
+### Fixed
+- **Official Wizards announcements are readable again.** Hidden website application data can no longer spill into announcement notes, previously cached junk is removed automatically, and the full announcement list now presents dates, summaries, bundle details, and promotional notes as clean article cards.
+
 ## [1.5.0] - 2026-07-20
 
 ### Added

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { parseBonusCardsHtml } from '../src/renderer-js/slBonus.js';
-import { parseAnnouncementArchiveHtml, parseAnnouncementDetailHtml } from '../src/renderer-js/slAnnouncements.js';
+import { parseAnnouncementArchiveHtml, parseAnnouncementDetailHtml, sanitizeAnnouncementRow } from '../src/renderer-js/slAnnouncements.js';
 
 describe('Secret Lair supplemental source parsers', () => {
   it('parses the bonus table without shifting rowspan columns', () => {
@@ -48,6 +48,32 @@ describe('Secret Lair supplemental source parsers', () => {
       <p>Individual non-foil drops are $29.99 USD.</p>
       <p>All single orders over $99 USD ship free.</p>
     `);
+    expect(row).not.toHaveProperty('prices');
+  });
+
+  it('excludes serialized page state from article notes and summaries', () => {
+    const row = parseAnnouncementDetailHtml(`
+      <main>
+        <h1>Secret Lair: A Marvelous Superdrop</h1>
+        <p>Pack your pocket-handkerchief, polish your buttons, and mind the Dragon.</p>
+        <p>A promotional card is available while supplies last.</p>
+      </main>
+      <script>window.__NUXT__={contentType:"WPN promotion",publishedVersion:184,navigationItems:[1,2,3]}</script>
+    `);
+    expect(row.summary).toBe('Pack your pocket-handkerchief, polish your buttons, and mind the Dragon.');
+    expect(row.officialNotes).toEqual(['A promotional card is available while supplies last.']);
+    expect(JSON.stringify(row)).not.toMatch(/NUXT|publishedVersion|navigationItems/);
+  });
+
+  it('cleans page-state leaks already stored in the announcement cache', () => {
+    const row = sanitizeAnnouncementRow({
+      title: 'Secret Lair Example',
+      summary: 'A readable introduction.',
+      officialNotes: ['window.__NUXT__={contentType:"WPN",publishedVersion:184}'],
+      prices: ['$29.99'],
+    });
+    expect(row.summary).toBe('A readable introduction.');
+    expect(row.officialNotes).toEqual([]);
     expect(row).not.toHaveProperty('prices');
   });
 });

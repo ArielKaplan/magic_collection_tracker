@@ -9,11 +9,36 @@ const ARCHIVE_URL = 'https://magic.wizards.com/en/news/announcements?search=Secr
 const SETTINGS_KEY = 'sl_announcement_data';
 const MAX_RECENT_ANNOUNCEMENTS = 20;
 
-// Remove legacy price fields when loading a cache created by an older build.
-// This keeps the stored contract aligned with the intentionally price-free UI.
-const cleanAnnouncementRow = row => {
-  const { prices: _legacyPrices, ...clean } = row || {};
+const SERIALIZED_PAGE_DATA = /(?:window\.)?__(?:NUXT|NEXT_DATA)__|webpackChunk|publishedVersion|contentType|\\u00(?:22|2F|3A)/i;
+
+// Wizards pages contain a large serialized application-state object. Older
+// builds could cache that object as prose when it mentioned a promotion or WPN.
+// Keep cached/displayed strings human-sized and discard unmistakable page data.
+const cleanHumanText = (value, maxLength) => {
+  if (value == null) return '';
+  let clean = String(value).replace(/\s+/g, ' ').trim();
+  const leakAt = clean.search(/(?:window\.)?__(?:NUXT|NEXT_DATA)__\s*=/i);
+  if (leakAt >= 0) clean = clean.slice(0, leakAt).trim();
+  if (!clean || SERIALIZED_PAGE_DATA.test(clean)) return '';
+  if (maxLength && clean.length > maxLength) clean = `${clean.slice(0, maxLength).trimEnd()}…`;
   return clean;
+};
+
+const cleanHumanList = (values, maxItems, maxLength) => [...new Set((Array.isArray(values) ? values : [])
+  .map(value => cleanHumanText(value, maxLength))
+  .filter(Boolean))].slice(0, maxItems);
+
+// Remove legacy price fields and parser leaks when loading caches from older
+// builds. This keeps existing installs clean before the next network refresh.
+export const sanitizeAnnouncementRow = row => {
+  const { prices: _legacyPrices, ...clean } = row || {};
+  return {
+    ...clean,
+    title: cleanHumanText(clean.title, 240) || 'Secret Lair announcement',
+    summary: cleanHumanText(clean.summary, 700),
+    bundles: cleanHumanList(clean.bundles, 20, 240),
+    officialNotes: cleanHumanList(clean.officialNotes, 12, 420),
+  };
 };
 
 const decode = s => String(s || '')
@@ -21,7 +46,10 @@ const decode = s => String(s || '')
   .replace(/&#39;|&apos;/gi, "'").replace(/&ndash;/gi, '–').replace(/&mdash;/gi, '—')
   .replace(/&#(\d+);/g, (_m, n) => String.fromCodePoint(+n))
   .replace(/&#x([0-9a-f]+);/gi, (_m, n) => String.fromCodePoint(parseInt(n, 16)));
-const text = html => decode(String(html || '')
+const visibleHtml = html => String(html || '')
+  .replace(/<!--[\s\S]*?-->/g, ' ')
+  .replace(/<(script|style|noscript|template)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, ' ');
+const text = html => decode(visibleHtml(html)
   .replace(/<(?:br|\/p|\/div|\/li|\/h[1-6])\b[^>]*>/gi, '\n')
   .replace(/<[^>]+>/g, ' '))
   .replace(/[ \t]+/g, ' ').replace(/\n\s+/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
@@ -56,17 +84,21 @@ const isoDate = (raw, fallbackYear) => {
 };
 
 export function parseAnnouncementDetailHtml(html, seed = {}) {
-  const body = text(html);
-  const h1 = text(String(html || '').match(/<h1\b[^>]*>([\s\S]*?)<\/h1>/i)?.[1] || '');
+  const source = visibleHtml(html);
+  const body = text(source);
+  const h1 = text(source.match(/<h1\b[^>]*>([\s\S]*?)<\/h1>/i)?.[1] || '');
   const publishedAt = String(html || '').match(/"datePublished"\s*:\s*"([^"]+)"/i)?.[1]
     || String(html || '').match(/<time\b[^>]*datetime=["']([^"']+)/i)?.[1]
     || seed.publishedAt || null;
   const salePhrase = body.match(/(?:available|arrives|launch(?:es)?|on sale|sale begins|goes live|MagicSecretLair\.com)[^\n.]{0,180}?((?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}(?:,\s+\d{4})?)/i);
   const timeM = body.match(/(\d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?))\s*(P[DT])/i);
-  const bundles = [...String(html || '').matchAll(/<h([1-4])\b[^>]*>([\s\S]*?bundle[\s\S]*?)<\/h\1>/gi)]
+  const bundles = [...source.matchAll(/<h([1-4])\b[^>]*>([\s\S]*?bundle[\s\S]*?)<\/h\1>/gi)]
     .map(m => text(m[2])).filter(Boolean);
-  const noteLines = body.split('\n').filter(line => /while supplies last|promotion|promo card|WPN|game store/i.test(line));
-  return {
+  const proseBlocks = [...source.matchAll(/<(p|li|blockquote)\b[^>]*>([\s\S]*?)<\/\1>/gi)]
+    .map(m => text(m[2])).filter(Boolean);
+  const noteLines = proseBlocks.filter(line => /while supplies last|promotion|promo card|WPN|game store/i.test(line));
+  const firstSummary = proseBlocks.find(line => line.length >= 40 && !noteLines.includes(line));
+  return sanitizeAnnouncementRow({
     ...seed,
     title: h1 || seed.title || 'Secret Lair announcement',
     publishedAt,
@@ -74,8 +106,8 @@ export function parseAnnouncementDetailHtml(html, seed = {}) {
     saleTime: timeM ? `${timeM[1]} ${timeM[2].toUpperCase()}` : null,
     bundles: [...new Set(bundles)].slice(0, 20),
     officialNotes: [...new Set(noteLines)].slice(0, 12),
-    summary: seed.summary || body.slice(0, 600),
-  };
+    summary: seed.summary || firstSummary || body.slice(0, 600),
+  });
 }
 
 let announcementData = null; // { fetchedAt, rows }
@@ -86,9 +118,10 @@ export async function loadSlAnnouncementsFromSettings() {
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed?.rows)) {
-        const hadLegacyPrices = parsed.rows.some(row => Object.hasOwn(row || {}, 'prices'));
-        announcementData = { ...parsed, rows: parsed.rows.map(cleanAnnouncementRow) };
-        if (hadLegacyPrices) await window.api?.settings?.set(SETTINGS_KEY, JSON.stringify(announcementData));
+        const rows = parsed.rows.map(sanitizeAnnouncementRow);
+        const cacheNeededCleanup = JSON.stringify(rows) !== JSON.stringify(parsed.rows);
+        announcementData = { ...parsed, rows };
+        if (cacheNeededCleanup) await window.api?.settings?.set(SETTINGS_KEY, JSON.stringify(announcementData));
       }
     }
   } catch (e) { window.logger?.warn?.('SL', `official-announcement cache load failed: ${e.message}`); }
@@ -100,7 +133,7 @@ export async function refreshSlAnnouncements(opts = {}) {
     if (!resp.ok) throw new Error(`HTTP ${resp.status} from magic.wizards.com`);
     const seeds = parseAnnouncementArchiveHtml(await resp.text());
     if (!seeds.length) throw new Error('no Secret Lair announcement links parsed — archive layout changed?');
-    const previousByUrl = new Map((announcementData?.rows || []).map(r => [r.url, cleanAnnouncementRow(r)]));
+    const previousByUrl = new Map((announcementData?.rows || []).map(r => [r.url, sanitizeAnnouncementRow(r)]));
     const rows = await Promise.all(seeds.slice(0, MAX_RECENT_ANNOUNCEMENTS).map(async seed => {
       try {
         const detail = await netFetch(seed.url, { headers: { Accept: 'text/html' } });
@@ -114,7 +147,7 @@ export async function refreshSlAnnouncements(opts = {}) {
         } : parsed;
       } catch { return previousByUrl.get(seed.url) || seed; }
     }));
-    announcementData = { fetchedAt: new Date().toISOString(), rows: rows.map(cleanAnnouncementRow) };
+    announcementData = { fetchedAt: new Date().toISOString(), rows: rows.map(sanitizeAnnouncementRow) };
     await window.api?.settings?.set(SETTINGS_KEY, JSON.stringify(announcementData));
     window.logger?.success?.('SL', `Official announcements sync: ${rows.length} recent Wizards articles`);
     return true;

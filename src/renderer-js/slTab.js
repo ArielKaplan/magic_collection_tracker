@@ -1241,24 +1241,42 @@ export function renderSlViewer() {
   if (sv.view === 'intel') return viewToggle() + renderSlIntelligenceView();
   if (sv.view === 'announcements') {
     const rows = slAnnouncements().slice().sort((a, b) => String(b.publishedAt || '').localeCompare(String(a.publishedAt || '')));
+    const readableDate = raw => {
+      const iso = String(raw || '').slice(0, 10);
+      const parts = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      if (!parts) return raw || 'Date unavailable';
+      return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })
+        .format(new Date(Date.UTC(+parts[1], +parts[2] - 1, +parts[3])));
+    };
     const cards = rows.length ? rows.map(a => `
-      <article style="padding:14px 16px;background:var(--surface);border:1px solid var(--border);border-radius:8px">
-        <div style="display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap">
-          <div style="min-width:0;flex:1">
-            <a href="#" data-act="open-url" data-arg="${esc(a.url)}" style="font-size:14px;font-weight:750">${esc(a.title || 'Secret Lair announcement')}</a>
-            <div style="font-size:11px;color:var(--text-muted);margin-top:3px">Published ${esc((a.publishedAt || '').slice(0, 10) || 'date unavailable')}${a.saleDate ? ` · sale ${esc(a.saleDate)}${a.saleTime ? ` at ${esc(a.saleTime)}` : ''}` : ''}</div>
+      <article class="sl-announcement-card">
+        <div class="sl-announcement-card-head">
+          <div class="sl-announcement-title-block">
+            <div class="sl-announcement-source">Official Wizards announcement</div>
+            <h3><a href="#" data-act="open-url" data-arg="${esc(a.url)}">${esc(a.title || 'Secret Lair announcement')}</a></h3>
+            <div class="sl-announcement-meta">
+              <span>Published ${esc(readableDate(a.publishedAt))}</span>
+              ${a.saleDate ? `<span class="sl-announcement-sale">Sale opens ${esc(readableDate(a.saleDate))}${a.saleTime ? ` at ${esc(a.saleTime)}` : ''}</span>` : ''}
+            </div>
           </div>
-          <a href="#" class="btn btn-ghost" style="font-size:11px" data-act="open-url" data-arg="${esc(a.url)}">Open official article ↗</a>
+          <a href="#" class="btn btn-ghost sl-announcement-open" data-act="open-url" data-arg="${esc(a.url)}">Read on Wizards.com &rarr;</a>
         </div>
-        ${a.summary ? `<p style="font-size:12px;line-height:1.55;color:var(--text-dim);margin:10px 0 0">${esc(a.summary)}</p>` : ''}
-        ${(a.bundles || []).length ? `<div style="font-size:11px;color:var(--text-muted);margin-top:9px"><strong style="color:var(--text)">Bundle headings:</strong> ${esc(a.bundles.join(' · '))}</div>` : ''}
-        ${(a.officialNotes || []).length ? `<div style="font-size:11px;color:var(--text-muted);margin-top:6px"><strong style="color:var(--text)">Official notes:</strong> ${esc(a.officialNotes.join(' · '))}</div>` : ''}
-      </article>`).join('') : `<div style="padding:34px;text-align:center;color:var(--text-muted);background:var(--surface);border:1px solid var(--border);border-radius:8px">No official announcements are cached yet.<br>Use “Check for New Cards” to sync the Wizards archive.</div>`;
+        ${a.summary ? `<p class="sl-announcement-summary">${esc(a.summary)}</p>` : ''}
+        ${(a.bundles || []).length || (a.officialNotes || []).length ? `
+          <div class="sl-announcement-details">
+            ${(a.bundles || []).length ? `<section><h4>Featured bundles</h4><ul>${a.bundles.map(bundle => `<li>${esc(bundle)}</li>`).join('')}</ul></section>` : ''}
+            ${(a.officialNotes || []).length ? `<section><h4>Good to know</h4><ul>${a.officialNotes.map(note => `<li>${esc(note)}</li>`).join('')}</ul></section>` : ''}
+          </div>` : ''}
+      </article>`).join('') : `<div class="sl-announcement-empty">No official announcements are cached yet.<br>Use &ldquo;Check for New Cards&rdquo; to sync the Wizards archive.</div>`;
     return viewToggle() + refreshBtn + `
-      <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:12px">
-        <div><h2 style="font-size:16px;margin:0">Official Wizards announcements</h2><div style="font-size:11px;color:var(--text-muted)">${rows.length} cached article${rows.length === 1 ? '' : 's'} · sync retains up to 20 recent Secret Lair archive results · announcement prices are intentionally not parsed</div></div>
-      </div>
-      <div style="display:grid;gap:10px">${cards}</div>`;
+      <section class="sl-announcements-page">
+        <header class="sl-announcements-head">
+          <div class="sl-announcement-source">News and release information</div>
+          <h2>Official Wizards announcements</h2>
+          <p>${rows.length} recent article${rows.length === 1 ? '' : 's'}. Sale dates, bundle details, and promotional notes are shown when available. Product prices are omitted because one announcement can cover several items.</p>
+        </header>
+        <div class="sl-announcement-list">${cards}</div>
+      </section>`;
   }
 
   // Collector-number view — flat gallery of every SLD printing, ordered by number
