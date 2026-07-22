@@ -12,6 +12,8 @@ user-facing: what changed, not how.
 
 ## [Unreleased]
 
+## [1.6.4] - 2026-07-22
+
 ### Changed
 - **The portfolio dashboard now has a quieter, curated visual hierarchy.** A compact command bar replaces the wall of panel toggles, auto-arrange groups related financial and collection views, titles and numerics use more deliberate typography, and unified line icons replace inconsistent emoji chrome.
 - **Key dashboard panels are easier to scan.** Card of the Day is fully responsive, binder values read as cohesive rows, mover prices align cleanly, empty states are intentional, and single-snapshot histories no longer masquerade as meaningful trend charts.
