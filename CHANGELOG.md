@@ -12,6 +12,8 @@ user-facing: what changed, not how.
 
 ## [Unreleased]
 
+## [1.6.1] - 2026-07-22
+
 ### Changed
 - **Upcoming Secret Lairs are experimental and hidden by default.** Enable them explicitly under Settings → Features when you are ready to test the release-horizon UI.
 - **Announced card lists now populate before final Secret Lair IDs exist.** Wizards article contents are parsed into individual drops and card names, then Scryfall supplies exact future SLD printings where available and clearly labeled reference printings everywhere else.
