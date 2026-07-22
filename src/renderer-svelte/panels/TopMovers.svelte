@@ -1,13 +1,15 @@
 <script>
-  import { collectionVersion } from '../stores.js';
+  import { collectionVersion, dashboardRange } from '../stores.js';
+  import { dashboardRangeDays, dashboardRangeDescription } from '../timeRange.js';
   import { withFilteredCollection } from '../filter.js';
   export let filter = null;
   $: $collectionVersion;
-  $: movers = withFilteredCollection(filter, () => window.app?.topMovers?.() || []);
+  $: rangeDays = dashboardRangeDays($dashboardRange);
+  $: movers = withFilteredCollection(filter, () => window.app?.topMovers?.(10, rangeDays ?? 0) || []);
 </script>
 
 {#if movers.length === 0}
-  <p class="empty">Refresh prices at least twice to see movers.</p>
+  <p class="empty">No price movement is available for {dashboardRangeDescription($dashboardRange).toLowerCase()}. Try a longer range or refresh prices again.</p>
 {:else}
   <table>
     <thead><tr><th>Card</th><th>Foil</th><th>Set</th><th>Before</th><th>After</th><th>Δ</th></tr></thead>

@@ -1,9 +1,11 @@
 <script>
-  import { collectionVersion } from '../stores.js';
+  import { collectionVersion, dashboardRange } from '../stores.js';
+  import { dashboardRangeDays, dashboardRangeDescription } from '../timeRange.js';
   // Realized gains are collection-wide (cards + sealed) — binder filter doesn't apply.
   export let filter = null;
   $: $collectionVersion;
-  $: rg = window.app?.realizedGains?.() ?? { gain: 0, proceeds: 0, count: 0 };
+  $: rg = window.app?.realizedGains?.(dashboardRangeDays($dashboardRange)) ?? { gain: 0, proceeds: 0, count: 0 };
+  $: rangeSuffix = $dashboardRange === 'all' ? '' : ` in ${dashboardRangeDescription($dashboardRange).toLowerCase()}`;
 </script>
 
 <div class="kpi">
@@ -12,9 +14,9 @@
   </div>
   <div class="sub">
     {#if rg.count}
-      {rg.count} sold · {window.app?.fmt(rg.proceeds) ?? '—'} proceeds
+      {rg.count} sold{rangeSuffix} · {window.app?.fmt(rg.proceeds) ?? '—'} proceeds
     {:else}
-      No sales recorded yet
+      {$dashboardRange === 'all' ? 'No sales recorded yet' : `No sales in ${dashboardRangeDescription($dashboardRange).toLowerCase()}`}
     {/if}
   </div>
 </div>

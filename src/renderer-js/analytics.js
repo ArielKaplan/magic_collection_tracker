@@ -31,8 +31,27 @@ export function entryRealized(entry) {
 
 // Aggregate realized gains across sold cards + sold sealed, with a per-year
 // breakdown (keyed on the disposal year). Powers the Realized Gains KPI/panel.
-export function realizedGains() {
-  const sold = [...soldCards(), ...soldSealed()];
+function rangeCutoff(anchorKey, days) {
+  if (!anchorKey || !Number.isFinite(days) || days <= 0) return null;
+  const [year, month, day] = anchorKey.slice(0, 10).split('-').map(Number);
+  if (!year || !month || !day) return null;
+  const cutoff = new Date(year, month - 1, day);
+  cutoff.setDate(cutoff.getDate() - (days - 1));
+  return `${cutoff.getFullYear()}-${String(cutoff.getMonth() + 1).padStart(2, '0')}-${String(cutoff.getDate()).padStart(2, '0')}`;
+}
+
+export function realizedGains(rangeDays = null) {
+  let sold = [...soldCards(), ...soldSealed()];
+  if (Number.isFinite(rangeDays) && rangeDays > 0) {
+    const dated = sold.filter(entry => /^\d{4}-\d{2}-\d{2}/.test(entry.disposedAt || ''));
+    const snapshotAnchor = (collection.portfolioSnapshots || []).reduce((latest, snapshot) => {
+      const key = String(snapshot.date || '').slice(0, 10);
+      return key > latest ? key : latest;
+    }, '');
+    const anchor = snapshotAnchor || dated.reduce((latest, entry) => entry.disposedAt.slice(0, 10) > latest ? entry.disposedAt.slice(0, 10) : latest, '');
+    const cutoff = rangeCutoff(anchor, rangeDays);
+    sold = cutoff ? dated.filter(entry => entry.disposedAt.slice(0, 10) >= cutoff && entry.disposedAt.slice(0, 10) <= anchor) : [];
+  }
   const totals = { proceeds: 0, fees: 0, cost: 0, gain: 0, count: 0 };
   const byYear = new Map();   // 'YYYY' → { proceeds, fees, cost, gain, count }
   for (const e of sold) {
@@ -139,12 +158,27 @@ export function binderValueMap() {
   return map;
 }
 
-export function topMovers(limit = 10) {
+export function topMovers(limit = 10, rangeDays = null) {
   const out = [];
-  for (const c of ownedCards()) {
-    const h  = getPriceHistory(c.scryfallId, c.foil);
-    const ch = getPriceChange(h);
-    if (ch) out.push({ card: c, change: ch });
+  const histories = ownedCards().map(card => ({ card, history: getPriceHistory(card.scryfallId, card.foil) }));
+  const anchor = histories.reduce((latest, row) => row.history.reduce((inner, point) => {
+    const key = String(point.date || '').slice(0, 10);
+    return key > inner ? key : inner;
+  }, latest), '');
+  const cutoff = rangeCutoff(anchor, rangeDays);
+
+  for (const { card, history } of histories) {
+    let sample = history;
+    if (cutoff) sample = history.filter(point => {
+      const key = String(point.date || '').slice(0, 10);
+      return key >= cutoff && key <= anchor;
+    });
+    // Callers that omit a range retain the ticker's recent-snapshot behavior.
+    // Dashboard callers pass 0 for All, or a positive preset, and compare the
+    // first and last quote in that selected period.
+    const changeSample = rangeDays == null ? sample : [sample[0], sample[sample.length - 1]].filter(Boolean);
+    const ch = getPriceChange(changeSample);
+    if (ch) out.push({ card, change: ch });
   }
   out.sort((a, b) => Math.abs(b.change.pct) - Math.abs(a.change.pct));
   return out.slice(0, limit);

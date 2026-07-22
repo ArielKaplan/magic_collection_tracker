@@ -1,8 +1,10 @@
 <script>
-  import { collectionVersion } from '../stores.js';
+  import { collectionVersion, dashboardRange } from '../stores.js';
+  import { dashboardRangeDays, dashboardRangeDescription } from '../timeRange.js';
   export let filter = null;
   $: $collectionVersion;
-  $: rg = window.app?.realizedGains?.() ?? { gain: 0, proceeds: 0, cost: 0, count: 0, byYear: new Map() };
+  $: rg = window.app?.realizedGains?.(dashboardRangeDays($dashboardRange)) ?? { gain: 0, proceeds: 0, cost: 0, count: 0, byYear: new Map() };
+  $: totalSales = window.app?.realizedGains?.()?.count ?? 0;
   // Newest year first; 'Unknown' (no disposal date) sinks to the bottom.
   $: years = [...(rg.byYear?.entries?.() ?? [])]
       .sort((a, b) => (a[0] === 'Unknown') - (b[0] === 'Unknown') || b[0].localeCompare(a[0]));
@@ -13,7 +15,10 @@
 {#if !rg.count}
   <div class="empty">
     <span class="empty-mark"></span>
-    <div><strong>No realized activity yet</strong><p>Use <b>Sell / dispose</b> on a card or sealed product to build this history.</p></div>
+    <div>
+      <strong>{totalSales ? `No realized activity in ${dashboardRangeDescription($dashboardRange).toLowerCase()}` : 'No realized activity yet'}</strong>
+      <p>{totalSales ? 'Choose a longer history range to include earlier sales.' : 'Use Sell / dispose on a card or sealed product to build this history.'}</p>
+    </div>
   </div>
 {:else}
   <div class="totals">
@@ -48,7 +53,6 @@
   .empty strong,.empty p { display: block; }
   .empty strong { color: var(--text); font-size: 12.5px; font-weight: 640; }
   .empty p { margin: 4px 0 0; max-width: 280px; font-size: 11px; line-height: 1.5; }
-  .empty b { color: var(--text-dim); font-weight: 600; }
   .totals { margin-bottom: 14px; }
   .big { font-size: 26px; font-weight: 800; letter-spacing: -0.02em; line-height: 1; }
   .totals-sub { font-size: 11.5px; color: var(--text-dim, #7a7692); margin-top: 4px; }

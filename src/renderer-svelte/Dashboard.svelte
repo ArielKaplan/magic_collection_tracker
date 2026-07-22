@@ -4,11 +4,13 @@
   import LedgerIcon from './LedgerIcon.svelte';
   import CustomChart from './panels/CustomChart.svelte';
   import { PANELS, panelDef, isCustomPanel, defaultLayout } from './panels.js';
-  import { layout, snapEnabled } from './stores.js';
+  import { layout, snapEnabled, dashboardRange } from './stores.js';
+  import { DASHBOARD_RANGES, normalizeDashboardRange } from './timeRange.js';
 
   const SETTING_KEY = 'dashboard_layout_v2';
   const AUTO_KEY = 'dashboard_auto_layout';
   const VISUAL_LAYOUT_KEY = 'dashboard_visual_layout_version';
+  const RANGE_KEY = 'dashboard_time_range_v1';
   const VISUAL_LAYOUT_VERSION = 3;
   let saveTimer;
   let canvasEl;
@@ -18,6 +20,7 @@
   let responsiveWidths = new Map();
   let showCustomize = false;
   let customizeEl;
+  let selectedRange = 'all';
 
   const PANEL_GROUPS = [
     { label: 'Portfolio summary', ids: ['kpi-total', 'kpi-cards', 'kpi-sealed', 'kpi-cost', 'kpi-realized', 'kpi-refresh'] },
@@ -38,13 +41,17 @@
   let panelsState = [];
   const unsub = layout.subscribe(v => panelsState = v);
   onDestroy(unsub);
+  const unsubRange = dashboardRange.subscribe(value => selectedRange = value);
+  onDestroy(unsubRange);
 
   onMount(async () => {
-    const [raw, rawAuto, rawVisualVersion] = await Promise.all([
+    const [raw, rawAuto, rawVisualVersion, rawRange] = await Promise.all([
       window.api.settings.get(SETTING_KEY),
       window.api.settings.get(AUTO_KEY),
       window.api.settings.get(VISUAL_LAYOUT_KEY),
+      window.api.settings.get(RANGE_KEY),
     ]);
+    dashboardRange.set(normalizeDashboardRange(rawRange));
     autoLayout = rawAuto == null || rawAuto === '' ? true : rawAuto === '1';
     let parsed = null;
     if (raw) { try { parsed = JSON.parse(raw); } catch {} }
@@ -186,6 +193,11 @@
   }
 
   function toggleSnap() { snapEnabled.update(v => !v); }
+  function setDashboardRange(value) {
+    const normalized = normalizeDashboardRange(value);
+    dashboardRange.set(normalized);
+    window.api.settings.set(RANGE_KEY, normalized).catch?.(() => {});
+  }
   function handleKeydown(event) {
     if (event.key === 'Escape') showCustomize = false;
   }
@@ -263,6 +275,21 @@
     <div class="dash-heading">
       <span>Mana Ledger</span>
       <strong>Portfolio dashboard</strong>
+    </div>
+
+    <div class="history-range" role="group" aria-label="Dashboard history range" title="Updates Value over time, Secret Lair Index, Realized gains, and Top movers">
+      <span class="history-range-label">History</span>
+      <div class="history-range-options">
+        {#each DASHBOARD_RANGES as option}
+          <button
+            class:active={selectedRange === option.value}
+            aria-pressed={selectedRange === option.value}
+            aria-label={option.description}
+            title={option.description}
+            on:click={() => setDashboardRange(option.value)}
+          >{option.label}</button>
+        {/each}
+      </div>
     </div>
 
     <div class="dash-actions">
@@ -451,6 +478,12 @@
   .dash-heading { display: flex; flex-direction: column; min-width: 150px; }
   .dash-heading span { color: var(--accent, #c89b3c); font-size: 9px; font-weight: 750; letter-spacing: .09em; line-height: 1.2; text-transform: uppercase; }
   .dash-heading strong { margin-top: 2px; color: var(--text, #ececef); font-size: 16px; font-weight: 680; letter-spacing: -.015em; line-height: 1.25; }
+  .history-range { display: flex; align-items: center; gap: 8px; margin-left: auto; color: var(--text-muted, #6f6d76); }
+  .history-range-label { font-size: 9px; font-weight: 720; letter-spacing: .075em; text-transform: uppercase; }
+  .history-range-options { display: inline-flex; align-items: center; padding: 3px; background: rgba(0,0,0,.18); border: 1px solid var(--border, #252545); border-radius: 9px; }
+  .history-range-options button { min-width: 34px; height: 26px; padding: 0 8px; color: var(--text-muted, #6f6d76); background: transparent; border: 0; border-radius: 6px; font: inherit; font-size: 10.5px; font-weight: 650; font-variant-numeric: tabular-nums; cursor: pointer; transition: color .12s ease, background .12s ease, box-shadow .12s ease; }
+  .history-range-options button:hover { color: var(--text, #ececef); background: rgba(255,255,255,.045); }
+  .history-range-options button.active { color: #17130b; background: var(--accent2, #e8b84b); box-shadow: 0 2px 9px rgba(0,0,0,.26); }
   .dash-actions { display: flex; align-items: center; justify-content: flex-end; gap: 7px; min-width: 0; }
   .customize-shell { position: relative; }
 
@@ -523,6 +556,9 @@
 
   @media (max-width: 760px) {
     .dash-toolbar { align-items: flex-start; flex-direction: column; gap: 9px; }
+    .history-range { width: 100%; margin-left: 0; }
+    .history-range-options { flex: 1; }
+    .history-range-options button { flex: 1; }
     .dash-actions { width: 100%; justify-content: flex-start; overflow-x: auto; }
     .customize-grid { grid-template-columns: 1fr; }
     .customize-popover { position: fixed; top: 104px; left: 12px; right: 12px; width: auto; }

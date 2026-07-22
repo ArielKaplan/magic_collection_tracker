@@ -1,7 +1,8 @@
 <script>
   import { onMount, onDestroy, tick } from 'svelte';
   import { Chart, registerables } from 'chart.js';
-  import { collectionVersion } from '../stores.js';
+  import { collectionVersion, dashboardRange } from '../stores.js';
+  import { dashboardRangeDescription, filterRowsByDashboardRange } from '../timeRange.js';
 
   Chart.register(...registerables);
 
@@ -14,8 +15,9 @@
   let chart = null;
   let mounted = false;
   let count = 0;
+  let totalCount = 0;
 
-  $: if (mounted) { $collectionVersion; refresh(); }
+  $: if (mounted) { $collectionVersion; $dashboardRange; refresh(); }
 
   onMount(() => { mounted = true; refresh(); });
   onDestroy(() => { if (chart) { chart.destroy(); chart = null; } });
@@ -24,14 +26,19 @@
   // canvas first, or drawChart's canvas guard exits and the chart never draws
   // (the empty-state deadlock this replaces).
   async function refresh() {
+    totalCount = allSnapshots().length;
     count = snapshots().length;
     await tick();
     drawChart();
   }
 
-  function snapshots() {
+  function allSnapshots() {
     const arr = window.collection?.portfolioSnapshots || [];
     return [...arr].sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+  }
+
+  function snapshots() {
+    return filterRowsByDashboardRange(allSnapshots(), $dashboardRange);
   }
 
   function shortDate(d) {
@@ -114,8 +121,10 @@
   }
 </script>
 
-{#if count === 0}
+{#if count === 0 && totalCount === 0}
   <div class="empty-state"><strong>Start your value history</strong><span>Refresh prices to record the first daily portfolio snapshot.</span></div>
+{:else if count === 0}
+  <div class="empty-state"><strong>No snapshots in this range</strong><span>{dashboardRangeDescription($dashboardRange)} has no recorded portfolio values. Choose a longer range.</span></div>
 {:else if count === 1}
   <div class="empty-state tracking"><strong>Tracking started today</strong><span>Your trend line appears after the next daily price snapshot.</span></div>
 {:else}

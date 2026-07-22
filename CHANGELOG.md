@@ -12,6 +12,9 @@ user-facing: what changed, not how.
 
 ## [Unreleased]
 
+### Added
+- **Dashboard history can now be explored by time range.** A persistent 7-day, 30-day, 90-day, 1-year, or all-time selector updates portfolio value, Secret Lair index, realized gains, and Top Movers together.
+
 ## [1.6.4] - 2026-07-22
 
 ### Changed

@@ -1,7 +1,8 @@
 <script>
   import { onMount, onDestroy, tick } from 'svelte';
   import { Chart, registerables } from 'chart.js';
-  import { collectionVersion } from '../stores.js';
+  import { collectionVersion, dashboardRange } from '../stores.js';
+  import { dashboardRangeDescription, filterRowsByDashboardRange } from '../timeRange.js';
 
   Chart.register(...registerables);
 
@@ -13,9 +14,10 @@
   let chart = null;
   let mounted = false;
   let count = 0;
+  let totalCount = 0;
 
   $: idx = ($collectionVersion, window.app?.computeSlIndex?.() ?? null);
-  $: if (mounted) { $collectionVersion; refresh(); }
+  $: if (mounted) { $collectionVersion; $dashboardRange; refresh(); }
 
   onMount(() => { mounted = true; refresh(); });
   onDestroy(() => { if (chart) { chart.destroy(); chart = null; } });
@@ -23,14 +25,19 @@
   // count before draw: the {#if count > 0} must mount the canvas first, or
   // drawChart's canvas guard exits and the chart never appears.
   async function refresh() {
+    totalCount = allSlSnaps().length;
     count = slSnaps().length;
     await tick();
     drawChart();
   }
 
-  function slSnaps() {
+  function allSlSnaps() {
     const arr = (window.collection?.portfolioSnapshots || []).filter(s => s.slValue != null || s.slCost != null);
     return [...arr].sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+  }
+
+  function slSnaps() {
+    return filterRowsByDashboardRange(allSlSnaps(), $dashboardRange);
   }
 
   function shortDate(d) {
@@ -103,6 +110,8 @@
   </div>
   {#if count > 1}
     <div class="chart-wrap"><canvas bind:this={canvas}></canvas></div>
+  {:else if count === 0 && totalCount > 0}
+    <div class="tracking-state"><strong>No snapshots in this range</strong><span>{dashboardRangeDescription($dashboardRange)} has no Secret Lair index values. Choose a longer range.</span></div>
   {:else}
     <div class="tracking-state"><strong>Index tracking is active</strong><span>The comparison line appears after the next daily snapshot.</span></div>
   {/if}

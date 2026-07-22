@@ -12,3 +12,7 @@ export const layout = writable([]);
 // Whether snap-to-grid is on; user-toggleable from the Dashboard toolbar.
 export const snapEnabled = writable(false);
 export const SNAP_PX = 8;
+
+// One shared range keeps every time-aware dashboard panel in sync. Dashboard
+// hydrates/persists the user's choice through the existing settings bridge.
+export const dashboardRange = writable('all');

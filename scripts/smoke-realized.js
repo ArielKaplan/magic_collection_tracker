@@ -60,6 +60,8 @@ const check = (label, cond, detail) => {
   check('realized cost = 10 + 8 + 30', rg.cost === 48, rg.cost);
   check('byYear 2025 = 27 (1 sale)', rg.byYear.get('2025')?.gain === 27 && rg.byYear.get('2025')?.count === 1, [...rg.byYear]);
   check('byYear 2026 = 44 (2 sales: 4 + 40)', rg.byYear.get('2026')?.gain === 44 && rg.byYear.get('2026')?.count === 2, [...rg.byYear]);
+  const recent = A.realizedGains(30);
+  check('bounded realized range anchors to latest sale', recent.count === 1 && recent.gain === 40, recent);
 
   // ── owned-only value/cost basis ────────────────────────────────────────────
   check('totalCostBasis excludes sold (cards 13 + sealed 100 = 113)', A.totalCostBasis() === 113, A.totalCostBasis());
