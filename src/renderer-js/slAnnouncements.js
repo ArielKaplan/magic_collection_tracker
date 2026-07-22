@@ -28,6 +28,15 @@ const cleanHumanList = (values, maxItems, maxLength) => [...new Set((Array.isArr
   .map(value => cleanHumanText(value, maxLength))
   .filter(Boolean))].slice(0, maxItems);
 
+const cleanRevealedDrops = values => (Array.isArray(values) ? values : []).map(drop => ({
+  name: cleanHumanText(drop?.name, 240),
+  cards: (Array.isArray(drop?.cards) ? drop.cards : []).map(card => ({
+    name: cleanHumanText(card?.name, 180),
+    displayName: cleanHumanText(card?.displayName || card?.name, 220),
+    quantity: Math.max(1, Number(card?.quantity) || 1),
+  })).filter(card => card.name),
+})).filter(drop => drop.name).slice(0, 30);
+
 // Remove legacy price fields and parser leaks when loading caches from older
 // builds. This keeps existing installs clean before the next network refresh.
 export const sanitizeAnnouncementRow = row => {
@@ -38,6 +47,7 @@ export const sanitizeAnnouncementRow = row => {
     summary: cleanHumanText(clean.summary, 700),
     bundles: cleanHumanList(clean.bundles, 20, 240),
     officialNotes: cleanHumanList(clean.officialNotes, 12, 420),
+    revealedDrops: cleanRevealedDrops(clean.revealedDrops),
   };
 };
 
@@ -54,6 +64,40 @@ const text = html => decode(visibleHtml(html)
   .replace(/<[^>]+>/g, ' '))
   .replace(/[ \t]+/g, ' ').replace(/\n\s+/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
 const absolute = href => href?.startsWith('http') ? href : `https://magic.wizards.com${href?.startsWith('/') ? '' : '/'}${href || ''}`;
+
+const parseRevealedDrops = source => {
+  const headings = [...String(source || '').matchAll(/<h([1-4])\b[^>]*>([\s\S]*?)<\/h\1>/gi)];
+  const drops = [];
+  for (let i = 0; i < headings.length; i++) {
+    const heading = headings[i];
+    const name = text(heading[2]);
+    if (/^announcements$/i.test(name)) break;
+    if (!/^secret\s+lair\b/i.test(name) || /\bbundle\b|\bsuperdrop\b/i.test(name)) continue;
+
+    const start = heading.index + heading[0].length;
+    const end = headings[i + 1]?.index ?? source.length;
+    const section = text(source.slice(start, end));
+    const contents = section.match(/(?:^|\n)Contents\s*:?\s*\n?([\s\S]*?)(?=\nPrice\s*:?|$)/i)?.[1] || '';
+    const lines = contents.split('\n').map(line => line.trim()).filter(Boolean);
+    const cards = [];
+    for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+      let match = lines[lineIndex].match(/^(\d+)\s*[x\u00d7]\s*(.+)$/i);
+      if (!match) {
+        const quantityOnly = lines[lineIndex].match(/^(\d+)\s*[x\u00d7]$/i);
+        if (quantityOnly && lines[lineIndex + 1]) match = [lines[lineIndex], quantityOnly[1], lines[++lineIndex]];
+      }
+      if (!match) continue;
+      const displayName = match[2].replace(/\s+/g, ' ').trim();
+      const cardName = displayName
+        .replace(/\s+as\s+["\u201c][\s\S]*$/i, '')
+        .replace(/\s+tokens?$/i, '')
+        .trim();
+      if (cardName) cards.push({ name: cardName, displayName, quantity: Number(match[1]) || 1 });
+    }
+    drops.push({ name, cards });
+  }
+  return cleanRevealedDrops(drops);
+};
 
 export function parseAnnouncementArchiveHtml(html) {
   const out = [];
@@ -106,6 +150,7 @@ export function parseAnnouncementDetailHtml(html, seed = {}) {
     saleTime: timeM ? `${timeM[1]} ${timeM[2].toUpperCase()}` : null,
     bundles: [...new Set(bundles)].slice(0, 20),
     officialNotes: [...new Set(noteLines)].slice(0, 12),
+    revealedDrops: parseRevealedDrops(source),
     summary: seed.summary || firstSummary || body.slice(0, 600),
   });
 }
@@ -144,6 +189,7 @@ export async function refreshSlAnnouncements(opts = {}) {
           ...old, ...parsed,
           bundles: parsed.bundles?.length ? parsed.bundles : (old.bundles || []),
           officialNotes: parsed.officialNotes?.length ? parsed.officialNotes : (old.officialNotes || []),
+          revealedDrops: parsed.revealedDrops?.length ? parsed.revealedDrops : (old.revealedDrops || []),
         } : parsed;
       } catch { return previousByUrl.get(seed.url) || seed; }
     }));

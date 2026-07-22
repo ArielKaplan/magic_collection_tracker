@@ -76,4 +76,28 @@ describe('Secret Lair supplemental source parsers', () => {
     expect(row.officialNotes).toEqual([]);
     expect(row).not.toHaveProperty('prices');
   });
+
+  it('extracts officially revealed drops and contents for upcoming previews', () => {
+    const row = parseAnnouncementDetailHtml(`
+      <h1>Secret Lair: Superdrop of the Moonlight Jellies</h1>
+      <h2>Grandpa Would Be Proud Everything Bundle</h2>
+      <p>Contents:</p><ul><li>1x Secret Lair x Stardew Valley: Welcome to Stardew Valley</li></ul>
+      <h2>Secret Lair x Stardew Valley: Welcome to Stardew Valley</h2>
+      <p>Contents:</p><ul>
+        <li>1x Stardew Valley</li>
+        <li>1x Wedding Ring as &quot;Mermaid's Pendant&quot;</li>
+        <li>1x Food Token</li>
+      </ul><p>Price:</p><p>Non-foil: $39.99 USD</p>
+      <h2>Announcements</h2>
+      <h3>Secret Lair x Unrelated Future Article</h3>
+    `);
+    expect(row.revealedDrops).toEqual([{
+      name: 'Secret Lair x Stardew Valley: Welcome to Stardew Valley',
+      cards: [
+        { name: 'Stardew Valley', displayName: 'Stardew Valley', quantity: 1 },
+        { name: 'Wedding Ring', displayName: `Wedding Ring as "Mermaid's Pendant"`, quantity: 1 },
+        { name: 'Food', displayName: 'Food Token', quantity: 1 },
+      ],
+    }]);
+  });
 });

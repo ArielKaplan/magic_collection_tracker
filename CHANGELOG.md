@@ -12,6 +12,9 @@ user-facing: what changed, not how.
 
 ## [Unreleased]
 
+### Added
+- **Upcoming Secret Lairs are now fully explorable before release.** A new release-horizon view joins official Wizards drop contents to future Scryfall printing IDs, showing real card images and collector numbers as previews go live. Full, partial, and details-pending states make source coverage explicit, and the Explorer landing page highlights upcoming drops.
+
 ## [1.5.1] - 2026-07-22
 
 ### Fixed

@@ -4,6 +4,7 @@
 import { showModal } from './modals.js';
 import { getSlProducts } from './slData.js';
 import { slAnnouncementInfo } from './slAnnouncements.js';
+import { slUpcomingInfo } from './slUpcoming.js';
 import { slBonusInfo } from './slBonus.js';
 import { slWikiInfo } from './slWiki.js';
 import { slHistorySeedInfo } from './slHistorySeed.js';
@@ -25,6 +26,7 @@ export function showSlDataGuide() {
   const wiki = slWikiInfo();
   const bonus = slBonusInfo();
   const official = slAnnouncementInfo();
+  const upcoming = slUpcomingInfo();
   const historySeed = slHistorySeedInfo();
   const intelligence = slIntelligenceSummary();
   const ids = new Set();
@@ -52,6 +54,7 @@ export function showSlDataGuide() {
             ${row('mtg.wiki Drop Series', 'Curated release structure', 'Superdrop grouping, release date, nonfoil MSRP, foil MSRP, and announced-but-unreleased rows.', 'With SL sync')}
             ${row('mtg.wiki Bonus Cards', 'Supplemental insert catalog', 'SLD collector number, type, card, variant, explicit drop exclusivity, notes and chase/random signals. Bonus rows never count as guaranteed contents.', 'With SL sync')}
             ${row('Wizards announcements', 'Official launch context', 'Up to 20 recent official articles with publication date, sale date/time, bundle headings, promotion and WPN/store notes. Article prices are intentionally not parsed because they can belong to one SKU rather than the titled superdrop.', 'With SL sync')}
+            ${row('Scryfall future SLD search', 'Upcoming printing previews', 'Future SLD printing IDs, release dates, collector numbers, finish availability and card images. Official Wizards contents provide the drop grouping; missing IDs remain visibly pending.', 'With SL sync')}
             ${row('MTGJSON AllPrices seed', 'New-install card history', 'A reviewed build-time Secret Lair-only slice of TCGplayer/Card Kingdom USD retail history. The app never downloads the global payload; local/live points win on overlapping dates.', 'Weekly app-data build')}
             ${row('CardTrader (optional)', 'Cross-market sealed listings', 'Lowest in-stock listings by exact CardTrader blueprint ID, kept in the returned currency. Requires the user’s CardTrader profile API token.', 'On demand')}
             ${row('PriceCharting (optional)', 'Second sealed estimate', 'Current new/sealed or loose value returned for a user-selected product. Requires the user’s paid API token; it is not historical data.', 'On demand')}
@@ -92,6 +95,7 @@ export function showSlDataGuide() {
         <div style="padding:9px 11px;background:var(--surface);border-radius:7px"><strong style="color:var(--text)">Drop Series wiki</strong><br>${wiki?.count?.toLocaleString() || 0} rows · ${esc(when(wiki?.fetchedAt))}</div>
         <div style="padding:9px 11px;background:var(--surface);border-radius:7px"><strong style="color:var(--text)">Bonus catalog</strong><br>${bonus?.count?.toLocaleString() || 0} rows · ${esc(when(bonus?.fetchedAt))}</div>
         <div style="padding:9px 11px;background:var(--surface);border-radius:7px"><strong style="color:var(--text)">Official articles</strong><br>${official?.count?.toLocaleString() || 0} rows · ${esc(when(official?.fetchedAt))}</div>
+        <div style="padding:9px 11px;background:var(--surface);border-radius:7px"><strong style="color:var(--text)">Upcoming previews</strong><br>${upcoming?.matchedCount?.toLocaleString() || 0} linked IDs across ${upcoming?.groupCount?.toLocaleString() || 0} drops · ${esc(when(upcoming?.fetchedAt))}</div>
         <div style="padding:9px 11px;background:var(--surface);border-radius:7px"><strong style="color:var(--text)">TCGCSV products</strong><br>${tcgcsvCache.sealedProducts.length.toLocaleString()} rows · ${esc(when(tcgcsvCache.lastRefresh))}</div>
         <div id="sl-help-scryfall-health" style="padding:9px 11px;background:var(--surface);border-radius:7px"><strong style="color:var(--text)">Scryfall bulk index</strong><br>Checking local index…</div>
         <div style="padding:9px 11px;background:var(--surface);border-radius:7px"><strong style="color:var(--text)">History seed</strong><br>${historySeed.series.toLocaleString()} series · ${esc(when(historySeed.generatedAt))}</div>

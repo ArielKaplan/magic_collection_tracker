@@ -14,15 +14,21 @@ const ANNOUNCEMENTS = Array.from({ length: 6 }, (_, i) => ({
   url: `https://magic.wizards.com/en/news/announcements/secret-lair-${i + 1}`,
   title: `Secret Lair Announcement ${i + 1}`,
   publishedAt: `2026-07-${String(20 - i).padStart(2, '0')}T12:00:00Z`,
-  saleDate: `2026-08-${String(10 + i).padStart(2, '0')}`,
+  saleDate: i === 0 ? '2099-08-10' : `2026-08-${String(10 + i).padStart(2, '0')}`,
   summary: `Official summary ${i + 1}`,
+  revealedDrops: i === 0 ? [{ name: 'Future Preview Drop', cards: [{ name: 'Future Card', displayName: 'Future Card', quantity: 1 }] }] : [],
   prices: [{ amount: 29.99, currency: 'USD' }], // legacy cache field must be discarded
 }));
+const UPCOMING = { fetchedAt: '2026-07-22', cards: [{
+  id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', name: 'Future Card', releasedAt: '2099-08-10',
+  collectorNumber: '9999', finishes: ['nonfoil'], imageUri: 'https://cards.scryfall.io/normal/front/a/a/a.jpg',
+}] };
 globalThis.window = {
   addEventListener: noop,
   api: { settings: { get: async k => k === 'sl_wiki_data'
     ? JSON.stringify({ fetchedAt: '2026-07-19', rows: WIKI_ROWS })
-    : k === 'sl_announcement_data' ? JSON.stringify({ fetchedAt: '2026-07-20', rows: ANNOUNCEMENTS }) : null, set: async () => {} } },
+    : k === 'sl_announcement_data' ? JSON.stringify({ fetchedAt: '2026-07-20', rows: ANNOUNCEMENTS })
+    : k === 'sl_upcoming_data' ? JSON.stringify(UPCOMING) : null, set: async () => {} } },
 };
 globalThis.document = {
   addEventListener: noop, getElementById: () => null, querySelectorAll: () => [],
@@ -53,11 +59,13 @@ const check = (label, cond, detail) => {
   const { renderSlViewer } = await import('../src/renderer-js/slTab.js');
   const { loadSlWikiFromSettings } = await import('../src/renderer-js/slWiki.js');
   const { loadSlAnnouncementsFromSettings, slAnnouncements } = await import('../src/renderer-js/slAnnouncements.js');
+  const { loadSlUpcomingFromSettings } = await import('../src/renderer-js/slUpcoming.js');
   const { setSlProducts } = await import('../src/renderer-js/slData.js');
   const { ui } = await import('../src/renderer-js/state.js');
 
   await loadSlWikiFromSettings();
   await loadSlAnnouncementsFromSettings();
+  await loadSlUpcomingFromSettings();
   setSlProducts([{ uuid: 'p1', dropName: 'Product Only Drop', legacyDrop: 'Product Only Drop', finishLabel: '', finish: 'nonfoil', tcgplayerProductId: null, releaseDate: '2023-03-03', lowConfidence: false, cards: [] }]);
 
   const sv = ui.slViewer;
@@ -101,8 +109,9 @@ const check = (label, cond, detail) => {
     JSON.stringify(sdOrder) === JSON.stringify(['Newer SD', 'Test SD', 'No-date SD']), sdOrder);
   check('landing table has Drops column header', lt.includes('>Drops<'));
 
+  const officialPreview = lt.slice(lt.indexOf('Official Wizards announcements'));
   check('landing announcement strip previews exactly four articles',
-    (lt.match(/Secret Lair Announcement \d/g) || []).length === 4 && lt.includes('View all · 6'));
+    (officialPreview.match(/Secret Lair Announcement \d/g) || []).length === 4 && officialPreview.includes('View all · 6'));
   check('legacy announcement prices are removed on cache load',
     slAnnouncements().every(row => !Object.hasOwn(row, 'prices')));
 
@@ -112,6 +121,15 @@ const check = (label, cond, detail) => {
     ANNOUNCEMENTS.every(row => av.includes(row.title)) && av.includes('6 recent articles'));
   check('all-announcements view explains omitted product prices and contains no parsed price',
     av.includes('Product prices are omitted') && !av.includes('$29.99') && !av.includes('announced price'));
+
+  Object.assign(sv, { view: 'upcoming', upcomingDrop: '', search: '' });
+  const uv = renderSlViewer();
+  check('upcoming view renders an official drop with exact Scryfall coverage',
+    uv.includes('Explore upcoming Secret Lairs') && uv.includes('Future Preview Drop') && uv.includes('<strong>1</strong> live Scryfall ID'));
+  sv.upcomingDrop = 'Future Preview Drop';
+  const ud = renderSlViewer();
+  check('upcoming drop reuses the card gallery with a preview printing',
+    ud.includes('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa') && ud.includes('sl-card-preview') && ud.includes('1 of 1'));
 
   // ── landing tiles date sort: undated superdrop last both directions ─────────
   sv.view = 'drops'; sv.layout = 'tiles'; sv.sort = 'date_asc';
