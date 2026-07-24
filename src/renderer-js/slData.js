@@ -31,8 +31,10 @@ export function finishGroup(foil) {
 // Punctuation-insensitive key — product names strip punctuation ("Iron Maiden
 // Album Art") while subsets keep it ("Iron Maiden: Album Art"), and spell
 // "&" out as "and" ("Goblin and Squabblin" vs "Goblin & Squabblin'"), so the
-// word "and" is treated as noise too.
-const norm = s => (s || '').toLowerCase().replace(/\band\b/g, '').replace(/[^a-z0-9]+/g, '');
+// word "and" is treated as noise too. "the" likewise: sealed products drop it
+// where subsets keep it ("Return to Mystical Archive" vs "Return to the
+// Mystical Archive"), which used to duplicate the drop into Recent Additions.
+const norm = s => (s || '').toLowerCase().replace(/\b(?:and|the|edition)\b/g, '').replace(/[^a-z0-9]+/g, '');
 
 // Strip sealed-product boilerplate down to the drop-ish name.
 const cleanProductName = n => (n || '')
@@ -176,7 +178,11 @@ export function buildSlModel(json, opts = {}) {
       }
     }
     const dropName = canon || baseName;
-    const legacyDrop = finishLabel ? `${dropName} ${finishLabel}` : dropName;
+    // Snap the finished SKU name to a canonical spelling too — some known
+    // names carry the finish phrase themselves ("Showcase: Streets of New
+    // Capenna Gilded Foil Edition"), which the base-name lookup can't see.
+    const rawLegacy = finishLabel ? `${dropName} ${finishLabel}` : dropName;
+    const legacyDrop = canonical.get(norm(rawLegacy)) || rawLegacy;
     const lk = legacyDrop.toLowerCase();
     if (byLegacy.has(lk)) continue;                    // duplicate SKU listing
 

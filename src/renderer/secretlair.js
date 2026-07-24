@@ -7600,10 +7600,57 @@ const SL_SCRYFALL_TO_NUMBER = {
   "ffef4e1a-4ae8-41e7-a47a-9f23c2709e50": "7129",
 };
 
+// Snap incoming drop-name variants onto the names this build already knows.
+// Older caches and harvests spell some drops differently than the baked
+// baseline ("Return to Mystical Archive" vs baked "Return to the Mystical
+// Archive"); merging them verbatim duplicates the drop into "Recent
+// Additions". Normalization mirrors norm()/FINISH_TAIL in slData.js — keep
+// the three in sync.
+function slCanonicalDropName(drop, knownByNorm) {
+  const norm = s => (s || '').toLowerCase().replace(/\b(?:and|the|edition)\b/g, '').replace(/[^a-z0-9]+/g, '');
+  const hit = knownByNorm.get(norm(drop));
+  if (hit) return hit;
+  // "<base> <finish phrase>" — canonicalize the base, keep the finish label.
+  const FINISH_TAIL = /\s+((?:rainbow|confetti|galaxy|raised|etched|gilded|textured|surge|traditional|neon|halo|dazzle|prismatic|fracture)\s+)?foil(?:\s+edition)?$/i;
+  const fm = drop.match(FINISH_TAIL);
+  if (fm) {
+    const base = knownByNorm.get(norm(drop.slice(0, fm.index)));
+    if (base) return base + drop.slice(fm.index);
+  }
+  return drop;
+}
+
 // Merge fetched data into all live globals and recompute derived maps.
 // newDropCards: { dropName: [cardName, ...] }
 // newScryfallToDrops: { scryfallId: [dropName, ...] }
 function applySlDataUpdate(newDropCards, newScryfallToDrops, newScryfallToName) {
+  const norm = s => (s || '').toLowerCase().replace(/\b(?:and|the|edition)\b/g, '').replace(/[^a-z0-9]+/g, '');
+  const knownByNorm = new Map();
+  for (const sd of SL_SUPERDROPS) {
+    for (const d of sd.drops) {
+      const k = norm(d);
+      if (!knownByNorm.has(k)) knownByNorm.set(k, d);
+    }
+  }
+  const rename = {};
+  for (const d of Object.keys(newDropCards)) {
+    const canon = slCanonicalDropName(d, knownByNorm);
+    if (canon !== d) rename[d] = canon;
+  }
+  if (Object.keys(rename).length > 0) {
+    const renamedDropCards = {};
+    for (const [d, cards] of Object.entries(newDropCards)) {
+      const name = rename[d] || d;
+      renamedDropCards[name] = renamedDropCards[name]
+        ? [...new Set([...renamedDropCards[name], ...cards])]
+        : cards;
+    }
+    newDropCards = renamedDropCards;
+    for (const [id, drops] of Object.entries(newScryfallToDrops)) {
+      newScryfallToDrops[id] = [...new Set(drops.map(d => rename[d] || d))];
+    }
+  }
+
   // Merge into primary maps
   Object.assign(SL_DROP_CARDS, newDropCards);
   Object.assign(SL_SCRYFALL_TO_DROPS, newScryfallToDrops);

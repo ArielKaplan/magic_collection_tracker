@@ -12,6 +12,12 @@ user-facing: what changed, not how.
 
 ## [Unreleased]
 
+### Fixed
+- **No more duplicate drops in "Recent Additions".** Alternate spellings from MTGJSON's sealed-product names ("Return to Mystical Archive" vs "Return to the Mystical Archive") now snap to the drop's canonical name during refresh, and previously saved data heals the same way at startup. Recent Additions now only holds genuinely new drops the built-in dataset doesn't know yet.
+
+### Added
+- **"All Drops" view in the Secret Lair Explorer.** A pinned card on the Explorer landing page (and an entry in the superdrop selector) lists every drop in one flat, ungrouped list — sortable and searchable like any superdrop view.
+
 ## [1.6.5] - 2026-07-22
 
 ### Added

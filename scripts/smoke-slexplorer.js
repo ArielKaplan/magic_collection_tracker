@@ -105,8 +105,8 @@ const check = (label, cond, detail) => {
   Object.assign(sv, { superdrop: '', drop: '', layout: 'table', sort: 'date_desc' });
   const lt = renderSlViewer();
   const sdOrder = rowOrder(lt, 'open-superdrop');
-  check('landing table rows navigate via open-superdrop, newest first, undated last',
-    JSON.stringify(sdOrder) === JSON.stringify(['Newer SD', 'Test SD', 'No-date SD']), sdOrder);
+  check('landing table rows navigate via open-superdrop: pinned All Drops, then newest first, undated last',
+    JSON.stringify(sdOrder) === JSON.stringify(['All Drops', 'Newer SD', 'Test SD', 'No-date SD']), sdOrder);
   check('landing table has Drops column header', lt.includes('>Drops<'));
   check('upcoming feature is absent from the Explorer while its advanced setting is off',
     !lt.includes('Upcoming Secret Lairs') && !lt.includes('data-val="upcoming"'));
@@ -140,8 +140,22 @@ const check = (label, cond, detail) => {
   sv.view = 'drops'; sv.layout = 'tiles'; sv.sort = 'date_asc';
   const la = renderSlViewer();
   const sdTiles = [...la.matchAll(/data-sl-superdrop="([^"]+)"/g)].map(m => m[1]);
-  check('landing tiles date_asc: undated superdrop last',
-    JSON.stringify(sdTiles) === JSON.stringify(['Test SD', 'Newer SD', 'No-date SD']), sdTiles);
+  check('landing tiles date_asc: pinned All Drops, then oldest first, undated last',
+    JSON.stringify(sdTiles) === JSON.stringify(['All Drops', 'Test SD', 'Newer SD', 'No-date SD']), sdTiles);
+
+  // ── All Drops pseudo-superdrop: flat ungrouped catalog ──────────────────────
+  sv.search = 'zzz-no-match';
+  const searching = renderSlViewer();
+  check('All Drops tile hides while searching (results would double up)',
+    !searching.includes('data-sl-superdrop="All Drops"'));
+  Object.assign(sv, { search: '', superdrop: 'All Drops', drop: '', layout: 'tiles' });
+  const flat = renderSlViewer();
+  const flatDrops = [...flat.matchAll(/data-sl-drop="([^"]+)"/g)].map(m => m[1]);
+  const everyDrop = SL_SUPERDROPS.filter(sd => sd.superdrop !== 'All Drops').flatMap(sd => sd.drops).sort();
+  check('All Drops view lists every drop from every superdrop, flat',
+    JSON.stringify([...flatDrops].sort()) === JSON.stringify(everyDrop), flatDrops);
+  check('All Drops view has no superdrop note editor', !flat.includes('edit-sd-note'));
+  sv.superdrop = '';
 
   console.log(failures ? `\n${failures} FAILURES` : '\nAll Secret Lair Explorer smoke tests passed.');
   process.exit(failures ? 1 : 0);

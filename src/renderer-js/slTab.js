@@ -97,7 +97,7 @@ function rebuildSlGrouping() {
   // recognized foil phrase regroup, so distinct drops that merely share a prefix
   // (e.g. "City Styles 2: Dressed to Kill") are left alone.
   const baseByLower = new Map(Object.keys(home).map(d => [d.toLowerCase(), d]));
-  const FINISH_RE = /^(.+?)\s+(?:rainbow |confetti |galaxy |raised |etched |gilded |textured |surge |traditional |neon )?foil$/i;
+  const FINISH_RE = /^(.+?)\s+(?:rainbow |confetti |galaxy |raised |etched |gilded |textured |surge |traditional |neon |halo |dazzle |prismatic |fracture )?foil$/i;
   for (const drop of Object.keys(home)) {
     const m = drop.match(FINISH_RE);
     if (!m) continue;
@@ -324,8 +324,13 @@ export async function refreshSlData() {
   evaluateSlWatchAlerts(true);
   render();
 }
+// Pseudo-superdrop: every drop in one flat, ungrouped list. Not a member of
+// SL_SUPERDROPS — only the Explorer's navigation understands it.
+export const SL_ALL_DROPS = 'All Drops';
+
 export function getDropsForSuperdrop(superdrop) {
   if (!superdrop || typeof SL_SUPERDROPS === 'undefined') return [];
+  if (superdrop === SL_ALL_DROPS) return SL_SUPERDROPS.flatMap(s => s.drops).sort();
   const sd = SL_SUPERDROPS.find(s => s.superdrop === superdrop);
   return sd ? [...sd.drops].sort() : [];
 }
@@ -1098,6 +1103,7 @@ export function renderSlViewer() {
   function sdSelect() {
     return `<select data-act="ui-set" data-path="slViewer.superdrop" data-also="slViewer.drop=;slViewer.page=0">
       <option value="">All Superdrops</option>
+      <option value="${esc(SL_ALL_DROPS)}"${sv.superdrop===SL_ALL_DROPS?' selected':''}>${esc(SL_ALL_DROPS)} (ungrouped)</option>
       ${superdrops.map(sd => `<option value="${esc(sd)}"${sv.superdrop===sd?' selected':''}>${esc(sd)}</option>`).join('')}
     </select>`;
   }
@@ -1169,8 +1175,8 @@ export function renderSlViewer() {
       <td style="white-space:nowrap;font-weight:600;color:${owned === total && total > 0 ? 'var(--green)' : 'var(--text-muted)'}">${owned} / ${total}</td>
       <td style="min-width:110px"><div class="sl-progress-bar" style="margin:0"><div class="sl-progress-fill" style="width:${pct}%"></div></div></td>`;
   }
-  function superdropsTable(sds) {
-    const rows = sds.map(sd => {
+  function superdropsTable(sds, pinnedRow = '') {
+    const rows = pinnedRow + sds.map(sd => {
       let owned = 0, total = 0;
       for (const d of sd.drops) { const s = dropOwnedNameStats(d); owned += s.owned; total += s.total; }
       const note = slSuperdropNote(sd.superdrop);
@@ -1619,17 +1625,18 @@ export function renderSlViewer() {
       </div>` : ''}`;
   }
 
-  // Superdrop selected (no specific drop) — show drop list within it
+  // Superdrop selected (no specific drop) — show drop list within it.
+  // SL_ALL_DROPS lists the entire catalog flat, ungrouped.
   if (sv.superdrop) {
-    const sdObj = SL_SUPERDROPS.find(s => s.superdrop === sv.superdrop);
-    const allDrops = sdObj ? [...sdObj.drops] : [];
+    const isAllDrops = sv.superdrop === SL_ALL_DROPS;
+    const allDrops = getDropsForSuperdrop(sv.superdrop);
     const drops = sortDrops(allDrops.filter(d => dropMatchesSearch(d, sv.search)));
     return viewToggle() + refreshBtn + breadcrumb() + sortSearchBar() + `
       <div class="gallery-filters">
         <div class="gallery-filter-row">
           ${sdSelect()}
-          ${dropSelect(allDrops.sort())}
-          <button class="btn btn-ghost" style="font-size:12px;margin-left:auto" data-slact="edit-sd-note" data-arg="${esc(sv.superdrop)}">${slSuperdropNote(sv.superdrop) ? '✎ Edit note' : '✎ Add note'}</button>
+          ${dropSelect(allDrops)}
+          ${isAllDrops ? '' : `<button class="btn btn-ghost" style="font-size:12px;margin-left:auto" data-slact="edit-sd-note" data-arg="${esc(sv.superdrop)}">${slSuperdropNote(sv.superdrop) ? '✎ Edit note' : '✎ Add note'}</button>`}
         </div>
       </div>
       ${slSuperdropNote(sv.superdrop) ? `<div style="margin:0 0 14px;padding:9px 13px;background:var(--surface);border-left:3px solid var(--accent2);border-radius:6px;font-size:13px;color:var(--text);white-space:pre-wrap">📝 ${esc(slSuperdropNote(sv.superdrop))}</div>` : ''}
@@ -1685,20 +1692,45 @@ export function renderSlViewer() {
       </div>
     </div>` : '';
   const visibleSuperdrops = sortSuperdrops(SL_SUPERDROPS.filter(sd => superdropMatchesSearch(sd, sv.search)));
+  // Sum per-drop name stats so superdrop totals match drop totals.
+  const sdStats = visibleSuperdrops.map(sd => {
+    let owned = 0, total = 0;
+    for (const d of sd.drops) {
+      const s = dropOwnedNameStats(d);
+      owned += s.owned;
+      total += s.total;
+    }
+    return { sd, owned, total };
+  });
+  // Pinned flat-catalog entry. Hidden while searching — every matching group
+  // would otherwise show up twice (in its superdrop and again in All Drops).
+  const allDropsEntry = sv.search ? null : {
+    dropCount: SL_SUPERDROPS.reduce((n, sd) => n + sd.drops.length, 0),
+    owned: sdStats.reduce((n, s) => n + s.owned, 0),
+    total: sdStats.reduce((n, s) => n + s.total, 0),
+  };
+  const allDropsCard = allDropsEntry ? `
+    <div class="sl-superdrop-card" data-sl-superdrop="${esc(SL_ALL_DROPS)}" data-slact="open-superdrop" data-arg="${esc(SL_ALL_DROPS)}" style="border-style:dashed">
+      <div class="sl-superdrop-name">📚 ${esc(SL_ALL_DROPS)}</div>
+      <div class="sl-superdrop-meta">Every drop, ungrouped · ${allDropsEntry.dropCount} drops</div>
+      <div class="sl-progress-bar"><div class="sl-progress-fill" style="width:${allDropsEntry.total ? Math.round(allDropsEntry.owned / allDropsEntry.total * 100) : 0}%"></div></div>
+      <div class="sl-superdrop-count" style="color:${allDropsEntry.owned===allDropsEntry.total&&allDropsEntry.total>0?'var(--green)':'var(--text-muted)'}">${allDropsEntry.owned} / ${allDropsEntry.total} owned</div>
+    </div>` : '';
+  const allDropsRow = allDropsEntry ? `
+    <tr data-slact="open-superdrop" data-arg="${esc(SL_ALL_DROPS)}" style="cursor:pointer">
+      <td style="font-weight:600;color:var(--text)">📚 ${esc(SL_ALL_DROPS)} <span style="color:var(--text-muted);font-weight:400">(ungrouped)</span></td>
+      <td style="white-space:nowrap">—</td>
+      <td style="text-align:center">${allDropsEntry.dropCount}</td>
+      ${progressCell(allDropsEntry.owned, allDropsEntry.total)}
+    </tr>` : '';
   return viewToggle() + refreshBtn + sortSearchBar() + upcomingStrip + officialStrip + `
-    ${visibleSuperdrops.length === 0
+    ${sdStats.length === 0
       ? `<div style="padding:30px;text-align:center;color:var(--text-muted);font-size:13px">No superdrops match "${esc(sv.search)}".</div>`
       : (sv.layout === 'table')
-      ? superdropsTable(visibleSuperdrops)
+      ? superdropsTable(visibleSuperdrops, allDropsRow)
       : `<div class="sl-superdrop-grid">
-      ${visibleSuperdrops.map(sd => {
-        // Sum per-drop name stats so superdrop totals match drop totals.
-        let owned = 0, total = 0;
-        for (const d of sd.drops) {
-          const s = dropOwnedNameStats(d);
-          owned += s.owned;
-          total += s.total;
-        }
+      ${allDropsCard}
+      ${sdStats.map(({ sd, owned, total }) => {
         const pct = total ? Math.round(owned / total * 100) : 0;
         return `
           <div class="sl-superdrop-card" data-sl-superdrop="${esc(sd.superdrop)}" data-slact="open-superdrop" data-arg="${esc(sd.superdrop)}">
