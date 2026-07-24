@@ -12,6 +12,8 @@ user-facing: what changed, not how.
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-07-24
+
 ### Fixed
 - **No more duplicate drops in "Recent Additions".** Alternate spellings from MTGJSON's sealed-product names ("Return to Mystical Archive" vs "Return to the Mystical Archive") now snap to the drop's canonical name during refresh, and previously saved data heals the same way at startup. Recent Additions now only holds genuinely new drops the built-in dataset doesn't know yet.
 
