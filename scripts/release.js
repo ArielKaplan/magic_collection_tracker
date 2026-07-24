@@ -72,9 +72,17 @@ if (fs.existsSync(changelogPath)) {
     console.warn('\n⚠  No [Unreleased] section in CHANGELOG.md — skipping changelog promotion.');
   }
 }
-// Keep package-lock.json in sync if it exists
-if (fs.existsSync(path.join(__dirname, '..', 'package-lock.json'))) {
-  run('npm install --package-lock-only --ignore-scripts');
+// Keep package-lock.json's version fields in sync if it exists. Only edit the
+// version fields — never re-resolve the tree here: npm 11's --package-lock-only
+// strips esbuild's nested optional platform deps (pulled in via vitest), and
+// npm 10 (Node 22's bundled npm, used by the data-refresh workflow) rejects
+// the resulting lockfile at `npm ci`.
+const lockPath = path.join(__dirname, '..', 'package-lock.json');
+if (fs.existsSync(lockPath)) {
+  const lock = JSON.parse(fs.readFileSync(lockPath, 'utf8'));
+  lock.version = next;
+  if (lock.packages && lock.packages['']) lock.packages[''].version = next;
+  fs.writeFileSync(lockPath, JSON.stringify(lock, null, 2) + '\n');
   run('git add package-lock.json');
 }
 run(`git commit -m "chore: release v${next}"`);
